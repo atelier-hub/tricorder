@@ -145,7 +145,7 @@
             hlint.enable = true;
             hpack.enable = true;
             nixfmt-rfc-style.enable = true;
-            ormolu.enable = true;
+            fourmolu.enable = true;
           };
         };
       };
@@ -157,6 +157,7 @@
         # Haskell development tools
         buildInputs = with pkgs.haskellPackages; [
           cabal-install
+          fourmolu
           ghcid
           haskell-language-server
           hlint
