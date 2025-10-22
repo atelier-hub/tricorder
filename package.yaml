@@ -1,0 +1,101 @@
+name:                hoard
+version:             0.1.0.0
+synopsis:            TODO write a short description
+description:         TODO write a long description
+author:              Christian Georgii
+maintainer:          christian.georgii@moduscreate.com
+license:             MIT
+
+language: GHC2021
+
+ghc-options:
+- -Wall
+- -Wcompat
+- -Widentities
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wmissing-export-lists
+- -Wmissing-home-modules
+- -Wpartial-fields
+- -Wredundant-constraints
+- -O2
+
+dependencies:
+- base >= 4.7 && < 5
+- aeson
+- async
+- bytestring
+- casing
+- containers
+- data-default
+- effectful
+- effectful-core
+- effectful-th
+- eve
+- hashable
+- hasql
+- hasql-pool
+- hasql-transaction
+- lens
+- mtl
+- network-uri
+- rel8
+- servant
+- servant-server
+- stm
+- string-conversions
+- text
+- time
+- unordered-containers
+- uuid
+- warp
+
+default-extensions:
+- BlockArguments
+- DataKinds
+- DeriveAnyClass
+- DerivingStrategies
+- DuplicateRecordFields
+- FlexibleContexts
+- GADTs
+- LambdaCase
+- OverloadedLabels
+- OverloadedRecordDot
+- OverloadedStrings
+- TemplateHaskell
+- TypeFamilies
+
+library:
+  source-dirs: src
+
+executables:
+  hoard-exe:
+    main:                Main.hs
+    source-dirs:         app/hoard
+    dependencies:
+    - hoard
+
+tests:
+  hoard-test:
+    main:                Driver.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    dependencies:
+    - hoard
+    - hspec
+    - QuickCheck
+    - tasty
+    - tasty-hspec
+    - tasty-discover
+    - servant-client
+    - servant-client-core
+    - http-client
+    - wai
+    - warp
+    - process
+    - directory
+    - uuid
+    - tmp-postgres
+    - postgres-options
+    - unix
