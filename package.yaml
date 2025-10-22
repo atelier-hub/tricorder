@@ -46,6 +46,7 @@ dependencies:
 - string-conversions
 - text
 - time
+- unagi-chan
 - unordered-containers
 - uuid
 - warp
