@@ -3,4 +3,12 @@
 
 - ignore: {name: Use newtype instead of data}
 
+# # Ignore files outside src/, app/, and test/
+- ignore:
+    path:
+      - docs
+
+# Ignore "Avoid lambda" in Network effects module (needed for type polymorphism)
+- ignore: {name: Avoid lambda, within: Hoard.Effects.Network}
+
 - group: {name: future, enabled: true}

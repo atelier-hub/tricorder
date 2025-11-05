@@ -26,10 +26,18 @@ dependencies:
 - async
 - bytestring
 - cardano-api
+- cborg
+- contra-tracer
 - ouroboros-network
+- ouroboros-network-api
 - ouroboros-network-protocols
 - ouroboros-network-framework
+- ouroboros-consensus
+- ouroboros-consensus-cardano
+- ouroboros-consensus-diffusion
+- cardano-ledger-core
 - network-mux
+- typed-protocols
 - casing
 - containers
 - data-default
@@ -52,6 +60,7 @@ dependencies:
 - string-conversions
 - text
 - time
+- transformers
 - unagi-chan
 - unordered-containers
 - uuid
