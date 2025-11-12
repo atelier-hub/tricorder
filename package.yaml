@@ -21,7 +21,12 @@ ghc-options:
 - -O2
 
 dependencies:
-- base >= 4.7 && < 5
+- name: base
+  mixin:
+    - hiding (Prelude)
+- name: relude
+  mixin:
+    - (Relude as Prelude)
 - aeson
 - async
 - bytestring
