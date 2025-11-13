@@ -22,6 +22,24 @@ let
 
   inherit (pkgs) lib;
 
+  # Custom hook to check materialization is up to date
+  checkMaterialization = pkgs.writeShellScript "check-materialization" ''
+    # Only check if nix/project.nix or cabal files changed
+    if git diff --cached --name-only | grep -qE '(nix/project\.nix|.*\.cabal|cabal\.project|flake\.lock)'; then
+      echo "Checking if haskell.nix materialization is up to date..."
+
+      # Try to evaluate the project - this will fail if materialization is stale
+      if ! nix eval --no-warn-dirty .#checks.${system}.git-hooks --apply 'x: "ok"' 2>/dev/null >/dev/null; then
+        echo "⚠️  WARNING: haskell.nix materialization may be out of date!"
+        echo "If you changed dependencies or flake inputs, please run:"
+        echo "  nix build --no-link 2>&1 | grep generateMaterialized | sh"
+        echo ""
+        echo "Press Enter to continue anyway, or Ctrl-C to abort and regenerate."
+        read -r
+      fi
+    fi
+  '';
+
   # Git hooks check (defined once, used in both checks and shell)
   gitHooks = inputs.git-hooks.lib.${system}.run {
     src = ../.;
@@ -33,6 +51,23 @@ let
           enable = true;
         }
       ))
+      # Add custom materialization check and exclude materialized files from nixfmt
+      (
+        x:
+        x
+        // {
+          check-materialization = {
+            enable = true;
+            entry = "${checkMaterialization}";
+            pass_filenames = false;
+          };
+          nixfmt-rfc-style = {
+            enable = true;
+            package = tools.nixfmt-rfc-style;
+            excludes = [ "nix/materialized/.*" ];
+          };
+        }
+      )
     ];
   };
 

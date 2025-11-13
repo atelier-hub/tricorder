@@ -7,6 +7,9 @@ pkgs.haskell-nix.cabalProject' {
   src = ../.;
   inherit compiler-nix-name;
 
+  # Enable materialization for deterministic builds and better CI caching
+  materialized = ./materialized;
+
   # Enable CHaP (Cardano Haskell Packages) repository
   inputMap = {
     "https://chap.intersectmbo.org/" = inputs.CHaP;
