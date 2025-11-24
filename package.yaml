@@ -27,7 +27,6 @@ dependencies:
 - name: relude
   mixin:
     - (Relude as Prelude)
-    - '' # Required to make the rest of relude importable
 - aeson
 - async
 - bytestring
@@ -41,7 +40,6 @@ dependencies:
 - ouroboros-consensus
 - ouroboros-consensus-cardano
 - ouroboros-consensus-diffusion
-- ouroboros-consensus-protocol
 - cardano-ledger-core
 - network-mux
 - typed-protocols
@@ -125,9 +123,6 @@ tests:
     - tasty-discover
     - servant-client
     - servant-client-core
-    - "ouroboros-consensus:unstable-consensus-testlib"
-    - "ouroboros-consensus-cardano:unstable-shelley-testlib"
-    - "ouroboros-consensus-cardano:unstable-byron-testlib"
     - http-client
     - wai
     - warp
