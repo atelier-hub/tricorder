@@ -27,6 +27,7 @@ dependencies:
 - name: relude
   mixin:
     - (Relude as Prelude)
+    - '' # Required to make the rest of relude importable
 - aeson
 - async
 - bytestring
