@@ -9,6 +9,7 @@ pkgs.haskell-nix.cabalProject' {
 
   # Enable materialization for deterministic builds and better CI caching
   materialized = ./materialized;
+  checkMaterialization = true;
 
   # Enable CHaP (Cardano Haskell Packages) repository
   inputMap = {

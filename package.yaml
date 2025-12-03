@@ -19,6 +19,7 @@ ghc-options:
 - -Wpartial-fields
 - -Wredundant-constraints
 - -O2
+- -fplugin=Effectful.Plugin
 
 dependencies:
 - name: base
@@ -50,6 +51,7 @@ dependencies:
 - directory
 - effectful
 - effectful-core
+- effectful-plugin
 - effectful-th
 - filepath
 - hashable
