@@ -115,6 +115,32 @@ in
         echo "Hlint refactoring complete!"
       ''}";
     };
+
+    # Run cardano-node with preprod configuration
+    cardano-node-preprod = {
+      type = "app";
+      program = "${pkgs.writeShellScript "cardano-node-preprod" ''
+        set -euo pipefail
+
+        # Ensure node-db directory exists
+        mkdir -p ./node-db/preprod
+
+        echo "Starting cardano-node with preprod configuration..."
+        echo "Config: ./config/preprod/config.json"
+        echo "Database: ./node-db/preprod"
+        echo "Socket: ./node-db/preprod/node.socket"
+        echo "Tracer socket: /tmp/cardano-tracer.sock"
+        echo ""
+
+        # Run cardano-node with preprod config
+        exec ${pkgs.nix}/bin/nix run github:IntersectMBO/cardano-node#cardano-node -- run \
+          --config ./config/preprod/config.json \
+          --topology ./config/preprod/topology.json \
+          --database-path ./node-db/preprod \
+          --socket-path ./node-db/preprod/node.socket \
+          --tracer-socket-path-accept /tmp/cardano-tracer.sock
+      ''}";
+    };
   }
   # Merge in secrets management apps
   // secretsApps

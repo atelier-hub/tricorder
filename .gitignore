@@ -7,3 +7,4 @@ dist-newstyle/
 *.hspp
 build.log
 postgres-data/
+node-db/
