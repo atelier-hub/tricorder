@@ -31,6 +31,7 @@ dependencies:
     - '' # Required to make the rest of relude importable
 - aeson
 - async
+- base16-bytestring
 - bytestring
 - cardano-api
 - cborg
