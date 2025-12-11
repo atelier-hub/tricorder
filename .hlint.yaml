@@ -9,6 +9,6 @@
       - docs
 
 # Ignore "Avoid lambda" in Network effects module (needed for type polymorphism)
-- ignore: {name: Avoid lambda, within: Hoard.Effects.Network}
+- ignore: {name: Avoid lambda, within: Hoard.Effects.NodeToNode}
 
 - group: {name: future, enabled: true}
