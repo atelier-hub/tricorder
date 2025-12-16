@@ -18,7 +18,7 @@ ghc-options:
 - -Wmissing-home-modules
 - -Wpartial-fields
 - -Wredundant-constraints
-- -O2
+- -O0
 - -fplugin=Effectful.Plugin
 - -threaded
 
