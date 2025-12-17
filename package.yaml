@@ -79,6 +79,7 @@ dependencies:
 - uuid
 - warp
 - yaml
+- typed-process
 
 default-extensions:
 - BlockArguments
