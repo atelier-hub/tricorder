@@ -34,6 +34,9 @@ pkgs.haskell-nix.cabalProject' {
 
         # Configure hoard package
         hoard = {
+          # Treat warnings as errors in Nix builds (CI), but not in local dev
+          ghcOptions = [ "-Werror" ];
+
           # Configure test suite component
           components.tests.hoard-test = {
             # Add build-time tools needed for tests
