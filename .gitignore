@@ -7,5 +7,7 @@ dist-newstyle/
 *.hspp
 build.log
 postgres-data/
+grafana-data/
+prometheus-data/
 node-db/
 .env.local

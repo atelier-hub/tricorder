@@ -67,6 +67,8 @@ dependencies:
 - network
 - network-uri
 - optparse-applicative
+- prometheus-client
+- prometheus-metrics-ghc
 - rel8
 - serialise
 - servant
@@ -109,6 +111,7 @@ executables:
     source-dirs:         app/hoard
     ghc-options:
     - -with-rtsopts=-N
+    - -with-rtsopts=-T
     dependencies:
     - hoard
 

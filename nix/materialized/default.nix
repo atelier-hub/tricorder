@@ -48,6 +48,7 @@
         testcontainers.revision = import ./cabal-files/testcontainers.nix;
         erf.revision = import ./cabal-files/erf.nix;
         cardano-strict-containers.revision = import ./cabal-files/cardano-strict-containers.nix;
+        prometheus-client.revision = import ./cabal-files/prometheus-client.nix;
         integer-gmp.revision = hackage.integer-gmp."1.1".revisions.default;
         pem.revision = import ./cabal-files/pem.nix;
         http2.revision = import ./cabal-files/http2.nix;
@@ -516,6 +517,7 @@
         unliftio-core.revision = import ./cabal-files/unliftio-core.nix;
         resourcet.revision = import ./cabal-files/resourcet.nix;
         mono-traversable.revision = import ./cabal-files/mono-traversable.nix;
+        data-sketches.revision = import ./cabal-files/data-sketches.nix;
         random-shuffle.revision = import ./cabal-files/random-shuffle.nix;
         ordered-containers.revision = import ./cabal-files/ordered-containers.nix;
         cardano-crypto.revision = import ./cabal-files/cardano-crypto.nix;
@@ -640,6 +642,7 @@
         tagged.flags.deepseq = true;
         quiet.revision = import ./cabal-files/quiet.nix;
         primes.revision = import ./cabal-files/primes.nix;
+        prometheus-metrics-ghc.revision = import ./cabal-files/prometheus-metrics-ghc.nix;
         dictionary-sharing.revision = import ./cabal-files/dictionary-sharing.nix;
         pretty-simple.revision = import ./cabal-files/pretty-simple.nix;
         pretty-simple.flags.buildexe = true;
@@ -649,6 +652,7 @@
         nothunks.flags.bytestring = true;
         nothunks.flags.text = true;
         foldl.revision = import ./cabal-files/foldl.nix;
+        data-sketches-core.revision = import ./cabal-files/data-sketches-core.nix;
         ghc-boot-th.revision = hackage.ghc-boot-th."9.6.6".revisions.default;
         bech32.revision = import ./cabal-files/bech32.nix;
         bech32.flags.static = false;
@@ -893,6 +897,7 @@
           "groups".components.library.planned = lib.mkOverride 900 true;
           "Stream".components.library.planned = lib.mkOverride 900 true;
           "base64-bytestring".components.library.planned = lib.mkOverride 900 true;
+          "data-sketches-core".components.library.planned = lib.mkOverride 900 true;
           "file-io".components.library.planned = lib.mkOverride 900 true;
           "attoparsec".components.sublibs."attoparsec-internal".planned = lib.mkOverride 900 true;
           "resourcet".components.library.planned = lib.mkOverride 900 true;
@@ -929,6 +934,7 @@
           "vty".components.library.planned = lib.mkOverride 900 true;
           "parser-combinators".components.library.planned = lib.mkOverride 900 true;
           "vault".components.library.planned = lib.mkOverride 900 true;
+          "prometheus-metrics-ghc".components.library.planned = lib.mkOverride 900 true;
           "unordered-containers".components.library.planned = lib.mkOverride 900 true;
           "criterion-measurement".components.library.planned = lib.mkOverride 900 true;
           "these".components.library.planned = lib.mkOverride 900 true;
@@ -1153,6 +1159,7 @@
           "ouroboros-network-framework".components.exes."demo-connection-manager".planned = lib.mkOverride 900 true;
           "entropy".components.library.planned = lib.mkOverride 900 true;
           "ouroboros-network".components.sublibs."orphan-instances".planned = lib.mkOverride 900 true;
+          "data-sketches".components.library.planned = lib.mkOverride 900 true;
           "boring".components.library.planned = lib.mkOverride 900 true;
           "cookie".components.library.planned = lib.mkOverride 900 true;
           "effectful-plugin".components.library.planned = lib.mkOverride 900 true;
@@ -1457,6 +1464,7 @@
           "terminal-size".components.library.planned = lib.mkOverride 900 true;
           "base16-bytestring".components.library.planned = lib.mkOverride 900 true;
           "http-conduit".components.library.planned = lib.mkOverride 900 true;
+          "prometheus-client".components.library.planned = lib.mkOverride 900 true;
           "tasty-rerun".components.library.planned = lib.mkOverride 900 true;
           "wai".components.library.planned = lib.mkOverride 900 true;
           "tls".components.library.planned = lib.mkOverride 900 true;

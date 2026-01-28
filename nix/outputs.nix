@@ -74,6 +74,7 @@ let
   # Import custom app modules
   secretsApps = import ./secrets.nix { inherit pkgs; };
   cardanoNode = import ./cardano-node.nix { inherit pkgs inputs system; };
+  monitoringApps = import ./monitoring.nix { inherit pkgs; };
 in
 {
   # Expose packages built by haskell.nix
@@ -127,7 +128,9 @@ in
   # Import postgres app from separate module
   // (import ./postgres.nix { inherit pkgs; })
   # Import cardano-node and Mithril apps from separate module
-  // cardanoNode.apps;
+  // cardanoNode.apps
+  # Import monitoring apps (Prometheus, Grafana, node_exporter)
+  // monitoringApps.apps;
 
   # Checks
   checks = projectFlake.checks // {
