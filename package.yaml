@@ -95,6 +95,7 @@ default-extensions:
 - FlexibleContexts
 - GADTs
 - LambdaCase
+- MultiWayIf
 - OverloadedLabels
 - OverloadedRecordDot
 - OverloadedStrings
