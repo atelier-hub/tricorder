@@ -742,6 +742,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-nixos-unstable": {
+      "locked": {
+        "lastModified": 1770562336,
+        "narHash": "sha256-ub1gpAONMFsT/GU2hV6ZWJjur8rJ6kKxdm9IlCT0j84=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "d6c71932130818840fc8fe9509cf50be8c64634f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "nixpkgs-unstable": {
       "locked": {
         "lastModified": 1759070547,
@@ -788,6 +804,7 @@
           "haskell-nix",
           "nixpkgs"
         ],
+        "nixpkgs-nixos-unstable": "nixpkgs-nixos-unstable",
         "sops-nix": "sops-nix",
         "tmp-postgres": "tmp-postgres"
       }

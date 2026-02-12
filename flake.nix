@@ -15,6 +15,7 @@
 
   inputs = {
     nixpkgs.follows = "haskell-nix/nixpkgs";
+    nixpkgs-nixos-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
 
     haskell-nix = {
       url = "github:input-output-hk/haskell.nix";
