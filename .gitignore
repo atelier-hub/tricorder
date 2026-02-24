@@ -12,3 +12,6 @@ prometheus-data/
 tempo-data/
 node-db/
 .env.local
+loki-data/
+log.out
+promtail-data/
