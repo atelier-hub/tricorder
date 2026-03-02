@@ -23,13 +23,7 @@ ghc-options:
 - -threaded
 
 dependencies:
-- name: base
-  mixin:
-    - hiding (Prelude)
-- name: relude
-  mixin:
-    - (Relude as Prelude)
-    - '' # Required to make the rest of relude importable
+- relude
 - aeson
 - async
 - base16-bytestring
@@ -113,6 +107,20 @@ default-extensions:
 
 library:
   source-dirs: src
+  dependencies:
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - name: hoard-prelude
+
+internal-libraries:
+  hoard-prelude:
+    source-dirs: prelude
+    dependencies:
+    - base
+    - relude
+    - effectful
+    - effectful-core
 
 executables:
   hoard-exe:
@@ -122,6 +130,10 @@ executables:
     - -with-rtsopts=-N
     - -with-rtsopts=-T
     dependencies:
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - hoard-prelude
     - hoard
 
 tests:
@@ -133,6 +145,10 @@ tests:
     build-tools:
     - tasty-discover:tasty-discover
     dependencies:
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - hoard-prelude
     - hoard
     - hspec
     - QuickCheck
