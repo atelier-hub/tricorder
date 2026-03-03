@@ -23,69 +23,8 @@ ghc-options:
 - -threaded
 
 dependencies:
-- relude
-- aeson
-- async
-- base16-bytestring
-- bytestring
-- cardano-api
-- cborg
-- contra-tracer
-- ouroboros-network
-- ouroboros-network-api
-- ouroboros-network-protocols
-- ouroboros-network-framework
-- ouroboros-consensus
-- ouroboros-consensus-cardano
-- ouroboros-consensus-diffusion
-- ouroboros-consensus-protocol
-- cardano-ledger-core
-- cardano-ledger-shelley
-- network-mux
-- typed-protocols
-- casing
-- containers
-- data-default
-- directory
-- effectful
 - effectful-core
 - effectful-plugin
-- effectful-th
-- filepath
-- hashable
-- hasql
-- hasql-pool
-- hasql-transaction
-- iproute
-- ki
-- network
-- network-uri
-- optparse-applicative
-- prometheus-client
-- prometheus-metrics-ghc
-- hs-opentelemetry-api
-- hs-opentelemetry-exporter-otlp
-- hs-opentelemetry-sdk
-- http-client
-- http-client-tls
-- http-types
-- rel8
-- serialise
-- servant
-- servant-server
-- string-conversions
-- text
-- time
-- transformers
-- unagi-chan
-- list-t
-- stm-containers
-- unordered-containers
-- uuid
-- warp
-- yaml
-- typed-process
-- unix
 
 default-extensions:
 - BlockArguments
@@ -111,7 +50,67 @@ library:
     - name: base
       mixin:
         - hiding (Prelude)
-    - name: hoard-prelude
+    - hoard-prelude
+    - aeson
+    - async
+    - base16-bytestring
+    - data-default
+    - time
+    - bytestring
+    - cardano-api
+    - cardano-ledger-core
+    - cardano-ledger-shelley
+    - casing
+    - cborg
+    - containers
+    - contra-tracer
+    - directory
+    - effectful
+    - effectful-th
+    - filepath
+    - hashable
+    - hasql
+    - hasql-pool
+    - hasql-transaction
+    - hs-opentelemetry-api
+    - hs-opentelemetry-exporter-otlp
+    - hs-opentelemetry-sdk
+    - http-client
+    - http-client-tls
+    - http-types
+    - iproute
+    - ki
+    - list-t
+    - network
+    - network-mux
+    - network-uri
+    - optparse-applicative
+    - ouroboros-consensus
+    - ouroboros-consensus-cardano
+    - ouroboros-consensus-diffusion
+    - ouroboros-consensus-protocol
+    - ouroboros-network
+    - ouroboros-network-api
+    - ouroboros-network-framework
+    - ouroboros-network-protocols
+    - prometheus-client
+    - prometheus-metrics-ghc
+    - rel8
+    - serialise
+    - servant
+    - servant-server
+    - stm-containers
+    - string-conversions
+    - text
+    - transformers
+    - typed-process
+    - typed-protocols
+    - unagi-chan
+    - unix
+    - unordered-containers
+    - uuid
+    - warp
+    - yaml
 
 internal-libraries:
   hoard-prelude:
@@ -120,7 +119,6 @@ internal-libraries:
     - base
     - relude
     - effectful
-    - effectful-core
 
 executables:
   hoard-exe:
@@ -135,6 +133,8 @@ executables:
         - hiding (Prelude)
     - hoard-prelude
     - hoard
+    - data-default
+    - effectful
 
 tests:
   hoard-test:
@@ -150,22 +150,39 @@ tests:
         - hiding (Prelude)
     - hoard-prelude
     - hoard
-    - hspec
+    - "ouroboros-consensus-cardano:unstable-byron-testlib"
+    - "ouroboros-consensus-cardano:unstable-shelley-testlib"
+    - "ouroboros-consensus:unstable-consensus-testlib"
     - QuickCheck
-    - tasty
-    - tasty-hspec
-    - tasty-discover
+    - async
+    - cardano-api
+    - data-default
+    - directory
+    - effectful
+    - hasql
+    - hasql-pool
+    - hasql-transaction
+    - hspec
+    - http-client
+    - network
+    - ouroboros-consensus
+    - ouroboros-consensus-cardano
+    - ouroboros-network-api
+    - postgres-options
+    - process
+    - rel8
     - servant-client
     - servant-client-core
-    - "ouroboros-consensus:unstable-consensus-testlib"
-    - "ouroboros-consensus-cardano:unstable-shelley-testlib"
-    - "ouroboros-consensus-cardano:unstable-byron-testlib"
-    - http-client
+    - servant-server
+    - string-conversions
+    - tasty
+    - tasty-discover
+    - tasty-hspec
+    - text
+    - time
+    - tmp-postgres
+    - transformers
+    - unix
+    - uuid
     - wai
     - warp
-    - process
-    - directory
-    - uuid
-    - tmp-postgres
-    - postgres-options
-    - unix
