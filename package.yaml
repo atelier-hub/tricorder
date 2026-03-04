@@ -125,7 +125,7 @@ executables:
     main:                Main.hs
     source-dirs:         app/hoard
     ghc-options:
-    - -with-rtsopts=-NT
+    - '"-with-rtsopts=-N -T"'
     dependencies:
     - name: base
       mixin:
