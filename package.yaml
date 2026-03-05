@@ -58,6 +58,7 @@ library:
     - time
     - bytestring
     - cardano-api
+    - cardano-ledger-byron
     - cardano-ledger-core
     - cardano-ledger-shelley
     - casing
