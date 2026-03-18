@@ -8,7 +8,7 @@ import Atelier.Effects.Publishing (publish, runPubWriter)
 
 
 data TestEvent = TestEvent Text
-    deriving (Show, Typeable)
+    deriving stock (Show)
 
 
 spec_Pub :: Spec

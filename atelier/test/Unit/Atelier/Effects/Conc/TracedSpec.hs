@@ -83,7 +83,7 @@ spec_ConcTraced = do
 data SpanOp
     = PlainSpan Text
     | LinkedSpan Text
-    deriving (Eq, Show)
+    deriving stock (Eq, Show)
 
 
 -- | A fake but valid span context for testing.
