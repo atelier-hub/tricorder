@@ -71,7 +71,6 @@ library:
     - atelier
     - aeson
     - base16-bytestring
-    - base64-bytestring
     - data-default
     - time
     - bytestring
@@ -140,6 +139,7 @@ internal-libraries:
         - hiding (Prelude)
     - hoard-prelude
     - aeson
+    - base64-bytestring
     - bytestring
     - casing
     - containers
