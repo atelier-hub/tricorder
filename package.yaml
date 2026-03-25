@@ -71,6 +71,7 @@ library:
     - atelier
     - aeson
     - base16-bytestring
+    - base64-bytestring
     - data-default
     - time
     - bytestring
@@ -152,6 +153,7 @@ internal-libraries:
     - hs-opentelemetry-api
     - hs-opentelemetry-exporter-otlp
     - hs-opentelemetry-sdk
+    - http-api-data
     - ki
     - list-t
     - prometheus-client
