@@ -5,6 +5,9 @@ module Ghcib.Effects.GhciSession
     , reloadGhci
     , stopGhci
 
+      -- * Types
+    , LoadResult (..)
+
       -- * Interpreters
     , runGhciSessionIO
     , runGhciSessionScripted
@@ -24,12 +27,20 @@ import Ghcib.BuildState (Message (..), Severity (..))
 import Ghcib.BuildState qualified as BuildState
 
 
+-- | The result of a GHCi load or reload operation.
+data LoadResult = LoadResult
+    { moduleCount :: Int
+    , messages :: [Message]
+    }
+    deriving stock (Eq, Show)
+
+
 data GhciSession :: Effect where
     -- | Start a new GHCi session. If a session is already running it is
     -- stopped first. Returns the initial compilation messages with module count.
-    StartGhci :: Text -> FilePath -> GhciSession m (Int, [Message])
+    StartGhci :: Text -> FilePath -> GhciSession m LoadResult
     -- | Send @:reload@ to the current session and return new messages with module count.
-    ReloadGhci :: GhciSession m (Int, [Message])
+    ReloadGhci :: GhciSession m LoadResult
     -- | Stop the current session. No-op if no session is running.
     StopGhci :: GhciSession m ()
 
@@ -43,23 +54,19 @@ runGhciSessionIO :: (IOE :> es) => Eff (GhciSession : es) a -> Eff es a
 runGhciSessionIO = reinterpret (evalState (Nothing :: Maybe Ghcid.Ghci)) $ \_ -> \case
     StartGhci cmd dir -> do
         mOld <- get
-        whenJust mOld \old ->
-            void $ liftIO $ try @SomeException $ Ghcid.stopGhci old
-        (ghci, loads) <-
-            liftIO $ Ghcid.startGhci (toString cmd) (Just dir) (\_ _ -> pure ())
+        whenJust mOld \old -> liftIO $ stopGhciSilently old
+        (ghci, loads) <- liftIO $ Ghcid.startGhci (toString cmd) (Just dir) (\_ _ -> pure ())
         put (Just ghci)
-        moduleCount <- length <$> liftIO (Ghcid.showModules ghci)
-        pure (moduleCount, toMessages loads)
+        liftIO $ collectResult ghci loads
     ReloadGhci ->
         get >>= \case
             Nothing -> error "GhciSession: reloadGhci called before startGhci"
-            Just ghci -> do
-                loads <- liftIO (Ghcid.reload ghci)
-                moduleCount <- length <$> liftIO (Ghcid.showModules ghci)
-                pure (moduleCount, toMessages loads)
+            Just ghci -> liftIO do
+                loads <- Ghcid.reload ghci
+                collectResult ghci loads
     StopGhci ->
         get >>= \mGhci -> whenJust mGhci \ghci -> do
-            void $ liftIO $ try @SomeException $ Ghcid.stopGhci ghci
+            liftIO $ stopGhciSilently ghci
             put (Nothing :: Maybe Ghcid.Ghci)
 
 
@@ -73,16 +80,26 @@ runGhciSessionIO = reinterpret (evalState (Nothing :: Maybe Ghcid.Ghci)) $ \_ ->
 -- context, enabling tests of error-handling logic.
 runGhciSessionScripted :: forall es a. (IOE :> es) => [Either SomeException [Message]] -> Eff (GhciSession : es) a -> Eff es a
 runGhciSessionScripted results = reinterpret (evalState results) $ \_ ->
-    let popResult :: Eff (State [Either SomeException [Message]] : es) (Int, [Message])
+    let popResult :: Eff (State [Either SomeException [Message]] : es) LoadResult
         popResult =
             get >>= \case
                 [] -> error "GhciSessionScripted: no more results in queue"
                 Left ex : rest -> put rest >> liftIO (throwIO ex)
-                Right msgs : rest -> put rest >> pure (0, msgs)
+                Right msgs : rest -> put rest >> pure LoadResult {moduleCount = 0, messages = msgs}
     in  \case
             StartGhci _ _ -> popResult
             ReloadGhci -> popResult
             StopGhci -> pure ()
+
+
+stopGhciSilently :: Ghcid.Ghci -> IO ()
+stopGhciSilently ghci = void $ try @SomeException $ Ghcid.stopGhci ghci
+
+
+collectResult :: Ghcid.Ghci -> [Load] -> IO LoadResult
+collectResult ghci loads = do
+    moduleCount <- length <$> Ghcid.showModules ghci
+    pure LoadResult {moduleCount, messages = toMessages loads}
 
 
 toMessages :: [Load] -> [Message]

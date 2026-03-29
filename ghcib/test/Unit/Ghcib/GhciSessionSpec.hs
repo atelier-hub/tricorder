@@ -8,6 +8,7 @@ import Test.Hspec
 import Ghcib.BuildState (Message (..), Severity (..))
 import Ghcib.Effects.GhciSession
     ( GhciSession
+    , LoadResult (..)
     , reloadGhci
     , runGhciSessionScripted
     , startGhci
@@ -28,13 +29,13 @@ testScripted :: Spec
 testScripted = do
     describe "startGhci" do
         it "returns scripted messages" do
-            (_, msgs) <-
+            LoadResult {messages = msgs} <-
                 runScripted [Right [errMsg]]
                     $ startGhci "cabal repl" "/"
             msgs `shouldBe` [errMsg]
 
         it "returns empty list when scripted result has no messages" do
-            (_, msgs) <-
+            LoadResult {messages = msgs} <-
                 runScripted [Right []]
                     $ startGhci "cabal repl" "/"
             msgs `shouldBe` []
@@ -48,7 +49,7 @@ testScripted = do
 
     describe "reloadGhci" do
         it "returns scripted messages" do
-            (_, msgs) <- runScripted [Right [warnMsg]] reloadGhci
+            LoadResult {messages = msgs} <- runScripted [Right [warnMsg]] reloadGhci
             msgs `shouldBe` [warnMsg]
 
         it "throws when scripted result is Left" do
@@ -59,7 +60,7 @@ testScripted = do
 
     describe "stopGhci" do
         it "is always a no-op and does not consume from the queue" do
-            (_, msgs) <- runScripted [Right [errMsg]] do
+            LoadResult {messages = msgs} <- runScripted [Right [errMsg]] do
                 stopGhci
                 startGhci "cabal repl" "/"
             msgs `shouldBe` [errMsg]
@@ -67,8 +68,8 @@ testScripted = do
     describe "sequencing" do
         it "consumes results in order across mixed operations" do
             (a, b) <- runScripted [Right [errMsg], Right [warnMsg]] do
-                (_, a) <- startGhci "cabal repl" "/"
-                (_, b) <- reloadGhci
+                LoadResult {messages = a} <- startGhci "cabal repl" "/"
+                LoadResult {messages = b} <- reloadGhci
                 pure (a, b)
             a `shouldBe` [errMsg]
             b `shouldBe` [warnMsg]
@@ -76,7 +77,7 @@ testScripted = do
         it "recover scenario: error then success" do
             result <- runScripted [Left (toException boom), Right []] do
                 r1 <- try @ErrorCall $ startGhci "cabal repl" "/"
-                (_, r2) <- startGhci "cabal repl" "/"
+                LoadResult {messages = r2} <- startGhci "cabal repl" "/"
                 pure (r1, r2)
             fst result `shouldSatisfy` isLeft
             snd result `shouldBe` []

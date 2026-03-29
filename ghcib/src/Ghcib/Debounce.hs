@@ -3,7 +3,7 @@ module Ghcib.Debounce (debounced) where
 import Data.Time.Units (TimeUnit, toMicroseconds)
 import Effectful.Timeout (Timeout, timeout)
 
-import Atelier.Effects.Chan (Chan, InChan, OutChan)
+import Atelier.Effects.Chan (Chan, OutChan)
 import Atelier.Effects.Conc (Conc)
 
 import Atelier.Effects.Chan qualified as Chan
@@ -31,18 +31,13 @@ debounced
     -- ^ Output: fires once after each settled burst
 debounced settleTime triggerOut = do
     (firedIn, firedOut) <- Chan.newChan
-    Conc.fork_ $ drainLoop firedIn
+    Conc.fork_ $ forever do
+        Chan.readChan triggerOut -- wait for burst start
+        fix \drain ->
+            -- consume the burst
+            timeout settleUs (Chan.readChan triggerOut) >>= \case
+                Just _ -> drain -- more events: keep draining
+                Nothing -> Chan.writeChan firedIn () -- quiet: emit once
     pure firedOut
   where
     settleUs = fromIntegral (toMicroseconds settleTime)
-
-    drainLoop :: InChan () -> Eff es Void
-    drainLoop firedIn = forever do
-        Chan.readChan triggerOut -- block until first trigger arrives
-        drain firedIn -- absorb remaining triggers until quiet
-    drain :: InChan () -> Eff es ()
-    drain firedIn = do
-        more <- timeout settleUs (Chan.readChan triggerOut)
-        case more of
-            Nothing -> Chan.writeChan firedIn () -- settled: emit once
-            Just _ -> drain firedIn -- more triggers: keep waiting

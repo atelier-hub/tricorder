@@ -16,7 +16,7 @@ import Atelier.Time (Millisecond)
 import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildResult (..))
 import Ghcib.Config (Config (..), resolveCommand)
 import Ghcib.Effects.BuildStore (BuildStore, setPhase)
-import Ghcib.Effects.GhciSession (GhciSession)
+import Ghcib.Effects.GhciSession (GhciSession, LoadResult (..))
 import Ghcib.Watcher (ReloadRequest (..))
 
 import Atelier.Effects.Chan qualified as Chan
@@ -79,7 +79,7 @@ sessionListener cmd projectRoot reloadOut = startSession (BuildId 1)
                 -- Brief pause before retry to avoid tight restart loop
                 wait (2_000 :: Millisecond)
                 startSession (BuildId n)
-            Right (moduleCount, msgs) -> do
+            Right LoadResult {moduleCount, messages = msgs} -> do
                 Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length msgs) <> " messages"
                 t0 <- Clock.currentTime
                 let buildResult = BuildResult {completedAt = t0, durationMs = 0, moduleCount, messages = msgs}
@@ -96,14 +96,14 @@ sessionListener cmd projectRoot reloadOut = startSession (BuildId 1)
         t0 <- Clock.currentTime
         result <- try @SomeException $ case request of
             Reload -> GhciSession.reloadGhci
-            Restart -> GhciSession.stopGhci >> pure (0, [])
+            Restart -> GhciSession.stopGhci >> pure LoadResult {moduleCount = 0, messages = []}
         case result of
             Left ex -> do
                 when (isGracefulShutdown ex) $ throwIO ex
                 Log.warn "GHCi session died; restarting"
                 void $ try @SomeException GhciSession.stopGhci
                 startSession nextId
-            Right (moduleCount, msgs) -> do
+            Right LoadResult {moduleCount, messages = msgs} -> do
                 t1 <- Clock.currentTime
                 let durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
                     buildResult = BuildResult {completedAt = t1, durationMs, moduleCount, messages = msgs}

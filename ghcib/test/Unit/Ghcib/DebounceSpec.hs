@@ -23,6 +23,23 @@ spec_Debounce = do
 
 testDebounced :: Spec
 testDebounced = do
+    it "does not emit before any triggers arrive" do
+        counter <- newMVar (0 :: Int)
+        runEff
+            . runConcurrent
+            . runChan
+            . runConc
+            . runTimeout
+            $ do
+                (_trigIn, trigOut) <- Chan.newChan
+                debouncedOut <- debounced (50 :: Millisecond) trigOut
+                Conc.fork_ $ forever $ do
+                    Chan.readChan debouncedOut
+                    liftIO $ modifyMVar_ counter (pure . (+ 1))
+                liftIO $ threadDelay 150_000
+        count <- readMVar counter
+        count `shouldBe` 0
+
     it "emits once after a burst of triggers" do
         counter <- newMVar (0 :: Int)
         runEff
@@ -46,3 +63,27 @@ testDebounced = do
                 liftIO $ threadDelay 200_000
         count <- readMVar counter
         count `shouldBe` 1
+
+    it "emits once per burst for multiple separated bursts" do
+        counter <- newMVar (0 :: Int)
+        runEff
+            . runConcurrent
+            . runChan
+            . runConc
+            . runTimeout
+            $ do
+                (trigIn, trigOut) <- Chan.newChan
+                debouncedOut <- debounced (50 :: Millisecond) trigOut
+                Conc.fork_ $ forever $ do
+                    Chan.readChan debouncedOut
+                    liftIO $ modifyMVar_ counter (pure . (+ 1))
+                -- First burst
+                Chan.writeChan trigIn ()
+                Chan.writeChan trigIn ()
+                liftIO $ threadDelay 150_000
+                -- Second burst
+                Chan.writeChan trigIn ()
+                Chan.writeChan trigIn ()
+                liftIO $ threadDelay 150_000
+        count <- readMVar counter
+        count `shouldBe` 2
