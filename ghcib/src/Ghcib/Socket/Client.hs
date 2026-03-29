@@ -6,52 +6,63 @@ module Ghcib.Socket.Client
     , isDaemonRunning
     ) where
 
-import Control.Exception (finally, try)
-import Network.Socket
-    ( Family (..)
-    , SockAddr (..)
-    , SocketType (..)
-    , connect
-    , defaultProtocol
-    , socket
-    , socketToHandle
-    )
+import Data.Aeson (decode, encode)
+import Effectful (IOE)
+import Effectful.Exception (try)
 import Numeric (showHex)
 import System.Directory (canonicalizePath, createDirectoryIfMissing)
 import System.FilePath ((</>))
-import System.IO (hClose, hGetLine, hPutStrLn)
+import System.IO (hGetLine, hPutStrLn)
 
-import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy qualified as BSL
 
 import Ghcib.BuildState (BuildState)
+import Ghcib.Effects.UnixSocket (UnixSocket, withConnection)
+import Ghcib.Socket.Protocol (Query (..), StatusQuery (..))
 
 
 -- | Query the current build status (non-blocking).
-queryStatus :: FilePath -> IO (Either Text BuildState)
+queryStatus
+    :: (IOE :> es, UnixSocket :> es)
+    => FilePath
+    -> Eff es (Either Text BuildState)
 queryStatus sockPath = withConnection sockPath \h -> do
-    hPutStrLn h "{\"query\":\"status\"}"
+    liftIO $ sendQuery h (Status (StatusQuery {awaitDone = False}))
     receiveState h
 
 
 -- | Query the build status, blocking until the current build cycle completes.
-queryStatusWait :: FilePath -> IO (Either Text BuildState)
+queryStatusWait
+    :: (IOE :> es, UnixSocket :> es)
+    => FilePath
+    -> Eff es (Either Text BuildState)
 queryStatusWait sockPath = withConnection sockPath \h -> do
-    hPutStrLn h "{\"query\":\"status\",\"wait\":true}"
+    liftIO $ sendQuery h (Status (StatusQuery {awaitDone = True}))
     receiveState h
 
 
 -- | Connect and stream build updates, calling the handler after each completed build.
-queryWatch :: FilePath -> (BuildState -> IO ()) -> IO ()
+queryWatch
+    :: (IOE :> es, UnixSocket :> es)
+    => FilePath
+    -> (BuildState -> Eff es ())
+    -> Eff es ()
 queryWatch sockPath handler = withConnection sockPath \h -> do
-    hPutStrLn h "{\"query\":\"watch\"}"
+    liftIO $ sendQuery h Watch
     loop h
   where
     loop h = do
-        line <- hGetLine h
-        case Aeson.decode (BSL.fromStrict (encodeUtf8 (toText line))) of
+        line <- liftIO $ hGetLine h
+        case decode (BSL.fromStrict (encodeUtf8 (toText line))) of
             Nothing -> pure ()
             Just state -> handler state >> loop h
+
+
+-- | Check whether the daemon is running by attempting a socket connection.
+isDaemonRunning :: (UnixSocket :> es) => FilePath -> Eff es Bool
+isDaemonRunning sockPath = do
+    result <- try @SomeException $ withConnection sockPath \_ -> pure ()
+    pure $ isRight result
 
 
 -- | Compute the Unix socket path for the given project root.
@@ -64,28 +75,16 @@ socketPath rawRoot = do
     pure $ dir </> hashPath root <> ".sock"
 
 
--- | Check whether the daemon is running by attempting a socket connection.
-isDaemonRunning :: FilePath -> IO Bool
-isDaemonRunning sockPath = do
-    result <- try @SomeException $ withConnection sockPath \_ -> pure ()
-    pure $ isRight result
-
-
 -- internals
 
-withConnection :: FilePath -> (Handle -> IO a) -> IO a
-withConnection sockPath action = do
-    sock <- socket AF_UNIX Stream defaultProtocol
-    connect sock (SockAddrUnix sockPath)
-    h <- socketToHandle sock ReadWriteMode
-    hSetBuffering h LineBuffering
-    action h `finally` hClose h
+sendQuery :: Handle -> Query -> IO ()
+sendQuery h q = hPutStrLn h (decodeUtf8 (BSL.toStrict (encode q)))
 
 
-receiveState :: Handle -> IO (Either Text BuildState)
+receiveState :: (IOE :> es) => Handle -> Eff es (Either Text BuildState)
 receiveState h = do
-    line <- hGetLine h
-    case Aeson.decode (BSL.fromStrict (encodeUtf8 (toText line))) of
+    line <- liftIO $ hGetLine h
+    case decode (BSL.fromStrict (encodeUtf8 (toText line))) of
         Nothing -> pure $ Left "failed to parse response"
         Just state -> pure $ Right state
 

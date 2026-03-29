@@ -207,6 +207,8 @@ internal-libraries:
     - fsnotify
     - ghcid
     - network
+    - prettyprinter
+    - prettyprinter-ansi-terminal
     - stm
     - text
     - time
@@ -297,11 +299,14 @@ tests:
     - data-default
     - effectful
     - hspec
+    - prettyprinter
+    - prettyprinter-ansi-terminal
     - stm
     - tasty
     - tasty-discover
     - tasty-hspec
     - text
+    - time
     - time-units
 
   hoard-test:

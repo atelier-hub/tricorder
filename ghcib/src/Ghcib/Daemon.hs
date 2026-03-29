@@ -7,9 +7,10 @@ module Ghcib.Daemon
 import Control.Exception (try)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
-import Effectful.Reader.Static (runReader)
+import Effectful.Reader.Static (ask, runReader)
 import Effectful.Timeout (runTimeout)
 import System.Directory (removeFile)
+import System.FilePath (makeRelative)
 import System.Posix.Process (createSession, forkProcess)
 
 import Atelier.Component (runSystem)
@@ -20,8 +21,9 @@ import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.Log (Severity (..), runLogNoOp, runLogToHandle)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
 import Atelier.Effects.Publishing (runPubSub)
-import Ghcib.BuildState (runBuildStateRef)
-import Ghcib.Config (Config (..), loadConfig)
+import Ghcib.BuildState (BuildStateRef, DaemonInfo (..), runBuildStateRef)
+import Ghcib.Config (Config (..), loadConfig, resolveWatchDirs)
+import Ghcib.Effects.BuildStore (runBuildStoreRef)
 import Ghcib.Effects.FileWatcher (runFileWatcherIO)
 import Ghcib.Effects.GhciSession (runGhciSessionIO)
 import Ghcib.Effects.UnixSocket (runUnixSocketIO)
@@ -41,13 +43,21 @@ import Ghcib.Watcher qualified as Watcher
 runDaemon :: FilePath -> Config -> IO ()
 runDaemon projectRoot cfg = do
     sockPath <- socketPath projectRoot
+    watchDirs <- resolveWatchDirs cfg.targets projectRoot
+    let daemonInfo =
+            DaemonInfo
+                { targets = cfg.targets
+                , watchDirs = map (makeRelative projectRoot) watchDirs
+                , sockPath
+                , logFile = cfg.logFile
+                }
     case cfg.logFile of
-        Nothing -> runWith runLogNoOp sockPath
+        Nothing -> runWith runLogNoOp sockPath daemonInfo
         Just path -> withFile path AppendMode $ \h -> do
             hSetBuffering h LineBuffering
-            runWith (runLogToHandle h INFO) sockPath
+            runWith (runLogToHandle h INFO) sockPath daemonInfo
   where
-    runWith runLogger sockPath =
+    runWith runLogger sockPath daemonInfo =
         runEff
             . runConcurrent
             . runTracingNoOp
@@ -63,14 +73,16 @@ runDaemon projectRoot cfg = do
             . runUnixSocketIO
             . runReader cfg
             $ do
-                runBuildStateRef do
-                    (reloadIn, reloadOut) <- Chan.newChan @ReloadRequest
-                    runSystem
-                        [ Watcher.component reloadIn
-                        , GhciSession.component reloadOut
-                        , SocketServer.component sockPath
-                        ]
-                    Conc.awaitAll
+                runBuildStateRef daemonInfo do
+                    stateRef <- ask @BuildStateRef
+                    runBuildStoreRef stateRef do
+                        (reloadIn, reloadOut) <- Chan.newChan @ReloadRequest
+                        runSystem
+                            [ Watcher.component reloadIn
+                            , GhciSession.component reloadOut
+                            , SocketServer.component sockPath
+                            ]
+                        Conc.awaitAll
 
 
 -- | Fork the daemon as a background process and return immediately.

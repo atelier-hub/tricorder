@@ -2,12 +2,15 @@ module Main (main) where
 
 import Control.Concurrent (threadDelay)
 import Data.Aeson (encode)
+import Effectful (runEff)
 import Options.Applicative
 import System.Directory (getCurrentDirectory)
 
 import Data.ByteString.Lazy qualified as BSL
 
 import Ghcib.Daemon (startDaemon, stopDaemon)
+import Ghcib.Effects.Display (runDisplayIO)
+import Ghcib.Effects.UnixSocket (runUnixSocketIO)
 import Ghcib.Socket.Client
     ( isDaemonRunning
     , queryStatus
@@ -59,7 +62,7 @@ run :: Command -> IO ()
 run Start = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
-    running <- isDaemonRunning sockPath
+    running <- runEff $ runUnixSocketIO $ isDaemonRunning sockPath
     if running then
         putStrLn "Daemon already running."
     else do
@@ -72,27 +75,29 @@ run Stop = do
 run (Status waitFlag) = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
-    running <- isDaemonRunning sockPath
-    unless running $ startDaemon projectRoot >> waitForSocket sockPath
-    result <-
-        if waitFlag then
-            queryStatusWait sockPath
-        else
-            queryStatus sockPath
-    case result of
-        Left err -> putStrLn $ "Error: " <> toString err
-        Right state -> BSL.putStr (encode state) >> putStrLn ""
+    runEff $ runUnixSocketIO $ do
+        running <- isDaemonRunning sockPath
+        unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
+        result <-
+            if waitFlag then
+                queryStatusWait sockPath
+            else
+                queryStatus sockPath
+        liftIO $ case result of
+            Left err -> putStrLn $ "Error: " <> toString err
+            Right state -> BSL.putStr (encode state) >> putStrLn ""
 run Watch = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
-    running <- isDaemonRunning sockPath
-    unless running $ startDaemon projectRoot >> waitForSocket sockPath
-    watchDisplay sockPath
+    runEff $ runUnixSocketIO $ runDisplayIO $ do
+        running <- isDaemonRunning sockPath
+        unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
+        watchDisplay sockPath
 
 
 -- | Poll until the daemon socket becomes connectable.
 waitForSocket :: FilePath -> IO ()
 waitForSocket sockPath = do
     threadDelay 200_000 -- 200ms
-    running <- isDaemonRunning sockPath
+    running <- runEff $ runUnixSocketIO $ isDaemonRunning sockPath
     unless running $ waitForSocket sockPath

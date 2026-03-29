@@ -17,9 +17,8 @@ import Atelier.Time (Millisecond, nominalDiffTime)
 import Ghcib.BuildState
     ( BuildId (..)
     , BuildPhase (..)
-    , BuildState (..)
     , BuildStateRef (..)
-    , updateBuildState
+    , updateBuildPhase
     )
 import Ghcib.Config (Config (..), resolveCommand)
 import Ghcib.Effects.GhciSession (GhciSession)
@@ -92,7 +91,7 @@ sessionListener cmd projectRoot stateRef reloadOut = startSession (BuildId 1)
                 Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length msgs) <> " messages"
                 t0 <- Clock.currentTime
                 let dur = nominalDiffTime @Millisecond (diffUTCTime t0 t0)
-                updateBuildState stateRef $ BuildState (BuildId n) (Done dur msgs)
+                updateBuildPhase stateRef (BuildId n) (Done t0 dur msgs)
                 Log.debug $ "Build state updated to Done (session #" <> show n <> ")"
                 listenLoop (BuildId (n + 1))
 
@@ -101,7 +100,7 @@ sessionListener cmd projectRoot stateRef reloadOut = startSession (BuildId 1)
         request <- Chan.readChan reloadOut
         let nextId = BuildId (n + 1)
         Log.debug $ "Reload requested: " <> show request
-        updateBuildState stateRef $ BuildState (BuildId n) Building
+        updateBuildPhase stateRef (BuildId n) Building
         t0 <- Clock.currentTime
         result <- try @SomeException $ case request of
             Reload -> GhciSession.reloadGhci
@@ -115,7 +114,7 @@ sessionListener cmd projectRoot stateRef reloadOut = startSession (BuildId 1)
             Right msgs -> do
                 t1 <- Clock.currentTime
                 let dur = nominalDiffTime (diffUTCTime t1 t0)
-                updateBuildState stateRef $ BuildState (BuildId n) (Done dur msgs)
+                updateBuildPhase stateRef (BuildId n) (Done t1 dur msgs)
                 if request == Restart then
                     startSession nextId
                 else

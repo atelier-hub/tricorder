@@ -2,20 +2,22 @@ module Ghcib.BuildState
     ( BuildId (..)
     , BuildState (..)
     , BuildPhase (..)
+    , DaemonInfo (..)
     , Message (..)
     , Severity (..)
     , BuildStateRef (..)
     , runBuildStateRef
     , initialBuildState
-    , updateBuildState
+    , updateBuildPhase
     , stateLabel
     ) where
 
 import Data.Aeson (FromJSON (..), ToJSON (..), object, withObject, withText, (.!=), (.:), (.:?), (.=))
-import Data.Aeson.Types (Parser)
+import Data.Aeson.Types (Pair, Parser)
+import Data.Time (UTCTime (..), fromGregorian)
 import Data.Time.Units (fromMicroseconds, toMicroseconds)
 import Effectful.Concurrent (Concurrent)
-import Effectful.Concurrent.STM (TVar, atomically, newTVar, writeTVar)
+import Effectful.Concurrent.STM (TVar, atomically, modifyTVar, newTVar)
 import Effectful.Reader.Static (Reader, runReader)
 
 import Atelier.Time (Millisecond)
@@ -26,16 +28,26 @@ newtype BuildId = BuildId Int
     deriving newtype (ToJSON)
 
 
+data DaemonInfo = DaemonInfo
+    { targets :: [Text]
+    , watchDirs :: [FilePath]
+    , sockPath :: FilePath
+    , logFile :: Maybe FilePath
+    }
+    deriving stock (Eq, Show)
+
+
 data BuildState = BuildState
     { buildId :: BuildId
     , phase :: BuildPhase
+    , daemonInfo :: DaemonInfo
     }
     deriving stock (Eq, Show)
 
 
 data BuildPhase
     = Building
-    | Done Millisecond [Message]
+    | Done UTCTime Millisecond [Message]
     deriving stock (Eq, Show)
 
 
@@ -94,28 +106,41 @@ instance ToJSON Message where
 
 stateLabel :: BuildPhase -> Text
 stateLabel Building = "building"
-stateLabel (Done _ msgs)
+stateLabel (Done _ _ msgs)
     | any (\m -> m.severity == SError) msgs = "error"
     | any (\m -> m.severity == SWarning) msgs = "warning"
     | otherwise = "ok"
 
 
+daemonInfoFields :: DaemonInfo -> [Pair]
+daemonInfoFields di =
+    [ "targets" .= di.targets
+    , "watchDirs" .= di.watchDirs
+    , "sockPath" .= di.sockPath
+    , "logFile" .= di.logFile
+    ]
+
+
 instance ToJSON BuildState where
     toJSON bs =
         let bid = bs.buildId
+            di = bs.daemonInfo
         in  case bs.phase of
                 Building ->
                     object
-                        [ "state" .= ("building" :: Text)
-                        , "buildId" .= bid
-                        ]
-                Done dur msgs ->
+                        $ [ "state" .= ("building" :: Text)
+                          , "buildId" .= bid
+                          ]
+                            <> daemonInfoFields di
+                Done completedAt dur msgs ->
                     object
-                        [ "state" .= stateLabel (Done dur msgs)
-                        , "buildId" .= bid
-                        , "durationMs" .= (fromIntegral (toMicroseconds dur `div` 1000) :: Int)
-                        , "messages" .= msgs
-                        ]
+                        $ [ "state" .= stateLabel (Done completedAt dur msgs)
+                          , "buildId" .= bid
+                          , "completedAt" .= completedAt
+                          , "durationMs" .= (fromIntegral (toMicroseconds dur `div` 1000) :: Int)
+                          , "messages" .= msgs
+                          ]
+                            <> daemonInfoFields di
 
 
 instance FromJSON BuildState where
@@ -125,10 +150,16 @@ instance FromJSON BuildState where
         phase <- case state of
             "building" -> pure Building
             _ -> do
+                completedAt <- o .:? "completedAt" .!= UTCTime (fromGregorian 1970 1 1) 0
                 durMs <- o .: "durationMs"
                 msgs <- o .:? "messages" .!= []
-                pure $ Done (fromMicroseconds (durMs * 1000 :: Integer)) msgs
-        pure $ BuildState bid phase
+                pure $ Done completedAt (fromMicroseconds (durMs * 1000 :: Integer)) msgs
+        targets <- o .:? "targets" .!= []
+        watchDirs <- o .:? "watchDirs" .!= []
+        sockPath <- o .:? "sockPath" .!= ""
+        logFile <- o .:? "logFile"
+        let daemonInfo = DaemonInfo {targets, watchDirs, sockPath, logFile}
+        pure $ BuildState bid phase daemonInfo
 
 
 newtype BuildStateRef = BuildStateRef (TVar BuildState)
@@ -136,25 +167,28 @@ newtype BuildStateRef = BuildStateRef (TVar BuildState)
 
 runBuildStateRef
     :: (Concurrent :> es)
-    => Eff (Reader BuildStateRef : es) a
+    => DaemonInfo
+    -> Eff (Reader BuildStateRef : es) a
     -> Eff es a
-runBuildStateRef eff = do
-    ref <- atomically $ newTVar initialBuildState
+runBuildStateRef di eff = do
+    ref <- atomically $ newTVar (initialBuildState di)
     runReader (BuildStateRef ref) eff
 
 
-updateBuildState
+updateBuildPhase
     :: (Concurrent :> es)
     => BuildStateRef
-    -> BuildState
+    -> BuildId
+    -> BuildPhase
     -> Eff es ()
-updateBuildState (BuildStateRef ref) state =
-    atomically $ writeTVar ref state
+updateBuildPhase (BuildStateRef ref) bid phase =
+    atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase}
 
 
-initialBuildState :: BuildState
-initialBuildState =
+initialBuildState :: DaemonInfo -> BuildState
+initialBuildState di =
     BuildState
         { buildId = BuildId 0
         , phase = Building
+        , daemonInfo = di
         }

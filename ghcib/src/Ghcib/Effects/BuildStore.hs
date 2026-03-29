@@ -8,19 +8,20 @@ module Ghcib.Effects.BuildStore
 
       -- * Interpreters
     , runBuildStoreSTM
+    , runBuildStoreRef
     , runBuildStoreScripted
     ) where
 
 import Effectful (Effect)
 import Effectful.Concurrent (Concurrent)
-import Effectful.Concurrent.STM (atomically, newTVar, readTVar, writeTVar)
+import Effectful.Concurrent.STM (TVar, atomically, newTVar, readTVar, writeTVar)
 import Effectful.Dispatch.Dynamic (interpret_, reinterpret)
 import Effectful.State.Static.Shared (State, evalState, get, modify, put)
 import Effectful.TH (makeEffect)
 
 import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Time (Millisecond)
-import Ghcib.BuildState (BuildId, BuildPhase (..), BuildState (..), initialBuildState)
+import Ghcib.BuildState (BuildId, BuildPhase (..), BuildState (..), BuildStateRef (..), DaemonInfo (..), initialBuildState)
 
 
 data BuildStore :: Effect where
@@ -45,7 +46,7 @@ makeEffect ''BuildStore
 -- async exceptions (e.g. Ki's @ScopeClosing@) cleanly.
 runBuildStoreSTM :: (Concurrent :> es, Delay :> es) => Eff (BuildStore : es) a -> Eff es a
 runBuildStoreSTM eff = do
-    ref <- atomically (newTVar initialBuildState)
+    ref <- atomically (newTVar (initialBuildState emptyDaemonInfo))
     interpret_
         ( \case
             GetState -> atomically (readTVar ref)
@@ -65,7 +66,36 @@ runBuildStoreSTM eff = do
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
         Building -> True
-        Done _ _ -> False
+        Done _ _ _ -> False
+
+    emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing}
+
+
+-- | Production interpreter that shares a 'BuildStateRef' TVar with writers
+-- (e.g. 'GhciSession'). Use this in the daemon instead of 'runBuildStoreSTM'.
+runBuildStoreRef :: (Concurrent :> es, Delay :> es) => BuildStateRef -> Eff (BuildStore : es) a -> Eff es a
+runBuildStoreRef (BuildStateRef ref) =
+    interpret_
+        ( \case
+            GetState -> atomically (readTVar ref)
+            PutState s -> atomically (writeTVar ref s)
+            WaitUntilDone -> pollRef ref (not . isBuilding)
+            WaitForNext bid -> pollRef ref \s -> not (isBuilding s) && s.buildId /= bid
+        )
+  where
+    isBuilding :: BuildState -> Bool
+    isBuilding s = case s.phase of
+        Building -> True
+        Done _ _ _ -> False
+
+
+pollRef :: (Concurrent :> es, Delay :> es) => TVar BuildState -> (BuildState -> Bool) -> Eff es BuildState
+pollRef ref predicate = do
+    s <- atomically (readTVar ref)
+    if predicate s then
+        pure s
+    else
+        wait (50 :: Millisecond) >> pollRef ref predicate
 
 
 -- | Scripted interpreter for testing.
@@ -91,7 +121,7 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
         Building -> True
-        Done _ _ -> False
+        Done _ _ _ -> False
 
     advance :: (BuildState -> Bool) -> Eff (State [BuildState] : es) BuildState
     advance predicate =

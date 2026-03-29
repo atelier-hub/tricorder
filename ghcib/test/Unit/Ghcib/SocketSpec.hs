@@ -15,7 +15,7 @@ import Ghcib.Effects.UnixSocket
     , runUnixSocketScripted
     , socketFileExists
     )
-import Ghcib.Socket.Server (socketMonitorTrigger)
+import Ghcib.Socket.Server (SocketRemoved (..), socketMonitorTrigger)
 
 
 spec_Socket :: Spec
@@ -66,26 +66,26 @@ testMonitor = do
     it "throws when socket file does not exist" do
         result <-
             runMonitor [NextFileCheck False]
-                $ try @SomeException
+                $ try @SocketRemoved
                 $ socketMonitorTrigger "/sock"
-        result `shouldSatisfy` isLeft
+        result `shouldBe` Left SocketRemoved
 
     it "checks again after each delay cycle" do
         -- Two True checks followed by False: monitor survives two cycles then throws.
         result <-
             runMonitor [NextFileCheck True, NextFileCheck True, NextFileCheck False]
-                $ try @SomeException
+                $ try @SocketRemoved
                 $ socketMonitorTrigger "/sock"
-        result `shouldSatisfy` isLeft
+        result `shouldBe` Left SocketRemoved
 
     it "does not throw while file exists" do
         -- Single True check; we catch the userError thrown by try after the False.
         -- Here we confirm the first check (True) does NOT throw.
         result <-
             runMonitor [NextFileCheck True, NextFileCheck False]
-                $ try @SomeException
+                $ try @SocketRemoved
                 $ socketMonitorTrigger "/sock"
-        result `shouldSatisfy` isLeft -- eventually throws on the False
+        result `shouldBe` Left SocketRemoved -- eventually throws on the False
 
 
 --------------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 module Unit.Ghcib.BuildStoreSpec (spec_BuildStore) where
 
 import Control.Concurrent (threadDelay)
+import Data.Time (UTCTime (..), fromGregorian)
 import Data.Time.Units (fromMicroseconds)
 import Effectful (IOE, runEff, runPureEff)
 import Effectful.Concurrent (Concurrent, runConcurrent)
@@ -9,7 +10,7 @@ import Test.Hspec
 import Atelier.Effects.Conc (Conc, runConc)
 import Atelier.Effects.Delay (Delay, runDelay)
 import Atelier.Time (Millisecond)
-import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildState (..))
+import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildState (..), DaemonInfo (..))
 import Ghcib.Effects.BuildStore
     ( BuildStore
     , getState
@@ -135,12 +136,20 @@ zeroDuration :: Millisecond
 zeroDuration = fromMicroseconds 0
 
 
+emptyDaemonInfo :: DaemonInfo
+emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing}
+
+
 buildingAt :: Int -> BuildState
-buildingAt n = BuildState (BuildId n) Building
+buildingAt n = BuildState (BuildId n) Building emptyDaemonInfo
 
 
 doneAt :: Int -> BuildState
-doneAt n = BuildState (BuildId n) (Done zeroDuration [])
+doneAt n = BuildState (BuildId n) (Done epoch zeroDuration []) emptyDaemonInfo
+
+
+epoch :: UTCTime
+epoch = UTCTime (fromGregorian 1970 1 1) 0
 
 
 runScripted :: [BuildState] -> Eff '[BuildStore] a -> a
