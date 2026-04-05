@@ -8,7 +8,7 @@ module Ghcib.Render
 
       -- * Document builders
     , buildStateDoc
-    , messageDoc
+    , diagnosticDoc
     , daemonInfoDoc
     , durationDoc
     ) where
@@ -24,7 +24,7 @@ import Ghcib.BuildState
     , BuildResult (..)
     , BuildState (..)
     , DaemonInfo (..)
-    , Message (..)
+    , Diagnostic (..)
     , Severity (..)
     )
 import Ghcib.Effects.Display (Style (..))
@@ -47,12 +47,12 @@ buildStateDoc tz bs =
         Building ->
             annotate Warn "Building..."
         Done result
-            | null result.messages ->
+            | null result.diagnostics ->
                 annotate Ok "All good."
                     <+> buildSummaryDoc result.moduleCount result.durationMs
                     <+> timestampDoc tz result.completedAt
         Done result ->
-            let msgs = result.messages
+            let msgs = result.diagnostics
                 errCount = length $ filter (\m -> m.severity == SError) msgs
                 warnCount = length $ filter (\m -> m.severity == SWarning) msgs
                 header =
@@ -65,7 +65,7 @@ buildStateDoc tz bs =
                     <+> timestampDoc tz result.completedAt
                     <> hardline
                     <> hardline
-                    <> vsep (map messageDoc msgs)
+                    <> vsep (map diagnosticDoc msgs)
 
 
 buildSummaryDoc :: Int -> Int -> Doc ann
@@ -97,8 +97,8 @@ watchDirDoc dir = "  -" <+> pretty displayDir
         | otherwise = "./" <> dir
 
 
-messageDoc :: Message -> Doc Style
-messageDoc m =
+diagnosticDoc :: Diagnostic -> Doc Style
+diagnosticDoc m =
     severityLabel <+> pretty loc <> hardline <> pretty (toString m.text) <> hardline
   where
     loc = m.file <> ":" <> show m.line <> ":" <> show m.col
@@ -127,8 +127,8 @@ daemonInfoDoc di =
             pretty (intercalate " " (map toString di.targets))
 
 
-instance Pretty Message where
-    pretty m = unAnnotate (messageDoc m)
+instance Pretty Diagnostic where
+    pretty m = unAnnotate (diagnosticDoc m)
 
 
 instance Pretty DaemonInfo where

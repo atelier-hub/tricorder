@@ -4,7 +4,7 @@ module Ghcib.BuildState
     , BuildPhase (..)
     , BuildResult (..)
     , DaemonInfo (..)
-    , Message (..)
+    , Diagnostic (..)
     , Severity (..)
     , BuildStateRef (..)
     , initialBuildState
@@ -35,7 +35,7 @@ data BuildResult = BuildResult
     { completedAt :: UTCTime
     , durationMs :: Int
     , moduleCount :: Int
-    , messages :: [Message]
+    , diagnostics :: [Diagnostic]
     }
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
@@ -57,7 +57,7 @@ data BuildState = BuildState
     deriving anyclass (FromJSON, ToJSON)
 
 
-data Message = Message
+data Diagnostic = Diagnostic
     { severity :: Severity
     , file :: FilePath
     , line :: Int
@@ -90,8 +90,8 @@ instance ToJSON Severity where
 stateLabel :: BuildPhase -> Text
 stateLabel Building = "building"
 stateLabel (Done result)
-    | any (\m -> m.severity == SError) result.messages = "error"
-    | any (\m -> m.severity == SWarning) result.messages = "warning"
+    | any (\m -> m.severity == SError) result.diagnostics = "error"
+    | any (\m -> m.severity == SWarning) result.diagnostics = "warning"
     | otherwise = "ok"
 
 

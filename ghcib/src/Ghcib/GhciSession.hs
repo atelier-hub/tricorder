@@ -79,10 +79,10 @@ sessionListener cmd projectRoot reloadOut = startSession (BuildId 1)
                 -- Brief pause before retry to avoid tight restart loop
                 wait (2_000 :: Millisecond)
                 startSession (BuildId n)
-            Right LoadResult {moduleCount, messages = msgs} -> do
-                Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length msgs) <> " messages"
+            Right LoadResult {moduleCount, diagnostics = msgs} -> do
+                Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length msgs) <> " diagnostics"
                 t0 <- Clock.currentTime
-                let buildResult = BuildResult {completedAt = t0, durationMs = 0, moduleCount, messages = msgs}
+                let buildResult = BuildResult {completedAt = t0, durationMs = 0, moduleCount, diagnostics = msgs}
                 setPhase (BuildId n) (Done buildResult)
                 Log.debug $ "Build state updated to Done (session #" <> show n <> ")"
                 listenLoop (BuildId (n + 1))
@@ -96,17 +96,17 @@ sessionListener cmd projectRoot reloadOut = startSession (BuildId 1)
         t0 <- Clock.currentTime
         result <- try @SomeException $ case request of
             Reload -> GhciSession.reloadGhci
-            Restart -> GhciSession.stopGhci >> pure LoadResult {moduleCount = 0, messages = []}
+            Restart -> GhciSession.stopGhci >> pure LoadResult {moduleCount = 0, diagnostics = []}
         case result of
             Left ex -> do
                 when (isGracefulShutdown ex) $ throwIO ex
                 Log.warn "GHCi session died; restarting"
                 void $ try @SomeException GhciSession.stopGhci
                 startSession nextId
-            Right LoadResult {moduleCount, messages = msgs} -> do
+            Right LoadResult {moduleCount, diagnostics = msgs} -> do
                 t1 <- Clock.currentTime
                 let durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
-                    buildResult = BuildResult {completedAt = t1, durationMs, moduleCount, messages = msgs}
+                    buildResult = BuildResult {completedAt = t1, durationMs, moduleCount, diagnostics = msgs}
                 setPhase (BuildId n) (Done buildResult)
                 if request == Restart then
                     startSession nextId

@@ -5,7 +5,7 @@ import Effectful (IOE, runEff)
 import Effectful.Exception (try)
 import Test.Hspec
 
-import Ghcib.BuildState (Message (..), Severity (..))
+import Ghcib.BuildState (Diagnostic (..), Severity (..))
 import Ghcib.Effects.GhciSession
     ( GhciSession
     , LoadResult (..)
@@ -29,13 +29,13 @@ testScripted :: Spec
 testScripted = do
     describe "startGhci" do
         it "returns scripted messages" do
-            LoadResult {messages = msgs} <-
+            LoadResult {diagnostics = msgs} <-
                 runScripted [Right [errMsg]]
                     $ startGhci "cabal repl" "/"
             msgs `shouldBe` [errMsg]
 
         it "returns empty list when scripted result has no messages" do
-            LoadResult {messages = msgs} <-
+            LoadResult {diagnostics = msgs} <-
                 runScripted [Right []]
                     $ startGhci "cabal repl" "/"
             msgs `shouldBe` []
@@ -49,7 +49,7 @@ testScripted = do
 
     describe "reloadGhci" do
         it "returns scripted messages" do
-            LoadResult {messages = msgs} <- runScripted [Right [warnMsg]] reloadGhci
+            LoadResult {diagnostics = msgs} <- runScripted [Right [warnMsg]] reloadGhci
             msgs `shouldBe` [warnMsg]
 
         it "throws when scripted result is Left" do
@@ -60,7 +60,7 @@ testScripted = do
 
     describe "stopGhci" do
         it "is always a no-op and does not consume from the queue" do
-            LoadResult {messages = msgs} <- runScripted [Right [errMsg]] do
+            LoadResult {diagnostics = msgs} <- runScripted [Right [errMsg]] do
                 stopGhci
                 startGhci "cabal repl" "/"
             msgs `shouldBe` [errMsg]
@@ -68,8 +68,8 @@ testScripted = do
     describe "sequencing" do
         it "consumes results in order across mixed operations" do
             (a, b) <- runScripted [Right [errMsg], Right [warnMsg]] do
-                LoadResult {messages = a} <- startGhci "cabal repl" "/"
-                LoadResult {messages = b} <- reloadGhci
+                LoadResult {diagnostics = a} <- startGhci "cabal repl" "/"
+                LoadResult {diagnostics = b} <- reloadGhci
                 pure (a, b)
             a `shouldBe` [errMsg]
             b `shouldBe` [warnMsg]
@@ -77,7 +77,7 @@ testScripted = do
         it "recover scenario: error then success" do
             result <- runScripted [Left (toException boom), Right []] do
                 r1 <- try @ErrorCall $ startGhci "cabal repl" "/"
-                LoadResult {messages = r2} <- startGhci "cabal repl" "/"
+                LoadResult {diagnostics = r2} <- startGhci "cabal repl" "/"
                 pure (r1, r2)
             fst result `shouldSatisfy` isLeft
             snd result `shouldBe` []
@@ -91,9 +91,9 @@ boom :: ErrorCall
 boom = ErrorCall "simulated GHCi crash"
 
 
-errMsg :: Message
+errMsg :: Diagnostic
 errMsg =
-    Message
+    Diagnostic
         { severity = SError
         , file = "src/Foo.hs"
         , line = 1
@@ -105,9 +105,9 @@ errMsg =
         }
 
 
-warnMsg :: Message
+warnMsg :: Diagnostic
 warnMsg =
-    Message
+    Diagnostic
         { severity = SWarning
         , file = "src/Bar.hs"
         , line = 10
@@ -119,5 +119,5 @@ warnMsg =
         }
 
 
-runScripted :: [Either SomeException [Message]] -> Eff '[GhciSession, IOE] a -> IO a
+runScripted :: [Either SomeException [Diagnostic]] -> Eff '[GhciSession, IOE] a -> IO a
 runScripted results = runEff . runGhciSessionScripted results

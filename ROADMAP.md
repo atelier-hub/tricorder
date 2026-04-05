@@ -12,8 +12,6 @@
 
 ### Features
 
-- **Rename `Message` to `Diagnostic`** [[WP-001](ghcib/proposals/001-diagnostic-rename/)] — `Diagnostic` is the established term in the compiler tooling ecosystem and more accurately describes what the type holds.
-
 - **Plugin-Based Structured Diagnostics** [[WP-002](ghcib/proposals/002-plugin-diagnostics/)] — introduce `ghcib-plugin`, a GHC compiler plugin that forwards native structured diagnostics (error codes, hints, related spans) to the daemon over a Unix socket. Falls back to the current behaviour for projects that do not install the plugin.
   - _Depends on:_ WP-001
 

@@ -4,7 +4,7 @@ import Data.Aeson (eitherDecode, encode)
 import Data.Time (UTCTime (..), fromGregorian)
 import Test.Hspec
 
-import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..), Message (..), Severity (..))
+import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..), Diagnostic (..), Severity (..))
 
 
 spec_BuildState :: Spec
@@ -12,7 +12,7 @@ spec_BuildState = do
     describe "JSON round-trip" do
         it "survives Unicode smart quotes in message text" do
             let msg =
-                    Message
+                    Diagnostic
                         { severity = SWarning
                         , file = "<interactive>"
                         , line = 2
@@ -27,7 +27,7 @@ spec_BuildState = do
 
         it "survives control characters in message text" do
             let msg =
-                    Message
+                    Diagnostic
                         { severity = SWarning
                         , file = "<interactive>"
                         , line = 1
@@ -42,7 +42,7 @@ spec_BuildState = do
 
         it "survives curly double quotes in message text" do
             let msg =
-                    Message
+                    Diagnostic
                         { severity = SWarning
                         , file = "<interactive>"
                         , line = 1
@@ -56,11 +56,11 @@ spec_BuildState = do
             eitherDecode (encode bs) `shouldBe` Right bs
 
 
-mkBuildState :: [Message] -> BuildState
+mkBuildState :: [Diagnostic] -> BuildState
 mkBuildState msgs =
     BuildState
         { buildId = BuildId 1
-        , phase = Done (BuildResult {completedAt = epoch, durationMs = 0, moduleCount = 0, messages = msgs})
+        , phase = Done (BuildResult {completedAt = epoch, durationMs = 0, moduleCount = 0, diagnostics = msgs})
         , daemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing}
         }
   where

@@ -12,11 +12,11 @@ import Ghcib.BuildState
     , BuildResult (..)
     , BuildState (..)
     , DaemonInfo (..)
-    , Message (..)
+    , Diagnostic (..)
     , Severity (..)
     )
 import Ghcib.Effects.Display (Style)
-import Ghcib.Render (buildStateDoc, daemonInfoDoc, messageDoc)
+import Ghcib.Render (buildStateDoc, daemonInfoDoc, diagnosticDoc)
 
 
 spec_Watch :: Spec
@@ -58,18 +58,18 @@ spec_Watch = do
                 rendered `shouldContain` "1 error(s)"
                 rendered `shouldContain` "1 warning(s)"
 
-    describe "messageDoc" do
+    describe "diagnosticDoc" do
         it "shows file location" do
-            render (messageDoc errMsg) `shouldContain` "Foo.hs:10:1"
+            render (diagnosticDoc errMsg) `shouldContain` "Foo.hs:10:1"
 
         it "shows 'error:' for SError" do
-            render (messageDoc errMsg) `shouldContain` "error:"
+            render (diagnosticDoc errMsg) `shouldContain` "error:"
 
         it "shows 'warning:' for SWarning" do
-            render (messageDoc warnMsg) `shouldContain` "warning:"
+            render (diagnosticDoc warnMsg) `shouldContain` "warning:"
 
         it "shows message text" do
-            render (messageDoc errMsg) `shouldContain` "type mismatch"
+            render (diagnosticDoc errMsg) `shouldContain` "type mismatch"
 
     describe "daemonInfoDoc" do
         it "shows '(all)' when targets is empty" do
@@ -113,17 +113,17 @@ buildingState :: BuildState
 buildingState = BuildState (BuildId 1) Building emptyDaemonInfo
 
 
-doneState :: [Message] -> BuildState
-doneState msgs = BuildState (BuildId 1) (Done (BuildResult {completedAt = epoch, durationMs = 500, moduleCount = 0, messages = msgs})) emptyDaemonInfo
+doneState :: [Diagnostic] -> BuildState
+doneState msgs = BuildState (BuildId 1) (Done (BuildResult {completedAt = epoch, durationMs = 500, moduleCount = 0, diagnostics = msgs})) emptyDaemonInfo
 
 
 epoch :: UTCTime
 epoch = UTCTime (fromGregorian 1970 1 1) 0
 
 
-errMsg :: Message
+errMsg :: Diagnostic
 errMsg =
-    Message
+    Diagnostic
         { severity = SError
         , file = "Foo.hs"
         , line = 10
@@ -135,9 +135,9 @@ errMsg =
         }
 
 
-warnMsg :: Message
+warnMsg :: Diagnostic
 warnMsg =
-    Message
+    Diagnostic
         { severity = SWarning
         , file = "Bar.hs"
         , line = 3
