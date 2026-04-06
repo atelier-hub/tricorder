@@ -104,14 +104,24 @@ stopGhciSilently ghci = void $ try @SomeException $ Ghcid.stopGhci ghci
 
 collectResult :: Ghcid.Ghci -> [Load] -> IO LoadResult
 collectResult ghci loads = do
-    moduleCount <- length <$> Ghcid.showModules ghci
-    let compiledFiles = Set.fromList [loadFile l | l@Ghcid.Loading {} <- loads]
-    pure LoadResult {moduleCount, compiledFiles, diagnostics = toDiagnostics loads}
+    modules <- Ghcid.showModules ghci
+    -- When -fhide-source-paths is on (default since GHC 9.2), GHCi omits the
+    -- "[N of M] Compiling ..." lines from :reload output, so no Loading items
+    -- are produced.  Mirror the fallback in ghcid's startGhciProcess: if no
+    -- Loading items were found, treat all currently-loaded modules as compiled.
+    let compiledFiles = case [loadFile l | l@Ghcid.Loading {} <- loads] of
+            [] -> Set.fromList (map snd modules)
+            fs -> Set.fromList fs
+    pure LoadResult {moduleCount = length modules, compiledFiles, diagnostics = toDiagnostics loads}
 
 
 toDiagnostics :: [Load] -> [Diagnostic]
 toDiagnostics loads = mapMaybe toMsg loads
   where
+    -- Skip GHCi-internal diagnostics (e.g. <interactive>, <no location info>).
+    -- These are never from real source files and cannot be cleared by
+    -- incremental recompilation, so they would persist in the accumulated map.
+    toMsg (Ghcid.Message _ ('<' : _) _ _ _) = Nothing
     toMsg (Ghcid.Message sev file (l, c) (el, ec) msgLines) =
         Just
             BuildState.Diagnostic
