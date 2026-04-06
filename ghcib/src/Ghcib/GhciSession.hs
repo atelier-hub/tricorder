@@ -9,7 +9,6 @@ import System.Directory (getCurrentDirectory)
 import Data.Map.Strict qualified as Map
 
 import Atelier.Component (Component (..), Listener, defaultComponent)
-import Atelier.Effects.Chan (Chan, OutChan)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Effects.Log (Log)
@@ -17,11 +16,9 @@ import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
 import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), Diagnostic (..))
 import Ghcib.Config (Config (..), resolveCommand)
-import Ghcib.Effects.BuildStore (BuildStore, setPhase)
+import Ghcib.Effects.BuildStore (BuildStore, setPhase, waitDirty)
 import Ghcib.Effects.GhciSession (GhciSession, LoadResult (..))
-import Ghcib.Watcher (ReloadRequest (..))
 
-import Atelier.Effects.Chan qualified as Chan
 import Atelier.Effects.Clock qualified as Clock
 import Atelier.Effects.Log qualified as Log
 import Ghcib.Effects.GhciSession qualified as GhciSession
@@ -46,7 +43,6 @@ mergeDiagnostics prev LoadResult {compiledFiles, diagnostics} =
 -- rather than propagating (the fix for ghcid's file-removal crash).
 component
     :: ( BuildStore :> es
-       , Chan :> es
        , Clock :> es
        , Delay :> es
        , GhciSession :> es
@@ -54,9 +50,8 @@ component
        , Log :> es
        , Reader Config :> es
        )
-    => OutChan ReloadRequest
-    -> Component es
-component reloadOut =
+    => Component es
+component =
     defaultComponent
         { name = "GhciSession"
         , listeners = do
@@ -65,13 +60,12 @@ component reloadOut =
             cmd <- liftIO $ resolveCommand cfg projectRoot
             Log.debug $ "GhciSession.component: resolved command = " <> cmd
             Log.debug $ "GhciSession.component: projectRoot = " <> toText projectRoot
-            pure [sessionListener cmd projectRoot reloadOut]
+            pure [sessionListener cmd projectRoot]
         }
 
 
 sessionListener
     :: ( BuildStore :> es
-       , Chan :> es
        , Clock :> es
        , Delay :> es
        , GhciSession :> es
@@ -79,9 +73,8 @@ sessionListener
        )
     => Text
     -> FilePath
-    -> OutChan ReloadRequest
     -> Listener es
-sessionListener cmd projectRoot reloadOut = startSession (BuildId 1)
+sessionListener cmd projectRoot = startSession (BuildId 1)
   where
     startSession (BuildId n) = do
         Log.info $ "Starting GHCi session #" <> show n <> ": " <> cmd
@@ -106,15 +99,13 @@ sessionListener cmd projectRoot reloadOut = startSession (BuildId 1)
                 listenLoop (BuildId (n + 1)) accumulated
 
     listenLoop (BuildId n) accumulated = do
-        Log.debug $ "GhciSession: waiting for reload request (build #" <> show n <> ")"
-        request <- Chan.readChan reloadOut
+        Log.debug $ "GhciSession: waiting for dirty flag (build #" <> show n <> ")"
+        waitDirty
         let nextId = BuildId (n + 1)
-        Log.debug $ "Reload requested: " <> show request
+        Log.debug $ "GhciSession: dirty flag set, reloading"
         setPhase (BuildId n) Building
         t0 <- Clock.currentTime
-        result <- try @SomeException $ case request of
-            Reload -> GhciSession.reloadGhci
-            Restart -> GhciSession.stopGhci >> pure LoadResult {moduleCount = 0, compiledFiles = mempty, diagnostics = []}
+        result <- try @SomeException GhciSession.reloadGhci
         case result of
             Left ex -> do
                 when (isGracefulShutdown ex) $ throwIO ex
@@ -128,7 +119,4 @@ sessionListener cmd projectRoot reloadOut = startSession (BuildId 1)
                     allMsgs = concat (Map.elems newAccumulated)
                     buildResult = BuildResult {completedAt = t1, durationMs, moduleCount = loadResult.moduleCount, diagnostics = allMsgs}
                 setPhase (BuildId n) (Done buildResult)
-                if request == Restart then
-                    startSession nextId
-                else
-                    listenLoop nextId newAccumulated
+                listenLoop nextId newAccumulated

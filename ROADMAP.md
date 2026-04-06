@@ -4,7 +4,9 @@
 
 ### Known Issues
 
-_(none)_
+- **Cabal changes not applied until daemon restart** — changes to `.cabal`, `package.yaml`, or
+  `cabal.project` are detected but only trigger a `:reload`, which is insufficient. New
+  dependencies and target changes require a full GHCi session restart. Workaround: `ghcib stop && ghcib start`.
 
 ### Features
 
@@ -23,6 +25,10 @@ _(none)_
     - Print progress while building: "Building... (29/40 modules)"
     - Print diagnostics + summary when done
 
+- **Verbose diagnostic output** — `ghcib status --verbose` (or `-v`) to print the full GHC
+  message body under each diagnostic, avoiding the need to re-query with `--json` when the
+  one-line title isn't enough to diagnose an error.
+
 - **Smart default targets** — when no targets are specified, auto-discover test suites
   from the `.cabal` file and include them explicitly. Also improve `resolveWatchDirs`,
   which currently falls back to `["."]` when no targets are set.
@@ -31,3 +37,4 @@ _(none)_
 
 - **Rename `Message` → `Diagnostic`** [[WP-001](ghcib/proposals/001-diagnostic-rename/)] — aligned wire protocol and codebase with LSP/GHC ecosystem terminology.
 - **Text output for `ghcib status`** — human-readable text is now the default (`E file:line title` per diagnostic, summary line); `--json` flag preserves structured output for tool integration. Exit code reflects error presence.
+- **Reliable rebuild triggering** — replaced debounce + channel queuing with a dirty-flag model; multiple saves during a build coalesce to exactly one follow-up build with no dropped or redundant rebuilds.

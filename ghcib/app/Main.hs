@@ -2,6 +2,8 @@ module Main (main) where
 
 import Control.Concurrent (threadDelay)
 import Data.Aeson (encode)
+import Data.Time.Format (defaultTimeLocale, formatTime)
+import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
 import Effectful (runEff)
 import Options.Applicative
 import System.Directory (getCurrentDirectory)
@@ -115,18 +117,20 @@ renderText :: BuildState -> IO ()
 renderText state = case state.phase of
     Building -> putStrLn "Building..."
     Done r -> do
+        tz <- getCurrentTimeZone
         mapM_ (putStrLn . diagnosticLine) r.diagnostics
-        putStrLn $ buildSummary r
+        putStrLn $ buildSummary tz r
         when (any ((== SError) . (.severity)) r.diagnostics) exitFailure
   where
-    buildSummary r =
+    buildSummary tz r =
         let errs = length $ filter ((== SError) . (.severity)) r.diagnostics
             warns = length $ filter ((== SWarning) . (.severity)) r.diagnostics
+            ts = "— " <> formatTime defaultTimeLocale "%H:%M:%S" (utcToLocalTime tz r.completedAt)
             stats = "(" <> show r.moduleCount <> " modules, " <> formatDuration r.durationMs <> ")"
         in  if null r.diagnostics then
-                "All good. " <> stats
+                "All good. " <> stats <> " " <> ts
             else
-                show errs <> " error(s), " <> show warns <> " warning(s) " <> stats
+                show errs <> " error(s), " <> show warns <> " warning(s) " <> stats <> " " <> ts
 
 
 -- | Poll until the daemon socket becomes connectable.

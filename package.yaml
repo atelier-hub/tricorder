@@ -233,6 +233,7 @@ executables:
     - atelier
     - data-default
     - effectful
+    - time
 
   ghcib-exe:
     main:                Main.hs

@@ -10,7 +10,6 @@ import Test.Hspec
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
-import Atelier.Effects.Chan (Chan, newChan, runChan)
 import Atelier.Effects.Clock (Clock, runClockList)
 import Atelier.Effects.Conc (Conc, fork, runConc)
 import Atelier.Effects.Delay (Delay, runDelay)
@@ -26,7 +25,6 @@ import Ghcib.Effects.GhciSession
     , stopGhci
     )
 import Ghcib.GhciSession (mergeDiagnostics, sessionListener)
-import Ghcib.Watcher (ReloadRequest)
 
 
 spec_GhciSession :: Spec
@@ -109,8 +107,7 @@ testSessionListener = do
             let t0 = epoch
                 t1 = addUTCTime 2 epoch -- 2 seconds later
             result <- runListenerTest [t0, t1] [simpleResult []] do
-                (_, reloadOut) <- newChan @ReloadRequest
-                void $ fork $ sessionListener "cabal repl" "/" reloadOut
+                void $ fork $ sessionListener "cabal repl" "/"
                 waitUntilDone
             case result.phase of
                 Done br -> br.durationMs `shouldBe` 2000
@@ -118,8 +115,7 @@ testSessionListener = do
 
         it "records moduleCount from LoadResult" do
             result <- runListenerTest [epoch, epoch] [simpleResultWith 7 []] do
-                (_, reloadOut) <- newChan @ReloadRequest
-                void $ fork $ sessionListener "cabal repl" "/" reloadOut
+                void $ fork $ sessionListener "cabal repl" "/"
                 waitUntilDone
             case result.phase of
                 Done br -> br.moduleCount `shouldBe` 7
@@ -236,7 +232,7 @@ runScripted results = runEff . runGhciSessionScripted results
 runListenerTest
     :: [UTCTime]
     -> [Either SomeException LoadResult]
-    -> Eff '[GhciSession, Conc, Clock, Chan, BuildStore, Delay, Log, Concurrent, IOE] a
+    -> Eff '[GhciSession, Conc, Clock, BuildStore, Delay, Log, Concurrent, IOE] a
     -> IO a
 runListenerTest times results =
     runEff
@@ -244,7 +240,6 @@ runListenerTest times results =
         . runLogNoOp
         . runDelay
         . runBuildStoreSTM
-        . runChan
         . runClockList times
         . runConc
         . runGhciSessionScripted results

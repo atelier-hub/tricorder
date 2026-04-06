@@ -95,7 +95,10 @@ stateLabel (Done result)
     | otherwise = "ok"
 
 
-newtype BuildStateRef = BuildStateRef (TVar BuildState)
+data BuildStateRef = BuildStateRef
+    { stateRef :: TVar BuildState
+    , dirtyRef :: TVar Bool
+    }
 
 
 initialBuildState :: DaemonInfo -> BuildState

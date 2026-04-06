@@ -8,30 +8,24 @@ import Control.Exception (try)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
 import Effectful.Reader.Static (runReader)
-import Effectful.Timeout (runTimeout)
 import System.Directory (removeFile)
 import System.FilePath (makeRelative)
 import System.Posix.Process (createSession, forkProcess)
 
 import Atelier.Component (runSystem)
-import Atelier.Effects.Chan (runChan)
 import Atelier.Effects.Clock (runClock)
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.Log (Severity (..), runLogNoOp, runLogToHandle)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
-import Atelier.Effects.Publishing (runPubSub)
 import Ghcib.BuildState (DaemonInfo (..))
 import Ghcib.Config (Config (..), loadConfig, resolveWatchDirs)
 import Ghcib.Effects.BuildStore (runBuildStore)
 import Ghcib.Effects.FileWatcher (runFileWatcherIO)
 import Ghcib.Effects.GhciSession (runGhciSessionIO)
 import Ghcib.Effects.UnixSocket (runUnixSocketIO)
-import Ghcib.Events.FileChanged (FileChanged)
 import Ghcib.Socket.Client (socketPath)
-import Ghcib.Watcher (ReloadRequest)
 
-import Atelier.Effects.Chan qualified as Chan
 import Atelier.Effects.Conc qualified as Conc
 import Ghcib.GhciSession qualified as GhciSession
 import Ghcib.Socket.Server qualified as SocketServer
@@ -64,9 +58,6 @@ runDaemon projectRoot cfg = do
             . runLogger
             . runClock
             . runDelay
-            . runTimeout
-            . runChan
-            . runPubSub @FileChanged
             . runConc
             . runFileWatcherIO
             . runGhciSessionIO
@@ -74,10 +65,9 @@ runDaemon projectRoot cfg = do
             . runReader cfg
             $ do
                 runBuildStore daemonInfo do
-                    (reloadIn, reloadOut) <- Chan.newChan @ReloadRequest
                     runSystem
-                        [ Watcher.component reloadIn
-                        , GhciSession.component reloadOut
+                        [ Watcher.component
+                        , GhciSession.component
                         , SocketServer.component sockPath
                         ]
                     Conc.awaitAll
