@@ -5,8 +5,10 @@ module Ghcib.Watcher
 import Effectful (IOE)
 import Effectful.Reader.Static (Reader, ask)
 import System.Directory (getCurrentDirectory)
+import System.FilePath (takeExtension, takeFileName)
 
 import Atelier.Component (Component (..), defaultComponent)
+import Ghcib.BuildState (ChangeKind (..))
 import Ghcib.Config (Config (..), resolveWatchDirs)
 import Ghcib.Effects.BuildStore (BuildStore, markDirty)
 import Ghcib.Effects.FileWatcher (FileWatcher, watchDirs)
@@ -30,5 +32,12 @@ component =
             cfg <- ask @Config
             projectRoot <- liftIO getCurrentDirectory
             dirs <- liftIO $ resolveWatchDirs cfg.targets projectRoot
-            pure [forever $ watchDirs dirs \_ -> markDirty]
+            pure [forever $ watchDirs dirs \path -> markDirty (changeKindFor path)]
         }
+
+
+changeKindFor :: FilePath -> ChangeKind
+changeKindFor path
+    | takeExtension path == ".cabal" = CabalChange
+    | takeFileName path `elem` ["cabal.project", "package.yaml"] = CabalChange
+    | otherwise = SourceChange

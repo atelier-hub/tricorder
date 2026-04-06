@@ -253,6 +253,7 @@ executables:
     - aeson
     - directory
     - bytestring
+    - time
 
 tests:
   atelier-test:

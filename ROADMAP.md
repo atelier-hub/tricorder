@@ -2,12 +2,6 @@
 
 ## ghcib
 
-### Known Issues
-
-- **Cabal changes not applied until daemon restart** — changes to `.cabal`, `package.yaml`, or
-  `cabal.project` are detected but only trigger a `:reload`, which is insufficient. New
-  dependencies and target changes require a full GHCi session restart. Workaround: `ghcib stop && ghcib start`.
-
 ### Features
 
 - **Plugin-Based Structured Diagnostics** [[WP-002](ghcib/proposals/002-plugin-diagnostics/)] — introduce `ghcib-plugin`, a GHC compiler plugin that forwards native structured diagnostics (error codes, hints, related spans) to the daemon over a Unix socket. Falls back to the current behaviour for projects that do not install the plugin.
@@ -15,6 +9,13 @@
 - **Package Search** [[WP-003](ghcib/proposals/003-source-lookup/)] — `ghcib search` command that queries a local Hoogle database and returns haddock source, with a `--contents` flag to include source inline. The daemon checks for and generates a local Hoogle database at startup.
 
 ### Ideas
+
+- When startGhci is doing a full compile and a second CabalChange arrives (hpack's .cabal regeneration), we should cancel the ongoing startup and restart rather than letting it finish and doing a second full restart.
+
+- Automatically detect targets by default (`["all", "test-package", "spec-package", ...]`)
+
+- Hide content below the fold in watch mode to keep summary at the top and display just the first few errors
+    - Add a hotkey to watch mode to toggle between verbose/concise mode
 
 - **GHC error code linking** — surface `[GHC-XXXXX]` error codes as links to
   `errors.haskell.org` in terminal output.
@@ -38,3 +39,4 @@
 - **Rename `Message` → `Diagnostic`** [[WP-001](ghcib/proposals/001-diagnostic-rename/)] — aligned wire protocol and codebase with LSP/GHC ecosystem terminology.
 - **Text output for `ghcib status`** — human-readable text is now the default (`E file:line title` per diagnostic, summary line); `--json` flag preserves structured output for tool integration. Exit code reflects error presence.
 - **Reliable rebuild triggering** — replaced debounce + channel queuing with a dirty-flag model; multiple saves during a build coalesce to exactly one follow-up build with no dropped or redundant rebuilds.
+- **Cabal change detection** — changes to `.cabal`, `package.yaml`, or `cabal.project` now trigger a full GHCi session restart instead of a `:reload`, picking up new dependencies and target changes automatically.

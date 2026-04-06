@@ -14,7 +14,7 @@ import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
-import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), Diagnostic (..))
+import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..))
 import Ghcib.Config (Config (..), resolveCommand)
 import Ghcib.Effects.BuildStore (BuildStore, setPhase, waitDirty)
 import Ghcib.Effects.GhciSession (GhciSession, LoadResult (..))
@@ -100,23 +100,29 @@ sessionListener cmd projectRoot = startSession (BuildId 1)
 
     listenLoop (BuildId n) accumulated = do
         Log.debug $ "GhciSession: waiting for dirty flag (build #" <> show n <> ")"
-        waitDirty
+        changeKind <- waitDirty
         let nextId = BuildId (n + 1)
-        Log.debug $ "GhciSession: dirty flag set, reloading"
-        setPhase (BuildId n) Building
-        t0 <- Clock.currentTime
-        result <- try @SomeException GhciSession.reloadGhci
-        case result of
-            Left ex -> do
-                when (isGracefulShutdown ex) $ throwIO ex
-                Log.warn "GHCi session died; restarting"
+        case changeKind of
+            CabalChange -> do
+                Log.info "Cabal file changed; restarting GHCi session"
                 void $ try @SomeException GhciSession.stopGhci
                 startSession nextId
-            Right loadResult -> do
-                t1 <- Clock.currentTime
-                let durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
-                    newAccumulated = mergeDiagnostics accumulated loadResult
-                    allMsgs = concat (Map.elems newAccumulated)
-                    buildResult = BuildResult {completedAt = t1, durationMs, moduleCount = loadResult.moduleCount, diagnostics = allMsgs}
-                setPhase (BuildId n) (Done buildResult)
-                listenLoop nextId newAccumulated
+            SourceChange -> do
+                Log.debug $ "GhciSession: dirty flag set, reloading"
+                setPhase (BuildId n) Building
+                t0 <- Clock.currentTime
+                result <- try @SomeException GhciSession.reloadGhci
+                case result of
+                    Left ex -> do
+                        when (isGracefulShutdown ex) $ throwIO ex
+                        Log.warn "GHCi session died; restarting"
+                        void $ try @SomeException GhciSession.stopGhci
+                        startSession nextId
+                    Right loadResult -> do
+                        t1 <- Clock.currentTime
+                        let durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
+                            newAccumulated = mergeDiagnostics accumulated loadResult
+                            allMsgs = concat (Map.elems newAccumulated)
+                            buildResult = BuildResult {completedAt = t1, durationMs, moduleCount = loadResult.moduleCount, diagnostics = allMsgs}
+                        setPhase (BuildId n) (Done buildResult)
+                        listenLoop nextId newAccumulated

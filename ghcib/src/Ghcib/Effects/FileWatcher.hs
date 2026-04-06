@@ -62,5 +62,5 @@ isRelevant event =
     let path = eventPath event
         ext = takeExtension path
         fname = takeFileName path
-    in  (ext `elem` [".hs", ".cabal"] || fname == "cabal.project")
+    in  (ext `elem` [".hs", ".cabal"] || fname `elem` ["cabal.project", "package.yaml"])
             && not ("dist-newstyle" `isInfixOf` path)

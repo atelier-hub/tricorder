@@ -25,7 +25,7 @@ import Effectful.TH (makeEffect)
 
 import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Time (Millisecond)
-import Ghcib.BuildState (BuildId, BuildPhase (..), BuildState (..), BuildStateRef (..), DaemonInfo (..), initialBuildState)
+import Ghcib.BuildState (BuildId, BuildPhase (..), BuildState (..), BuildStateRef (..), ChangeKind (..), DaemonInfo (..), initialBuildState)
 
 
 data BuildStore :: Effect where
@@ -39,10 +39,11 @@ data BuildStore :: Effect where
     WaitForNext :: BuildId -> BuildStore m BuildState
     -- | Update the build id and phase without touching other fields (e.g. daemonInfo).
     SetPhase :: BuildId -> BuildPhase -> BuildStore m ()
-    -- | Signal that source files have changed and a rebuild is needed.
-    MarkDirty :: BuildStore m ()
-    -- | Block until dirty, then atomically clear the flag and return.
-    WaitDirty :: BuildStore m ()
+    -- | Signal that files have changed and a rebuild is needed.
+    -- 'CabalChange' upgrades a pending 'SourceChange' but never downgrades.
+    MarkDirty :: ChangeKind -> BuildStore m ()
+    -- | Block until dirty, atomically clear the flag, and return the change kind.
+    WaitDirty :: BuildStore m ChangeKind
 
 
 makeEffect ''BuildStore
@@ -57,7 +58,7 @@ makeEffect ''BuildStore
 runBuildStoreSTM :: (Concurrent :> es, Delay :> es) => Eff (BuildStore : es) a -> Eff es a
 runBuildStoreSTM eff = do
     ref <- atomically (newTVar (initialBuildState emptyDaemonInfo))
-    dirtyRef <- atomically (newTVar False)
+    dirtyRef <- atomically (newTVar (Nothing :: Maybe ChangeKind))
     interpret_
         ( \case
             GetState -> atomically (readTVar ref)
@@ -65,7 +66,7 @@ runBuildStoreSTM eff = do
             WaitUntilDone -> poll ref (not . isBuilding)
             WaitForNext bid -> poll ref \s -> not (isBuilding s) && s.buildId /= bid
             SetPhase bid phase -> atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase}
-            MarkDirty -> atomically (writeTVar dirtyRef True)
+            MarkDirty ck -> atomically (modifyTVar dirtyRef (max (Just ck)))
             WaitDirty -> pollDirtyRef dirtyRef
         )
         eff
@@ -96,7 +97,7 @@ runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef} =
             WaitUntilDone -> pollRef ref (not . isBuilding)
             WaitForNext bid -> pollRef ref \s -> not (isBuilding s) && s.buildId /= bid
             SetPhase bid phase -> atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase}
-            MarkDirty -> atomically (writeTVar dirtyRef True)
+            MarkDirty ck -> atomically (modifyTVar dirtyRef (max (Just ck)))
             WaitDirty -> pollDirtyRef dirtyRef
         )
   where
@@ -115,13 +116,12 @@ pollRef ref predicate = do
         wait (50 :: Millisecond) >> pollRef ref predicate
 
 
-pollDirtyRef :: (Concurrent :> es, Delay :> es) => TVar Bool -> Eff es ()
+pollDirtyRef :: (Concurrent :> es, Delay :> es) => TVar (Maybe ChangeKind) -> Eff es ChangeKind
 pollDirtyRef dirtyRef = do
     v <- atomically (readTVar dirtyRef)
-    if v then
-        atomically (writeTVar dirtyRef False)
-    else
-        wait (50 :: Millisecond) >> pollDirtyRef dirtyRef
+    case v of
+        Just ck -> atomically (writeTVar dirtyRef Nothing) >> pure ck
+        Nothing -> wait (50 :: Millisecond) >> pollDirtyRef dirtyRef
 
 
 -- | Scripted interpreter for testing.
@@ -147,8 +147,8 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
         get >>= \case
             [] -> pure ()
             s : rest -> put (s {buildId = bid, phase = phase} : rest)
-    MarkDirty -> pure ()
-    WaitDirty -> pure ()
+    MarkDirty _ -> pure ()
+    WaitDirty -> pure SourceChange
   where
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
@@ -171,5 +171,5 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
 runBuildStore :: (Concurrent :> es, Delay :> es) => DaemonInfo -> Eff (BuildStore : es) a -> Eff es a
 runBuildStore di eff = do
     ref <- atomically (newTVar (initialBuildState di))
-    dirtyRef <- atomically (newTVar False)
+    dirtyRef <- atomically (newTVar Nothing)
     runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef} eff

@@ -7,6 +7,7 @@ module Ghcib.BuildState
     , Diagnostic (..)
     , Severity (..)
     , BuildStateRef (..)
+    , ChangeKind (..)
     , initialBuildState
     , stateLabel
     ) where
@@ -95,9 +96,15 @@ stateLabel (Done result)
     | otherwise = "ok"
 
 
+-- | Classifies what kind of file change triggered a dirty signal.
+-- 'CabalChange' takes priority over 'SourceChange': if both fire before the
+-- next build starts, the session will be fully restarted rather than reloaded.
+data ChangeKind = SourceChange | CabalChange deriving stock (Eq, Ord, Show)
+
+
 data BuildStateRef = BuildStateRef
     { stateRef :: TVar BuildState
-    , dirtyRef :: TVar Bool
+    , dirtyRef :: TVar (Maybe ChangeKind)
     }
 
 
