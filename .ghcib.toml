@@ -1,2 +1,2 @@
-targets = ["lib:ghcib", "lib:atelier", "lib:atelier-testing", "test:atelier-test"]
+targets = ["lib:ghcib", "lib:atelier", "lib:atelier-testing", "test:atelier-test", "test:ghcib-test"]
 log_file = "/tmp/ghcib.log"

@@ -1,4 +1,4 @@
-module Ghcib.GhciSession (component, mergeDiagnostics) where
+module Ghcib.GhciSession (component, mergeDiagnostics, sessionListener) where
 
 import Data.Time (diffUTCTime)
 import Effectful (IOE)
@@ -85,6 +85,7 @@ sessionListener cmd projectRoot reloadOut = startSession (BuildId 1)
   where
     startSession (BuildId n) = do
         Log.info $ "Starting GHCi session #" <> show n <> ": " <> cmd
+        t0 <- Clock.currentTime
         result <- try @SomeException $ GhciSession.startGhci cmd projectRoot
         Log.debug $ "GhciSession.startGhci returned (session #" <> show n <> ")"
         case result of
@@ -95,9 +96,10 @@ sessionListener cmd projectRoot reloadOut = startSession (BuildId 1)
                 wait (2_000 :: Millisecond)
                 startSession (BuildId n)
             Right LoadResult {moduleCount, diagnostics = msgs} -> do
+                t1 <- Clock.currentTime
                 Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length msgs) <> " diagnostics"
-                t0 <- Clock.currentTime
-                let buildResult = BuildResult {completedAt = t0, durationMs = 0, moduleCount, diagnostics = msgs}
+                let durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
+                    buildResult = BuildResult {completedAt = t1, durationMs, moduleCount, diagnostics = msgs}
                     accumulated = Map.fromListWith (++) [(d.file, [d]) | d <- msgs]
                 setPhase (BuildId n) (Done buildResult)
                 Log.debug $ "Build state updated to Done (session #" <> show n <> ")"

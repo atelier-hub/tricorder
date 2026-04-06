@@ -9,7 +9,7 @@ import Atelier.Component (Component (..), Trigger, defaultComponent)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Time (Millisecond)
-import Ghcib.BuildState (BuildState (..))
+import Ghcib.BuildState (BuildPhase (..), BuildState (..))
 import Ghcib.Effects.BuildStore (BuildStore, getState, waitForNext, waitUntilDone)
 import Ghcib.Effects.UnixSocket
     ( UnixSocket
@@ -52,6 +52,7 @@ component sockPath =
 acceptTrigger
     :: ( BuildStore :> es
        , Conc :> es
+       , Delay :> es
        , UnixSocket :> es
        )
     => FilePath
@@ -72,7 +73,7 @@ socketMonitorTrigger sockPath = forever do
     unless exists $ throwIO SocketRemoved
 
 
-handleConnection :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()
+handleConnection :: (BuildStore :> es, Delay :> es, UnixSocket :> es) => Handle -> Eff es ()
 handleConnection h = do
     line <- readLine h
     case decode (BSL.fromStrict (encodeUtf8 line)) of
@@ -80,7 +81,7 @@ handleConnection h = do
         Just query -> dispatch query h
 
 
-dispatch :: (BuildStore :> es, UnixSocket :> es) => Query -> Handle -> Eff es ()
+dispatch :: (BuildStore :> es, Delay :> es, UnixSocket :> es) => Query -> Handle -> Eff es ()
 dispatch query h = case query of
     Status (StatusQuery False) -> respondOnce h
     Status (StatusQuery True) -> respondWhenDone h
@@ -91,8 +92,29 @@ respondOnce :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()
 respondOnce h = getState >>= sendJson h
 
 
-respondWhenDone :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()
-respondWhenDone h = waitUntilDone >>= sendJson h
+-- | Wait for a completed build, then respond.
+--
+-- If the build is already done when this is called, we may be racing the file
+-- watcher's debounce: a file was just changed but the reload hasn't been
+-- dispatched yet (default debounce is 100ms). Poll for up to 250ms to let
+-- any in-flight debounce fire before falling back to the current result.
+respondWhenDone :: (BuildStore :> es, Delay :> es, UnixSocket :> es) => Handle -> Eff es ()
+respondWhenDone h = awaitResult >>= sendJson h
+  where
+    awaitResult = do
+        s <- getState
+        case s.phase of
+            Building -> waitUntilDone
+            Done _ -> awaitBuildStart (5 :: Int) s
+
+    -- Poll up to n × 50ms for a build to start, then wait for it to finish.
+    awaitBuildStart 0 s = pure s
+    awaitBuildStart n _ = do
+        wait (50 :: Millisecond)
+        s' <- getState
+        case s'.phase of
+            Building -> waitUntilDone
+            Done _ -> awaitBuildStart (n - 1) s'
 
 
 -- | Stream a JSON object after each completed build (loops until handle closes or error).

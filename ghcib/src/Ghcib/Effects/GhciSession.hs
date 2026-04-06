@@ -14,7 +14,6 @@ module Ghcib.Effects.GhciSession
     ) where
 
 import Control.Exception (throwIO, try)
-import Data.Set (Set)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (reinterpret)
 import Effectful.State.Static.Shared (State, evalState, get, put)
@@ -109,7 +108,7 @@ collectResult ghci loads = do
     -- "[N of M] Compiling ..." lines from :reload output, so no Loading items
     -- are produced.  Mirror the fallback in ghcid's startGhciProcess: if no
     -- Loading items were found, treat all currently-loaded modules as compiled.
-    let compiledFiles = case [loadFile l | l@Ghcid.Loading {} <- loads] of
+    let compiledFiles = case [f | Ghcid.Loading {loadFile = f} <- loads] of
             [] -> Set.fromList (map snd modules)
             fs -> Set.fromList fs
     pure LoadResult {moduleCount = length modules, compiledFiles, diagnostics = toDiagnostics loads}

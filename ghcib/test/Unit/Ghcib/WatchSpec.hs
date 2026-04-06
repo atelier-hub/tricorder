@@ -28,33 +28,36 @@ spec_Watch = do
 
         describe "Done, no messages" do
             it "shows 'All good.'" do
-                render (buildStateDoc utc (doneState [])) `shouldContain` "All good."
+                render (buildStateDoc utc (doneState 0 [])) `shouldContain` "All good."
 
             it "shows duration" do
-                render (buildStateDoc utc (doneState [])) `shouldContain` "500ms"
+                render (buildStateDoc utc (doneState 0 [])) `shouldContain` "500ms"
+
+            it "shows module count" do
+                render (buildStateDoc utc (doneState 42 [])) `shouldContain` "42 modules"
 
             it "includes daemon info" do
-                render (buildStateDoc utc (doneState [])) `shouldContain` "Targets:"
+                render (buildStateDoc utc (doneState 0 [])) `shouldContain` "Targets:"
 
         describe "Done, errors only" do
             it "shows error count" do
-                render (buildStateDoc utc (doneState [errMsg])) `shouldContain` "1 error(s)"
+                render (buildStateDoc utc (doneState 0 [errMsg])) `shouldContain` "1 error(s)"
 
             it "shows zero warnings" do
-                render (buildStateDoc utc (doneState [errMsg])) `shouldContain` "0 warning(s)"
+                render (buildStateDoc utc (doneState 0 [errMsg])) `shouldContain` "0 warning(s)"
 
             it "includes the message location" do
-                render (buildStateDoc utc (doneState [errMsg])) `shouldContain` "Foo.hs:10:1"
+                render (buildStateDoc utc (doneState 0 [errMsg])) `shouldContain` "Foo.hs:10:1"
 
         describe "Done, warnings only" do
             it "shows warning count without error count" do
-                let rendered = render (buildStateDoc utc (doneState [warnMsg]))
+                let rendered = render (buildStateDoc utc (doneState 0 [warnMsg]))
                 rendered `shouldContain` "1 warning(s)"
                 rendered `shouldNotContain` "error(s)"
 
         describe "Done, mixed" do
             it "shows both counts" do
-                let rendered = render (buildStateDoc utc (doneState [errMsg, warnMsg]))
+                let rendered = render (buildStateDoc utc (doneState 0 [errMsg, warnMsg]))
                 rendered `shouldContain` "1 error(s)"
                 rendered `shouldContain` "1 warning(s)"
 
@@ -113,8 +116,8 @@ buildingState :: BuildState
 buildingState = BuildState (BuildId 1) Building emptyDaemonInfo
 
 
-doneState :: [Diagnostic] -> BuildState
-doneState msgs = BuildState (BuildId 1) (Done (BuildResult {completedAt = epoch, durationMs = 500, moduleCount = 0, diagnostics = msgs})) emptyDaemonInfo
+doneState :: Int -> [Diagnostic] -> BuildState
+doneState mods msgs = BuildState (BuildId 1) (Done (BuildResult {completedAt = epoch, durationMs = 500, moduleCount = mods, diagnostics = msgs})) emptyDaemonInfo
 
 
 epoch :: UTCTime
