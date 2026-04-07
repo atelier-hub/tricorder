@@ -1,14 +1,14 @@
 {
-  description = "Cardano Hoarding Node";
+  description = "Atelier";
 
   nixConfig = {
     extra-substituters = [
       "https://cache.iog.io"
-      "https://cardano-hoarding-node.cachix.org"
+      "https://atelier.cachix.org"
     ];
     extra-trusted-public-keys = [
       "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
-      "cardano-hoarding-node.cachix.org-1:uHPjxqLDX30tBcYwNZ2orHdFUuADwG3RnBcRL55sa+o="
+      "atelier.cachix.org-1:rEyd/Z4TiXZbBVuU/lDnKZ/7WtnFTwJ17OKHGcahVUo="
     ];
     allow-import-from-derivation = true;
   };
@@ -29,16 +29,6 @@
       flake = false;
     };
 
-    CHaP = {
-      url = "github:IntersectMBO/cardano-haskell-packages?ref=repo";
-      flake = false;
-    };
-
-    iohk-nix = {
-      url = "github:input-output-hk/iohk-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     flake-utils.url = "github:numtide/flake-utils";
 
     git-hooks = {
@@ -49,15 +39,6 @@
     tmp-postgres = {
       url = "github:jfischoff/tmp-postgres";
       flake = false;
-    };
-    sops-nix = {
-      url = "github:Mic92/sops-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    mithril = {
-      url = "github:input-output-hk/mithril";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
