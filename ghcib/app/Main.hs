@@ -6,12 +6,14 @@ import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
 import Effectful (runEff)
 import Options.Applicative
-import System.Directory (getCurrentDirectory)
+import System.Directory (doesFileExist, getCurrentDirectory)
+import System.IO (hGetLine)
 
 import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Effects.Clock (runClock)
-import Ghcib.BuildState (BuildPhase (..), BuildResult (..), BuildState (..), Diagnostic (..), Severity (..))
+import Ghcib.BuildState (BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..), Diagnostic (..), Severity (..))
+import Ghcib.Config (loadConfig)
 import Ghcib.Daemon (startDaemon, stopDaemon)
 import Ghcib.Effects.Display (runDisplayIO)
 import Ghcib.Effects.UnixSocket (runUnixSocketIO)
@@ -23,6 +25,8 @@ import Ghcib.Socket.Client
     , socketPath
     )
 import Ghcib.Watch (watchDisplay)
+
+import Ghcib.Config qualified as Config
 
 
 main :: IO ()
@@ -42,6 +46,7 @@ data Command
     | Stop
     | Status Bool Bool
     | Watch
+    | Log Bool
 
 
 commandParser :: Parser Command
@@ -51,7 +56,18 @@ commandParser =
             <> command "stop" (info (pure Stop) (progDesc "Stop the daemon"))
             <> command "status" (info statusParser (progDesc "Print build diagnostics (--json for machine-readable output)"))
             <> command "watch" (info (pure Watch) (progDesc "Auto-refreshing terminal display"))
+            <> command "log" (info logParser (progDesc "Show daemon log output"))
         )
+
+
+logParser :: Parser Command
+logParser =
+    Log
+        <$> switch
+            ( long "follow"
+                <> short 'f'
+                <> help "Keep streaming new log lines as they are written"
+            )
 
 
 statusParser :: Parser Command
@@ -104,6 +120,30 @@ run (Status waitFlag jsonFlag) = do
                     BSL.putStr (encode state) >> putStrLn ""
                 else
                     renderText state
+run (Log followFlag) = do
+    projectRoot <- getCurrentDirectory
+    sockPath <- socketPath projectRoot
+    mLogFile <- runEff $ runUnixSocketIO do
+        running <- isDaemonRunning sockPath
+        if running then do
+            result <- queryStatus sockPath
+            pure $ case result of
+                Right state -> state.daemonInfo.logFile
+                Left _ -> Nothing
+        else
+            liftIO $ Config.logFile <$> loadConfig projectRoot
+    case mLogFile of
+        Nothing ->
+            putStrLn "No log file configured. Add `log_file = \"/path/to/ghcib.log\"` to .ghcib.toml"
+        Just path -> do
+            exists <- doesFileExist path
+            if not exists then
+                putStrLn $ "Log file does not exist yet: " <> path
+            else
+                if followFlag then
+                    followLog path
+                else
+                    readFileLBS path >>= BSL.putStr
 run Watch = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
@@ -131,6 +171,15 @@ renderText state = case state.phase of
                 "All good. " <> stats <> " " <> ts
             else
                 show errs <> " error(s), " <> show warns <> " warning(s) " <> stats <> " " <> ts
+
+
+followLog :: FilePath -> IO ()
+followLog path = withFile path ReadMode loop
+  where
+    loop h =
+        hIsEOF h >>= \case
+            True -> threadDelay 200_000 >> loop h
+            False -> hGetLine h >>= putStrLn >> loop h
 
 
 -- | Poll until the daemon socket becomes connectable.

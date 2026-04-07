@@ -40,3 +40,4 @@
 - **Text output for `ghcib status`** — human-readable text is now the default (`E file:line title` per diagnostic, summary line); `--json` flag preserves structured output for tool integration. Exit code reflects error presence.
 - **Reliable rebuild triggering** — replaced debounce + channel queuing with a dirty-flag model; multiple saves during a build coalesce to exactly one follow-up build with no dropped or redundant rebuilds.
 - **Cabal change detection** — changes to `.cabal`, `package.yaml`, or `cabal.project` now trigger a full GHCi session restart instead of a `:reload`, picking up new dependencies and target changes automatically.
+- **`ghcib log`** — shows daemon log output; `--follow` / `-f` streams new lines as they are written.
