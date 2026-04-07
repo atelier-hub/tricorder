@@ -17,7 +17,7 @@ import Ghcib.Config (loadConfig)
 import Ghcib.Daemon (startDaemon, stopDaemon)
 import Ghcib.Effects.Display (Display, runDisplayIO)
 import Ghcib.Effects.UnixSocket (UnixSocket, runUnixSocketIO)
-import Ghcib.Render (diagnosticLine, formatDuration)
+import Ghcib.Render (diagnosticBlock, diagnosticLine, formatDuration)
 import Ghcib.Socket.Client
     ( isDaemonRunning
     , queryStatus
@@ -44,7 +44,7 @@ main = do
 data Command
     = Start
     | Stop
-    | Status Bool Bool
+    | Status Bool Bool Bool
     | Watch
     | Log Bool
 
@@ -81,6 +81,11 @@ statusParser =
             ( long "json"
                 <> help "Output full build state as JSON"
             )
+        <*> switch
+            ( long "verbose"
+                <> short 'v'
+                <> help "Print full GHC message body under each diagnostic"
+            )
 
 
 run :: (Clock :> es, Display :> es, FileSystem :> es, IOE :> es, UnixSocket :> es) => Command -> Eff es ()
@@ -96,7 +101,7 @@ run Start = do
 run Stop = do
     projectRoot <- getCurrentDirectory
     liftIO $ stopDaemon projectRoot >> putStrLn "Daemon stopped."
-run (Status waitFlag jsonFlag) = do
+run (Status waitFlag jsonFlag verboseFlag) = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
     running <- isDaemonRunning sockPath
@@ -117,7 +122,7 @@ run (Status waitFlag jsonFlag) = do
             if jsonFlag then
                 BSL.putStr (encode state) >> putStrLn ""
             else
-                renderText state
+                renderText verboseFlag state
 run (Log followFlag) = do
     projectRoot <- getCurrentDirectory
     sp <- socketPath projectRoot
@@ -150,12 +155,13 @@ run Watch = do
     watchDisplay sockPath
 
 
-renderText :: BuildState -> IO ()
-renderText state = case state.phase of
+renderText :: Bool -> BuildState -> IO ()
+renderText verbose state = case state.phase of
     Building -> putStrLn "Building..."
     Done r -> do
         tz <- getCurrentTimeZone
-        mapM_ (putStrLn . diagnosticLine) r.diagnostics
+        let printDiag = if verbose then putStr . diagnosticBlock else putStrLn . diagnosticLine
+        mapM_ printDiag r.diagnostics
         putStrLn $ buildSummary tz r
         when (any ((== SError) . (.severity)) r.diagnostics) exitFailure
   where

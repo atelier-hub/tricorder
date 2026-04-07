@@ -12,8 +12,6 @@
 
 - When startGhci is doing a full compile and a second CabalChange arrives (hpack's .cabal regeneration), we should cancel the ongoing startup and restart rather than letting it finish and doing a second full restart.
 
-- Automatically detect targets by default (`["all", "test-package", "spec-package", ...]`)
-
 - Hide content below the fold in watch mode to keep summary at the top and display just the first few errors
     - Add a hotkey to watch mode to toggle between verbose/concise mode
 
@@ -30,9 +28,12 @@
   message body under each diagnostic, avoiding the need to re-query with `--json` when the
   one-line title isn't enough to diagnose an error.
 
-- **Smart default targets** — when no targets are specified, auto-discover test suites
-  from the `.cabal` file and include them explicitly. Also improve `resolveWatchDirs`,
-  which currently falls back to `["."]` when no targets are set.
+- **Smart default targets** — improve `resolveWatchDirs`, which currently falls back to `["."]` when no targets are set.
+
+- Package this as a plugin for Claude and other providers.
+
+- Configurable command to run the tests if build is green.
+  - Can we run the tests from ghci? That could be very quick.
 
 ### Completed
 

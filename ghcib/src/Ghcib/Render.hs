@@ -14,6 +14,7 @@ module Ghcib.Render
 
       -- * Plain-text formatting
     , diagnosticLine
+    , diagnosticBlock
     , formatDuration
     ) where
 
@@ -140,6 +141,11 @@ diagnosticLine d =
   where
     prefix SError = "E"
     prefix SWarning = "W"
+
+
+-- | One-liner followed by the full GHC message body (verbose mode).
+diagnosticBlock :: Diagnostic -> String
+diagnosticBlock d = diagnosticLine d <> "\n" <> toString d.text
 
 
 instance Pretty Diagnostic where

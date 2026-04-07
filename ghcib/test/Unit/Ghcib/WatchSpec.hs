@@ -16,7 +16,7 @@ import Ghcib.BuildState
     , Severity (..)
     )
 import Ghcib.Effects.Display (Style)
-import Ghcib.Render (buildStateDoc, daemonInfoDoc, diagnosticDoc)
+import Ghcib.Render (buildStateDoc, daemonInfoDoc, diagnosticBlock, diagnosticDoc)
 
 
 spec_Watch :: Spec
@@ -73,6 +73,21 @@ spec_Watch = do
 
         it "shows message text" do
             render (diagnosticDoc errMsg) `shouldContain` "type mismatch"
+
+    describe "diagnosticBlock" do
+        it "includes the one-liner prefix for an error" do
+            diagnosticBlock errMsg `shouldContain` "E Foo.hs:10 type mismatch"
+
+        it "includes the full text body after the first line" do
+            diagnosticBlock errMsg `shouldContain` "\ntype mismatch"
+
+        it "uses 'W' prefix for warnings" do
+            diagnosticBlock warnMsg `shouldContain` "W Bar.hs:3 unused import"
+
+        it "contains both title and text when they differ" do
+            let d = mixedMsg
+            diagnosticBlock d `shouldContain` "short title"
+            diagnosticBlock d `shouldContain` "full body of the message"
 
     describe "daemonInfoDoc" do
         it "shows '(all)' when targets is empty" do
@@ -149,4 +164,18 @@ warnMsg =
         , endCol = 10
         , title = "unused import"
         , text = "unused import"
+        }
+
+
+mixedMsg :: Diagnostic
+mixedMsg =
+    Diagnostic
+        { severity = SError
+        , file = "Baz.hs"
+        , line = 5
+        , col = 1
+        , endLine = 5
+        , endCol = 20
+        , title = "short title"
+        , text = "full body of the message"
         }
