@@ -10,12 +10,12 @@ import Data.Aeson (decode, eitherDecode, encode)
 import Effectful (IOE)
 import Effectful.Exception (try)
 import Numeric (showHex)
-import System.Directory (canonicalizePath, createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO (hGetLine, hPutStrLn)
 
 import Data.ByteString.Lazy qualified as BSL
 
+import Atelier.Effects.FileSystem (FileSystem, canonicalizePath, createDirectoryIfMissing, getXdgRuntimeDir)
 import Ghcib.BuildState (BuildState)
 import Ghcib.Effects.UnixSocket (UnixSocket, withConnection)
 import Ghcib.Socket.Protocol (Query (..), StatusQuery (..))
@@ -66,10 +66,10 @@ isDaemonRunning sockPath = do
 
 
 -- | Compute the Unix socket path for the given project root.
-socketPath :: FilePath -> IO FilePath
+socketPath :: (FileSystem :> es) => FilePath -> Eff es FilePath
 socketPath rawRoot = do
     root <- canonicalizePath rawRoot
-    runtimeDir <- fromMaybe "/tmp" <$> lookupEnv "XDG_RUNTIME_DIR"
+    runtimeDir <- getXdgRuntimeDir
     let dir = runtimeDir </> "ghcib"
     createDirectoryIfMissing True dir
     pure $ dir </> hashPath root <> ".sock"

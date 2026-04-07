@@ -42,6 +42,7 @@
           (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
           (hsPkgs."contra-tracer" or (errorHandler.buildDepError "contra-tracer"))
           (hsPkgs."data-default" or (errorHandler.buildDepError "data-default"))
+          (hsPkgs."directory" or (errorHandler.buildDepError "directory"))
           (hsPkgs."effectful" or (errorHandler.buildDepError "effectful"))
           (hsPkgs."effectful-core" or (errorHandler.buildDepError "effectful-core"))
           (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))

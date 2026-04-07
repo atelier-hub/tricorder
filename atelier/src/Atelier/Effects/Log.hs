@@ -45,6 +45,7 @@ module Atelier.Effects.Log
 
 import Data.Aeson (FromJSON (..))
 import Data.Default (Default (..))
+import Data.List (lookup)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (localSeqUnlift, reinterpret, reinterpretWith)
 import Effectful.Reader.Static (Reader, ask, local, runReader)
@@ -53,6 +54,7 @@ import Effectful.Writer.Static.Shared (Writer, tell)
 
 import Data.ByteString.Char8 qualified as B8
 
+import Atelier.Effects.Env (Env, getEnvironment)
 import Atelier.Types.JsonReadShow (JsonReadShow (..))
 import Atelier.Types.QuietSnake (QuietSnake (..))
 
@@ -146,20 +148,18 @@ runLogNoOp = reinterpret (runReader (Namespace "")) $ \env -> \case
     GetNamespace -> ask
 
 
-runLog :: (IOE :> es, Reader Config :> es) => Eff (Log : es) a -> Eff es a
+runLog :: (Env :> es, IOE :> es, Reader Config :> es) => Eff (Log : es) a -> Eff es a
 runLog action = do
     config <- ask
-    overrideLog <- liftIO $ (>>= readMaybe) <$> lookupEnv "LOG"
-    overrideLogging <- liftIO $ (>>= readMaybe) <$> lookupEnv "LOGGING"
-    overrideDebug <-
-        liftIO
-            $ (>>= \x -> if x == "0" then Nothing else Just DEBUG)
-                <$> lookupEnv "DEBUG"
+    env <- getEnvironment
+    let overrideLog = (>>= readMaybe) $ lookup "LOG" env
+        overrideLogging = (>>= readMaybe) $ lookup "LOGGING" env
+        overrideDebug = (>>= \x -> if x == "0" then Nothing else Just DEBUG) $ lookup "DEBUG" env
     let severity =
             fromMaybe config.minimumSeverity
                 $ overrideDebug <|> overrideLogging <|> overrideLog
 
-    reinterpretWith (runReader (Namespace "")) action \env -> \case
+    reinterpretWith (runReader (Namespace "")) action \lenv -> \case
         LogMsg msg ->
             liftIO $ when (msg.severity >= severity) do
                 -- NOTE: We use hPutStr here with an appended newline because
@@ -171,7 +171,7 @@ runLog action = do
                     . formatMessage
                     $ msg
                 hFlush stdout
-        WithNamespace ns act -> localSeqUnlift env $ \unlift ->
+        WithNamespace ns act -> localSeqUnlift lenv $ \unlift ->
             local (<> ns) $ unlift act
         GetNamespace -> ask
 

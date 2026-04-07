@@ -78,6 +78,7 @@ library:
   - containers
   - contra-tracer
   - data-default
+  - directory
   - effectful
   - effectful-th
   - hasql

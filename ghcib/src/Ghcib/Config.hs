@@ -25,12 +25,12 @@ import Distribution.Types.Library (libBuildInfo)
 import Distribution.Types.TestSuite (testBuildInfo)
 import Distribution.Types.UnqualComponentName (mkUnqualComponentName)
 import Distribution.Utils.Path (getSymbolicPath)
-import System.Directory (doesFileExist, listDirectory)
 import System.FilePath (takeExtension, (</>))
 import TOML (DecodeTOML (..), decode, getFieldOpt, getFieldOr)
 
 import Data.Text qualified as T
 
+import Atelier.Effects.FileSystem (FileSystem, doesFileExist, listDirectory, readFileBs)
 import Atelier.Time (Millisecond)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 
@@ -81,12 +81,12 @@ instance DecodeTOML Config where
 
 -- | Load config from .ghcib.toml in the project root, falling back to defaults.
 -- CLI flags should be merged on top by the caller.
-loadConfig :: FilePath -> IO Config
+loadConfig :: (FileSystem :> es) => FilePath -> Eff es Config
 loadConfig projectRoot = do
     let tomlPath = projectRoot </> ".ghcib.toml"
     exists <- doesFileExist tomlPath
     if exists then do
-        content <- readFileBS tomlPath
+        content <- readFileBs tomlPath
         case decode (decodeUtf8 content) of
             Left _ -> pure def
             Right cfg -> pure cfg
@@ -95,14 +95,14 @@ loadConfig projectRoot = do
 
 
 -- | Resolve the GHCi command, using config if set or autodetecting otherwise.
-resolveCommand :: Config -> FilePath -> IO Text
+resolveCommand :: (FileSystem :> es) => Config -> FilePath -> Eff es Text
 resolveCommand cfg projectRoot =
     case cfg.command of
         Just cmd -> pure cmd
         Nothing -> detectCommand cfg.targets projectRoot
 
 
-detectCommand :: [Text] -> FilePath -> IO Text
+detectCommand :: (FileSystem :> es) => [Text] -> FilePath -> Eff es Text
 detectCommand targets projectRoot = do
     hasCabalProject <- doesFileExist (projectRoot </> "cabal.project")
     cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
@@ -119,14 +119,14 @@ detectCommand targets projectRoot = do
 -- | Resolve the directories to watch based on the configured targets.
 -- Parses the .cabal file and extracts hs-source-dirs for each target.
 -- Falls back to ["."] if targets is empty or the cabal file can't be parsed.
-resolveWatchDirs :: [Text] -> FilePath -> IO [FilePath]
+resolveWatchDirs :: (FileSystem :> es) => [Text] -> FilePath -> Eff es [FilePath]
 resolveWatchDirs [] _ = pure ["."]
 resolveWatchDirs targets projectRoot = do
     cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
     case cabalFiles of
         [] -> pure ["."]
         (cabalFile : _) -> do
-            contents <- readFileBS (projectRoot </> cabalFile)
+            contents <- readFileBs (projectRoot </> cabalFile)
             case parseGenericPackageDescriptionMaybe contents of
                 Nothing -> pure ["."]
                 Just gpd ->

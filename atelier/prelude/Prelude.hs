@@ -71,7 +71,7 @@ import Relude.String
 
 -- From Relude.Lifted, we don't want Relude.Lifted.Concurrent.
 import Relude.Lifted.Exit
-import Relude.Lifted.Env
+import Relude.Lifted.Env hiding (lookupEnv)
 import Relude.Lifted.File
 import Relude.Lifted.Terminal
 import Relude.Lifted.Handle

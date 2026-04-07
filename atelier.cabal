@@ -29,6 +29,7 @@ library
       Atelier.Effects.DB.Rel8
       Atelier.Effects.Delay
       Atelier.Effects.Env
+      Atelier.Effects.FileSystem
       Atelier.Effects.Log
       Atelier.Effects.Monitoring.Metrics
       Atelier.Effects.Monitoring.Metrics.Registry
@@ -77,6 +78,7 @@ library
     , containers
     , contra-tracer
     , data-default
+    , directory
     , effectful
     , effectful-core
     , effectful-plugin

@@ -8,6 +8,7 @@ import System.Directory (getCurrentDirectory)
 import System.FilePath (takeExtension, takeFileName)
 
 import Atelier.Component (Component (..), defaultComponent)
+import Atelier.Effects.FileSystem (FileSystem)
 import Ghcib.BuildState (ChangeKind (..))
 import Ghcib.Config (Config (..), resolveWatchDirs)
 import Ghcib.Effects.BuildStore (BuildStore, markDirty)
@@ -20,6 +21,7 @@ import Ghcib.Effects.FileWatcher (FileWatcher, watchDirs)
 -- it transitions to @True@.
 component
     :: ( BuildStore :> es
+       , FileSystem :> es
        , FileWatcher :> es
        , IOE :> es
        , Reader Config :> es
@@ -31,7 +33,7 @@ component =
         , triggers = do
             cfg <- ask @Config
             projectRoot <- liftIO getCurrentDirectory
-            dirs <- liftIO $ resolveWatchDirs cfg.targets projectRoot
+            dirs <- resolveWatchDirs cfg.targets projectRoot
             pure [forever $ watchDirs dirs \path -> markDirty (changeKindFor path)]
         }
 

@@ -8,7 +8,6 @@ import Control.Exception (try)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
 import Effectful.Reader.Static (runReader)
-import System.Directory (removeFile)
 import System.FilePath (makeRelative)
 import System.Posix.Process (createSession, forkProcess)
 
@@ -16,6 +15,7 @@ import Atelier.Component (runSystem)
 import Atelier.Effects.Clock (runClock)
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.FileSystem (removeFile, runFileSystemIO)
 import Atelier.Effects.Log (Severity (..), runLogNoOp, runLogToHandle)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
 import Ghcib.BuildState (DaemonInfo (..))
@@ -36,8 +36,9 @@ import Ghcib.Watcher qualified as Watcher
 -- Blocks forever; all work happens inside the component system.
 runDaemon :: FilePath -> Config -> IO ()
 runDaemon projectRoot cfg = do
-    sockPath <- socketPath projectRoot
-    watchDirs <- resolveWatchDirs cfg.targets projectRoot
+    (sockPath, watchDirs) <-
+        runEff . runFileSystemIO
+            $ liftA2 (,) (socketPath projectRoot) (resolveWatchDirs cfg.targets projectRoot)
     let daemonInfo =
             DaemonInfo
                 { targets = cfg.targets
@@ -62,6 +63,7 @@ runDaemon projectRoot cfg = do
             . runFileWatcherIO
             . runGhciSessionIO
             . runUnixSocketIO
+            . runFileSystemIO
             . runReader cfg
             $ do
                 runBuildStore daemonInfo do
@@ -77,7 +79,7 @@ runDaemon projectRoot cfg = do
 -- No-op if the daemon is already running (caller should check beforehand).
 startDaemon :: FilePath -> IO ()
 startDaemon projectRoot = do
-    cfg <- loadConfig projectRoot
+    cfg <- runEff . runFileSystemIO $ loadConfig projectRoot
     void $ forkProcess do
         void createSession -- detach from terminal
         runDaemon projectRoot cfg
@@ -87,5 +89,5 @@ startDaemon projectRoot = do
 -- The daemon process itself will exit once its scope closes.
 stopDaemon :: FilePath -> IO ()
 stopDaemon projectRoot = do
-    sockPath <- socketPath projectRoot
-    try @SomeException (removeFile sockPath) >> pure ()
+    sockPath <- runEff . runFileSystemIO $ socketPath projectRoot
+    void $ try @SomeException $ runEff . runFileSystemIO $ removeFile sockPath

@@ -6,12 +6,13 @@ import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
 import Effectful (runEff)
 import Options.Applicative
-import System.Directory (doesFileExist, getCurrentDirectory)
+import System.Directory (getCurrentDirectory)
 import System.IO (hGetLine)
 
 import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Effects.Clock (runClock)
+import Atelier.Effects.FileSystem (doesFileExist, readFileLbs, runFileSystemIO)
 import Ghcib.BuildState (BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..), Diagnostic (..), Severity (..))
 import Ghcib.Config (loadConfig)
 import Ghcib.Daemon (startDaemon, stopDaemon)
@@ -86,8 +87,9 @@ statusParser =
 run :: Command -> IO ()
 run Start = do
     projectRoot <- getCurrentDirectory
-    sockPath <- socketPath projectRoot
-    running <- runEff $ runUnixSocketIO $ isDaemonRunning sockPath
+    running <- runEff . runFileSystemIO . runUnixSocketIO $ do
+        sp <- socketPath projectRoot
+        isDaemonRunning sp
     if running then
         putStrLn "Daemon already running."
     else do
@@ -99,8 +101,8 @@ run Stop = do
     putStrLn "Daemon stopped."
 run (Status waitFlag jsonFlag) = do
     projectRoot <- getCurrentDirectory
-    sockPath <- socketPath projectRoot
-    runEff $ runUnixSocketIO $ do
+    runEff . runFileSystemIO . runUnixSocketIO $ do
+        sockPath <- socketPath projectRoot
         running <- isDaemonRunning sockPath
         unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
         when (waitFlag && not jsonFlag) $ do
@@ -122,32 +124,32 @@ run (Status waitFlag jsonFlag) = do
                     renderText state
 run (Log followFlag) = do
     projectRoot <- getCurrentDirectory
-    sockPath <- socketPath projectRoot
-    mLogFile <- runEff $ runUnixSocketIO do
-        running <- isDaemonRunning sockPath
+    mLogFile <- runEff . runFileSystemIO . runUnixSocketIO $ do
+        sp <- socketPath projectRoot
+        running <- isDaemonRunning sp
         if running then do
-            result <- queryStatus sockPath
+            result <- queryStatus sp
             pure $ case result of
                 Right state -> state.daemonInfo.logFile
                 Left _ -> Nothing
         else
-            liftIO $ Config.logFile <$> loadConfig projectRoot
+            Config.logFile <$> loadConfig projectRoot
     case mLogFile of
         Nothing ->
             putStrLn "No log file configured. Add `log_file = \"/path/to/ghcib.log\"` to .ghcib.toml"
         Just path -> do
-            exists <- doesFileExist path
+            exists <- runEff . runFileSystemIO $ doesFileExist path
             if not exists then
                 putStrLn $ "Log file does not exist yet: " <> path
             else
                 if followFlag then
                     followLog path
                 else
-                    readFileLBS path >>= BSL.putStr
+                    runEff (runFileSystemIO (readFileLbs path)) >>= BSL.putStr
 run Watch = do
     projectRoot <- getCurrentDirectory
-    sockPath <- socketPath projectRoot
-    runEff $ runClock $ runUnixSocketIO $ runDisplayIO $ do
+    runEff . runFileSystemIO . runClock . runUnixSocketIO . runDisplayIO $ do
+        sockPath <- socketPath projectRoot
         running <- isDaemonRunning sockPath
         unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
         watchDisplay sockPath

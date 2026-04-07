@@ -11,6 +11,7 @@ import Data.Map.Strict qualified as Map
 import Atelier.Component (Component (..), Listener, defaultComponent)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Delay (Delay, wait)
+import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
@@ -45,6 +46,7 @@ component
     :: ( BuildStore :> es
        , Clock :> es
        , Delay :> es
+       , FileSystem :> es
        , GhciSession :> es
        , IOE :> es
        , Log :> es
@@ -57,7 +59,7 @@ component =
         , listeners = do
             cfg <- ask @Config
             projectRoot <- liftIO getCurrentDirectory
-            cmd <- liftIO $ resolveCommand cfg projectRoot
+            cmd <- resolveCommand cfg projectRoot
             Log.debug $ "GhciSession.component: resolved command = " <> cmd
             Log.debug $ "GhciSession.component: projectRoot = " <> toText projectRoot
             pure [sessionListener cmd projectRoot]
