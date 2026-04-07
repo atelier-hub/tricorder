@@ -6,13 +6,12 @@ import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
 import Effectful (runEff)
 import Options.Applicative
-import System.Directory (getCurrentDirectory)
 import System.IO (hGetLine)
 
 import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Effects.Clock (runClock)
-import Atelier.Effects.FileSystem (doesFileExist, readFileLbs, runFileSystemIO)
+import Atelier.Effects.FileSystem (doesFileExist, getCurrentDirectory, readFileLbs, runFileSystemIO)
 import Ghcib.BuildState (BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..), Diagnostic (..), Severity (..))
 import Ghcib.Config (loadConfig)
 import Ghcib.Daemon (startDaemon, stopDaemon)
@@ -85,23 +84,23 @@ statusParser =
 
 
 run :: Command -> IO ()
-run Start = do
-    projectRoot <- getCurrentDirectory
-    running <- runEff . runFileSystemIO . runUnixSocketIO $ do
-        sp <- socketPath projectRoot
-        isDaemonRunning sp
-    if running then
-        putStrLn "Daemon already running."
-    else do
-        startDaemon projectRoot
-        putStrLn "Daemon started."
-run Stop = do
-    projectRoot <- getCurrentDirectory
-    stopDaemon projectRoot
-    putStrLn "Daemon stopped."
-run (Status waitFlag jsonFlag) = do
-    projectRoot <- getCurrentDirectory
+run Start =
     runEff . runFileSystemIO . runUnixSocketIO $ do
+        projectRoot <- getCurrentDirectory
+        sp <- socketPath projectRoot
+        running <- isDaemonRunning sp
+        liftIO
+            $ if running then
+                putStrLn "Daemon already running."
+            else
+                startDaemon projectRoot >> putStrLn "Daemon started."
+run Stop =
+    runEff . runFileSystemIO $ do
+        projectRoot <- getCurrentDirectory
+        liftIO $ stopDaemon projectRoot >> putStrLn "Daemon stopped."
+run (Status waitFlag jsonFlag) =
+    runEff . runFileSystemIO . runUnixSocketIO $ do
+        projectRoot <- getCurrentDirectory
         sockPath <- socketPath projectRoot
         running <- isDaemonRunning sockPath
         unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
@@ -123,8 +122,8 @@ run (Status waitFlag jsonFlag) = do
                 else
                     renderText state
 run (Log followFlag) = do
-    projectRoot <- getCurrentDirectory
     mLogFile <- runEff . runFileSystemIO . runUnixSocketIO $ do
+        projectRoot <- getCurrentDirectory
         sp <- socketPath projectRoot
         running <- isDaemonRunning sp
         if running then do
@@ -146,9 +145,9 @@ run (Log followFlag) = do
                     followLog path
                 else
                     runEff (runFileSystemIO (readFileLbs path)) >>= BSL.putStr
-run Watch = do
-    projectRoot <- getCurrentDirectory
+run Watch =
     runEff . runFileSystemIO . runClock . runUnixSocketIO . runDisplayIO $ do
+        projectRoot <- getCurrentDirectory
         sockPath <- socketPath projectRoot
         running <- isDaemonRunning sockPath
         unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath

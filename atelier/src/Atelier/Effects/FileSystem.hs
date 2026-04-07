@@ -8,6 +8,7 @@ module Atelier.Effects.FileSystem
     , createDirectoryIfMissing
     , removeFile
     , canonicalizePath
+    , getCurrentDirectory
     , getXdgRuntimeDir
     , runFileSystemIO
     , runFileSystemNoOp
@@ -32,6 +33,7 @@ data FileSystem :: Effect where
     CreateDirectoryIfMissing :: Bool -> FilePath -> FileSystem m ()
     RemoveFile :: FilePath -> FileSystem m ()
     CanonicalizePath :: FilePath -> FileSystem m FilePath
+    GetCurrentDirectory :: FileSystem m FilePath
     GetXdgRuntimeDir :: FileSystem m FilePath
 
 
@@ -48,6 +50,7 @@ runFileSystemIO = interpret_ $ \case
     CreateDirectoryIfMissing p path -> liftIO $ Dir.createDirectoryIfMissing p path
     RemoveFile path -> liftIO $ Dir.removeFile path
     CanonicalizePath path -> liftIO $ Dir.canonicalizePath path
+    GetCurrentDirectory -> liftIO Dir.getCurrentDirectory
     GetXdgRuntimeDir -> liftIO $ fromMaybe "/tmp" <$> lookupEnv "XDG_RUNTIME_DIR"
 
 
@@ -61,4 +64,5 @@ runFileSystemNoOp = interpret_ $ \case
     CreateDirectoryIfMissing _ _ -> pure ()
     RemoveFile _ -> pure ()
     CanonicalizePath path -> pure path
+    GetCurrentDirectory -> pure "."
     GetXdgRuntimeDir -> pure "/tmp"

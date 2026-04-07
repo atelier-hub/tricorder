@@ -1,17 +1,15 @@
 module Ghcib.GhciSession (component, mergeDiagnostics, sessionListener) where
 
 import Data.Time (diffUTCTime)
-import Effectful (IOE)
 import Effectful.Exception (throwIO, try)
 import Effectful.Reader.Static (Reader, ask)
-import System.Directory (getCurrentDirectory)
 
 import Data.Map.Strict qualified as Map
 
 import Atelier.Component (Component (..), Listener, defaultComponent)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Delay (Delay, wait)
-import Atelier.Effects.FileSystem (FileSystem)
+import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
@@ -48,7 +46,6 @@ component
        , Delay :> es
        , FileSystem :> es
        , GhciSession :> es
-       , IOE :> es
        , Log :> es
        , Reader Config :> es
        )
@@ -58,7 +55,7 @@ component =
         { name = "GhciSession"
         , listeners = do
             cfg <- ask @Config
-            projectRoot <- liftIO getCurrentDirectory
+            projectRoot <- getCurrentDirectory
             cmd <- resolveCommand cfg projectRoot
             Log.debug $ "GhciSession.component: resolved command = " <> cmd
             Log.debug $ "GhciSession.component: projectRoot = " <> toText projectRoot

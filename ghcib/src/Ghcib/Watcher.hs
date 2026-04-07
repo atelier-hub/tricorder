@@ -2,13 +2,11 @@ module Ghcib.Watcher
     ( component
     ) where
 
-import Effectful (IOE)
 import Effectful.Reader.Static (Reader, ask)
-import System.Directory (getCurrentDirectory)
 import System.FilePath (takeExtension, takeFileName)
 
 import Atelier.Component (Component (..), defaultComponent)
-import Atelier.Effects.FileSystem (FileSystem)
+import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Ghcib.BuildState (ChangeKind (..))
 import Ghcib.Config (Config (..), resolveWatchDirs)
 import Ghcib.Effects.BuildStore (BuildStore, markDirty)
@@ -23,7 +21,6 @@ component
     :: ( BuildStore :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , IOE :> es
        , Reader Config :> es
        )
     => Component es
@@ -32,7 +29,7 @@ component =
         { name = "Watcher"
         , triggers = do
             cfg <- ask @Config
-            projectRoot <- liftIO getCurrentDirectory
+            projectRoot <- getCurrentDirectory
             dirs <- resolveWatchDirs cfg.targets projectRoot
             pure [forever $ watchDirs dirs \path -> markDirty (changeKindFor path)]
         }
