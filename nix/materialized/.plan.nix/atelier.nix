@@ -142,18 +142,13 @@
       exes = {
         "ghcib-exe" = {
           depends = [
-            (hsPkgs."aeson" or (errorHandler.buildDepError "aeson"))
             (hsPkgs."atelier" or (errorHandler.buildDepError "atelier"))
             (hsPkgs."atelier".components.sublibs.atelier-prelude or (errorHandler.buildDepError "atelier:atelier-prelude"))
             (hsPkgs."base" or (errorHandler.buildDepError "base"))
-            (hsPkgs."bytestring" or (errorHandler.buildDepError "bytestring"))
-            (hsPkgs."data-default" or (errorHandler.buildDepError "data-default"))
-            (hsPkgs."directory" or (errorHandler.buildDepError "directory"))
             (hsPkgs."effectful" or (errorHandler.buildDepError "effectful"))
             (hsPkgs."effectful-core" or (errorHandler.buildDepError "effectful-core"))
             (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))
             (hsPkgs."atelier".components.sublibs.ghcib or (errorHandler.buildDepError "atelier:ghcib"))
-            (hsPkgs."time" or (errorHandler.buildDepError "time"))
           ];
           buildable = true;
           modules = [ "Paths_atelier" ];

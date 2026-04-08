@@ -200,6 +200,7 @@ library ghcib
       Ghcib.Effects.UnixSocket
       Ghcib.Events.FileChanged
       Ghcib.GhciSession
+      Ghcib.Program
       Ghcib.Render
       Ghcib.Socket.Client
       Ghcib.Socket.Protocol
@@ -289,18 +290,13 @@ executable ghcib-exe
       TypeFamilies
   ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N"
   build-depends:
-      aeson
-    , atelier
+      atelier
     , atelier-prelude
     , base
-    , bytestring
-    , data-default
-    , directory
     , effectful
     , effectful-core
     , effectful-plugin
     , ghcib
-    , time
   mixins:
       base hiding (Prelude)
   default-language: GHC2021

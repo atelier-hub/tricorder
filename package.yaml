@@ -171,12 +171,7 @@ executables:
     - atelier-prelude
     - ghcib
     - atelier
-    - data-default
     - effectful
-    - aeson
-    - directory
-    - bytestring
-    - time
 
 tests:
   atelier-test:
