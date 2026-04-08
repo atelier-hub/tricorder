@@ -8,14 +8,13 @@ module Ghcib.Socket.Client
     ) where
 
 import Data.Aeson (decode, eitherDecode, encode)
-import Effectful (IOE)
 import Effectful.Exception (try)
 import Numeric (showHex)
 import System.FilePath ((</>))
-import System.IO (hGetLine, hPutStrLn)
 
 import Data.ByteString.Lazy qualified as BSL
 
+import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem, canonicalizePath, createDirectoryIfMissing, getXdgRuntimeDir)
 import Ghcib.BuildState (BuildState)
 import Ghcib.Effects.UnixSocket (UnixSocket, withConnection)
@@ -23,39 +22,41 @@ import Ghcib.GhcPkg.Types (ModuleName)
 import Ghcib.Socket.Protocol (Query (..), StatusQuery (..))
 import Ghcib.SourceLookup (ModuleSourceResult)
 
+import Atelier.Effects.File qualified as File
+
 
 -- | Query the current build status (non-blocking).
 queryStatus
-    :: (IOE :> es, UnixSocket :> es)
+    :: (File :> es, UnixSocket :> es)
     => FilePath
     -> Eff es (Either Text BuildState)
 queryStatus sockPath = withConnection sockPath \h -> do
-    liftIO $ sendQuery h (Status (StatusQuery {awaitDone = False}))
+    sendQuery h (Status (StatusQuery {awaitDone = False}))
     receiveState h
 
 
 -- | Query the build status, blocking until the current build cycle completes.
 queryStatusWait
-    :: (IOE :> es, UnixSocket :> es)
+    :: (File :> es, UnixSocket :> es)
     => FilePath
     -> Eff es (Either Text BuildState)
 queryStatusWait sockPath = withConnection sockPath \h -> do
-    liftIO $ sendQuery h (Status (StatusQuery {awaitDone = True}))
+    sendQuery h (Status (StatusQuery {awaitDone = True}))
     receiveState h
 
 
 -- | Connect and stream build updates, calling the handler after each completed build.
 queryWatch
-    :: (IOE :> es, UnixSocket :> es)
+    :: (File :> es, UnixSocket :> es)
     => FilePath
     -> (BuildState -> Eff es ())
     -> Eff es ()
 queryWatch sockPath handler = withConnection sockPath \h -> do
-    liftIO $ sendQuery h Watch
+    sendQuery h Watch
     loop h
   where
     loop h = do
-        line <- liftIO $ hGetLine h
+        line <- File.hGetLine h
         case decode (BSL.fromStrict (encodeUtf8 (toText line))) of
             Nothing -> pure ()
             Just state -> handler state >> loop h
@@ -63,13 +64,13 @@ queryWatch sockPath handler = withConnection sockPath \h -> do
 
 -- | Look up the source for one or more modules via the daemon.
 querySource
-    :: (IOE :> es, UnixSocket :> es)
+    :: (File :> es, UnixSocket :> es)
     => FilePath
     -> [ModuleName]
     -> Eff es (Either Text [ModuleSourceResult])
 querySource sockPath moduleNames = withConnection sockPath \h -> do
-    liftIO $ sendQuery h (Source moduleNames)
-    line <- liftIO $ hGetLine h
+    sendQuery h (Source moduleNames)
+    line <- File.hGetLine h
     case eitherDecode (BSL.fromStrict (encodeUtf8 (toText line))) of
         Left err -> pure $ Left (toText err)
         Right results -> pure $ Right results
@@ -94,13 +95,13 @@ socketPath rawRoot = do
 
 -- internals
 
-sendQuery :: Handle -> Query -> IO ()
-sendQuery h q = hPutStrLn h (decodeUtf8 (BSL.toStrict (encode q)))
+sendQuery :: (File :> es) => Handle -> Query -> Eff es ()
+sendQuery h q = File.hPutLBsLn h $ encode q
 
 
-receiveState :: (IOE :> es) => Handle -> Eff es (Either Text BuildState)
+receiveState :: (File :> es) => Handle -> Eff es (Either Text BuildState)
 receiveState h = do
-    line <- liftIO $ hGetLine h
+    line <- File.hGetLine h
     case eitherDecode (BSL.fromStrict (encodeUtf8 (toText line))) of
         Left err -> pure $ Left (toText err)
         Right state -> pure $ Right state

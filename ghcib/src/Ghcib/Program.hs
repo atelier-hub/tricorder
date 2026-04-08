@@ -6,12 +6,12 @@ import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
 import Effectful (IOE, runEff)
 import Effectful.Reader.Static (Reader, ask)
-import System.IO (hGetLine)
 
 import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Console (Console)
+import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem
     ( FileSystem
     , doesFileExist
@@ -43,6 +43,7 @@ import Ghcib.Socket.Client
 import Ghcib.Watch (watchDisplay)
 
 import Atelier.Effects.Console qualified as Console
+import Atelier.Effects.File qualified as File
 import Ghcib.Config qualified as Config
 
 
@@ -50,6 +51,7 @@ run
     :: ( Clock :> es
        , Console :> es
        , Display :> es
+       , File :> es
        , FileSystem :> es
        , IOE :> es
        , Reader Command :> es
@@ -87,6 +89,7 @@ stop = do
 
 showStatus
     :: ( Console :> es
+       , File :> es
        , FileSystem :> es
        , IOE :> es
        , UnixSocket :> es
@@ -140,7 +143,14 @@ showStatus waitFlag jsonFlag verboseFlag = do
                 show errs <> " error(s), " <> show warns <> " warning(s) " <> stats <> " " <> ts
 
 
-showLog :: (Console :> es, FileSystem :> es, IOE :> es, UnixSocket :> es) => Bool -> Eff es ()
+showLog
+    :: ( Console :> es
+       , File :> es
+       , FileSystem :> es
+       , IOE :> es
+       , UnixSocket :> es
+       )
+    => Bool -> Eff es ()
 showLog followFlag = do
     projectRoot <- getCurrentDirectory
     sp <- socketPath projectRoot
@@ -162,20 +172,25 @@ showLog followFlag = do
                 Console.putTextLn $ "Log file does not exist yet: " <> toText path
             else
                 if followFlag then
-                    liftIO $ followLog path
+                    followLog path
                 else
                     readFileLbs path >>= Console.putStr . BSL.toStrict
   where
-    followLog path = withFile path ReadMode loop
+    followLog path = File.withFile path ReadMode loop
     loop h =
-        hIsEOF h >>= \case
-            True -> threadDelay 200_000 >> loop h
-            False -> hGetLine h >>= putStrLn >> loop h
+        File.hIsEOF h >>= \case
+            True -> do
+                liftIO $ threadDelay 200_000 -- 200 milliseconds
+                loop h
+            False -> do
+                File.hGetLine h >>= Console.putTextLn
+                loop h
 
 
 watch
     :: ( Clock :> es
        , Display :> es
+       , File :> es
        , FileSystem :> es
        , IOE :> es
        , UnixSocket :> es
@@ -191,6 +206,7 @@ watch = do
 
 showSource
     :: ( Console :> es
+       , File :> es
        , FileSystem :> es
        , IOE :> es
        , UnixSocket :> es
