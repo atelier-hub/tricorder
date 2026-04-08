@@ -5,14 +5,13 @@ import Data.Aeson (encode)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
 import Effectful (IOE, runEff)
-import Effectful.Console.ByteString (Console)
 import Effectful.Reader.Static (Reader, ask)
 import System.IO (hGetLine)
 
 import Data.ByteString.Lazy qualified as BSL
-import Effectful.Console.ByteString qualified as Console
 
 import Atelier.Effects.Clock (Clock)
+import Atelier.Effects.Console (Console)
 import Atelier.Effects.FileSystem
     ( FileSystem
     , doesFileExist
@@ -43,6 +42,7 @@ import Ghcib.Socket.Client
     )
 import Ghcib.Watch (watchDisplay)
 
+import Atelier.Effects.Console qualified as Console
 import Ghcib.Config qualified as Config
 
 
@@ -108,7 +108,7 @@ showStatus waitFlag jsonFlag verboseFlag = do
         else
             queryStatus sockPath
     case result of
-        Left err -> Console.putStrLn $ encodeUtf8 $ "Error: " <> toString err
+        Left err -> Console.putTextLn $ "Error: " <> err
         Right state ->
             if jsonFlag then do
                 Console.putStr $ BSL.toStrict $ encode state
@@ -122,18 +122,18 @@ showStatus waitFlag jsonFlag verboseFlag = do
             tz <- liftIO getCurrentTimeZone
             let printDiag =
                     if verbose then
-                        Console.putStr . encodeUtf8 . diagnosticBlock
+                        Console.putText . diagnosticBlock
                     else
-                        Console.putStrLn . encodeUtf8 . diagnosticLine
+                        Console.putTextLn . diagnosticLine
             mapM_ printDiag r.diagnostics
-            Console.putStrLn $ encodeUtf8 $ buildSummary tz r
+            Console.putTextLn $ buildSummary tz r
             when (any ((== SError) . (.severity)) r.diagnostics) $ liftIO exitFailure
 
     buildSummary tz r =
         let errs = length $ filter ((== SError) . (.severity)) r.diagnostics
             warns = length $ filter ((== SWarning) . (.severity)) r.diagnostics
-            ts = "— " <> formatTime defaultTimeLocale "%H:%M:%S" (utcToLocalTime tz r.completedAt)
-            stats = "(" <> show r.moduleCount <> " modules, " <> formatDuration r.durationMs <> ")"
+            ts = toText $ "— " <> formatTime defaultTimeLocale "%H:%M:%S" (utcToLocalTime tz r.completedAt)
+            stats = toText $ "(" <> show r.moduleCount <> " modules, " <> formatDuration r.durationMs <> ")"
         in  if null r.diagnostics then
                 "All good. " <> stats <> " " <> ts
             else
@@ -159,7 +159,7 @@ showLog followFlag = do
         Just path -> do
             exists <- doesFileExist path
             if not exists then
-                Console.putStrLn $ encodeUtf8 $ "Log file does not exist yet: " <> path
+                Console.putTextLn $ "Log file does not exist yet: " <> toText path
             else
                 if followFlag then
                     liftIO $ followLog path
@@ -204,7 +204,7 @@ showSource moduleNames = do
     unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
     result <- querySource sockPath moduleNames
     case result of
-        Left err -> Console.putStrLn $ encodeUtf8 $ "Error: " <> err
+        Left err -> Console.putTextLn $ "Error: " <> err
         Right results -> renderSourceResults results
 
 

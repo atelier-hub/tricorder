@@ -22,12 +22,10 @@ module Ghcib.Render
 import Data.Time (UTCTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (TimeZone, utc, utcToLocalTime)
-import Effectful.Console.ByteString (Console)
 import Prettyprinter
 import System.FilePath (isAbsolute)
 
-import Effectful.Console.ByteString qualified as Console
-
+import Atelier.Effects.Console (Console)
 import Ghcib.BuildState
     ( BuildPhase (..)
     , BuildResult (..)
@@ -39,6 +37,8 @@ import Ghcib.BuildState
 import Ghcib.Effects.Display (Style (..))
 import Ghcib.GhcPkg.Types (ModuleName (..), PackageId (..))
 import Ghcib.SourceLookup (ModuleSourceResult (..))
+
+import Atelier.Effects.Console qualified as Console
 
 
 -- | Map a 'Severity' to its display 'Style'.
@@ -144,17 +144,17 @@ daemonInfoDoc di =
 -- | Single-line diagnostic for plain-text / shell output.
 --
 -- Format: @E src\/Foo\/Bar.hs:42 \`something\` not in scope@
-diagnosticLine :: Diagnostic -> String
+diagnosticLine :: Diagnostic -> Text
 diagnosticLine d =
-    prefix d.severity <> " " <> d.file <> ":" <> show d.line <> " " <> toString d.title
+    prefix d.severity <> " " <> toText d.file <> ":" <> show d.line <> " " <> d.title
   where
     prefix SError = "E"
     prefix SWarning = "W"
 
 
 -- | One-liner followed by the full GHC message body (verbose mode).
-diagnosticBlock :: Diagnostic -> String
-diagnosticBlock d = diagnosticLine d <> "\n" <> toString d.text
+diagnosticBlock :: Diagnostic -> Text
+diagnosticBlock d = diagnosticLine d <> "\n" <> d.text
 
 
 instance Pretty Diagnostic where
@@ -173,16 +173,14 @@ renderSourceResults :: (Console :> es) => [ModuleSourceResult] -> Eff es ()
 renderSourceResults results = mapM_ renderOne results
   where
     renderOne (SourceFound modName src) = do
-        when (length results > 1) $ Console.putStrLn (encodeUtf8 $ "-- " <> unModuleName modName)
-        Console.putStr (encodeUtf8 src)
+        when (length results > 1) $ Console.putTextLn $ "-- " <> unModuleName modName
+        Console.putText src
         when (length results > 1) $ Console.putStrLn ""
     renderOne (SourceNotFound modName) =
-        Console.putStrLn
-            $ encodeUtf8
+        Console.putTextLn
             $ "Not found: " <> unModuleName modName <> " (module not in any installed package)"
     renderOne (SourceNoHaddock modName pkgId) =
-        Console.putStrLn
-            $ encodeUtf8
+        Console.putTextLn
             $ "No source available: "
                 <> unModuleName modName
                 <> " (package "

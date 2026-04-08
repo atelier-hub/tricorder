@@ -1,9 +1,9 @@
 module Main (main) where
 
 import Effectful (runEff)
-import Effectful.Console.ByteString (runConsole)
 
 import Atelier.Effects.Clock (runClock)
+import Atelier.Effects.Console (runConsole)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Ghcib.Arguments (runArguments)
 import Ghcib.Effects.Display (runDisplayIO)

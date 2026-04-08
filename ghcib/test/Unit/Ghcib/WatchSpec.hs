@@ -76,18 +76,18 @@ spec_Watch = do
 
     describe "diagnosticBlock" do
         it "includes the one-liner prefix for an error" do
-            diagnosticBlock errMsg `shouldContain` "E Foo.hs:10 type mismatch"
+            diagnosticBlock errMsg `shouldContainT` "E Foo.hs:10 type mismatch"
 
         it "includes the full text body after the first line" do
-            diagnosticBlock errMsg `shouldContain` "\ntype mismatch"
+            diagnosticBlock errMsg `shouldContainT` "\ntype mismatch"
 
         it "uses 'W' prefix for warnings" do
-            diagnosticBlock warnMsg `shouldContain` "W Bar.hs:3 unused import"
+            diagnosticBlock warnMsg `shouldContainT` "W Bar.hs:3 unused import"
 
         it "contains both title and text when they differ" do
             let d = mixedMsg
-            diagnosticBlock d `shouldContain` "short title"
-            diagnosticBlock d `shouldContain` "full body of the message"
+            diagnosticBlock d `shouldContainT` "short title"
+            diagnosticBlock d `shouldContainT` "full body of the message"
 
     describe "daemonInfoDoc" do
         it "shows '(all)' when targets is empty" do
@@ -113,6 +113,9 @@ spec_Watch = do
         it "shows log file path when configured" do
             let di = emptyDaemonInfo {logFile = Just "/tmp/ghcib.log"}
             render (daemonInfoDoc di) `shouldContain` "/tmp/ghcib.log"
+  where
+    shouldContainT :: Text -> Text -> Expectation
+    shouldContainT a b = toString a `shouldContain` toString b
 
 
 --------------------------------------------------------------------------------

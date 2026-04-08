@@ -24,6 +24,7 @@ library
       Atelier.Effects.Clock
       Atelier.Effects.Conc
       Atelier.Effects.Conc.Traced
+      Atelier.Effects.Console
       Atelier.Effects.DB
       Atelier.Effects.DB.Config
       Atelier.Effects.DB.Rel8
@@ -320,6 +321,7 @@ test-suite atelier-test
       Unit.Atelier.Effects.ChanSpec
       Unit.Atelier.Effects.Conc.TracedSpec
       Unit.Atelier.Effects.ConcSpec
+      Unit.Atelier.Effects.ConsoleSpec
       Unit.Atelier.Effects.DelaySpec
       Unit.Atelier.Effects.LogSpec
       Unit.Atelier.Effects.PublishingSpec
