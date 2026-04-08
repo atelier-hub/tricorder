@@ -1,16 +1,16 @@
 module Ghcib.Program (run) where
 
-import Control.Concurrent (threadDelay)
 import Data.Aeson (encode)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
-import Effectful (IOE, runEff)
+import Effectful (IOE)
 import Effectful.Reader.Static (Reader, ask)
 
 import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Console (Console)
+import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem
     ( FileSystem
@@ -18,6 +18,7 @@ import Atelier.Effects.FileSystem
     , getCurrentDirectory
     , readFileLbs
     )
+import Atelier.Time (Millisecond)
 import Ghcib.Arguments (Command (..))
 import Ghcib.BuildState
     ( BuildPhase (..)
@@ -30,7 +31,7 @@ import Ghcib.BuildState
 import Ghcib.Config (loadConfig)
 import Ghcib.Daemon (startDaemon, stopDaemon)
 import Ghcib.Effects.Display (Display)
-import Ghcib.Effects.UnixSocket (UnixSocket, runUnixSocketIO)
+import Ghcib.Effects.UnixSocket (UnixSocket)
 import Ghcib.GhcPkg.Types (ModuleName)
 import Ghcib.Render (diagnosticBlock, diagnosticLine, formatDuration, renderSourceResults)
 import Ghcib.Socket.Client
@@ -43,6 +44,7 @@ import Ghcib.Socket.Client
 import Ghcib.Watch (watchDisplay)
 
 import Atelier.Effects.Console qualified as Console
+import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.File qualified as File
 import Ghcib.Config qualified as Config
 
@@ -50,6 +52,7 @@ import Ghcib.Config qualified as Config
 run
     :: ( Clock :> es
        , Console :> es
+       , Delay :> es
        , Display :> es
        , File :> es
        , FileSystem :> es
@@ -89,6 +92,7 @@ stop = do
 
 showStatus
     :: ( Console :> es
+       , Delay :> es
        , File :> es
        , FileSystem :> es
        , IOE :> es
@@ -99,7 +103,9 @@ showStatus waitFlag jsonFlag verboseFlag = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
     running <- isDaemonRunning sockPath
-    unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
+    unless running $ do
+        liftIO $ startDaemon projectRoot
+        waitForSocket sockPath
     when (waitFlag && not jsonFlag) $ do
         current <- queryStatus sockPath
         case current of
@@ -145,9 +151,9 @@ showStatus waitFlag jsonFlag verboseFlag = do
 
 showLog
     :: ( Console :> es
+       , Delay :> es
        , File :> es
        , FileSystem :> es
-       , IOE :> es
        , UnixSocket :> es
        )
     => Bool -> Eff es ()
@@ -180,7 +186,7 @@ showLog followFlag = do
     loop h =
         File.hIsEOF h >>= \case
             True -> do
-                liftIO $ threadDelay 200_000 -- 200 milliseconds
+                Delay.wait (200 :: Millisecond)
                 loop h
             False -> do
                 File.hGetLine h >>= Console.putTextLn
@@ -189,6 +195,7 @@ showLog followFlag = do
 
 watch
     :: ( Clock :> es
+       , Delay :> es
        , Display :> es
        , File :> es
        , FileSystem :> es
@@ -200,12 +207,15 @@ watch = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
     running <- isDaemonRunning sockPath
-    unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
+    unless running $ do
+        liftIO $ startDaemon projectRoot
+        waitForSocket sockPath
     watchDisplay sockPath
 
 
 showSource
     :: ( Console :> es
+       , Delay :> es
        , File :> es
        , FileSystem :> es
        , IOE :> es
@@ -217,7 +227,9 @@ showSource moduleNames = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
     running <- isDaemonRunning sockPath
-    unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
+    unless running $ do
+        liftIO $ startDaemon projectRoot
+        waitForSocket sockPath
     result <- querySource sockPath moduleNames
     case result of
         Left err -> Console.putTextLn $ "Error: " <> err
@@ -225,8 +237,8 @@ showSource moduleNames = do
 
 
 -- | Poll until the daemon socket becomes connectable.
-waitForSocket :: FilePath -> IO ()
+waitForSocket :: (Delay :> es, UnixSocket :> es) => FilePath -> Eff es ()
 waitForSocket sockPath = do
-    threadDelay 200_000 -- 200ms
-    running <- runEff $ runUnixSocketIO $ isDaemonRunning sockPath
+    Delay.wait (200 :: Millisecond)
+    running <- isDaemonRunning sockPath
     unless running $ waitForSocket sockPath
