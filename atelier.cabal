@@ -30,6 +30,7 @@ library
       Atelier.Effects.DB.Rel8
       Atelier.Effects.Delay
       Atelier.Effects.Env
+      Atelier.Effects.File
       Atelier.Effects.FileSystem
       Atelier.Effects.Log
       Atelier.Effects.Monitoring.Metrics

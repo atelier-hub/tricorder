@@ -4,6 +4,7 @@ import Effectful (runEff)
 
 import Atelier.Effects.Clock (runClock)
 import Atelier.Effects.Console (runConsole)
+import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Ghcib.Arguments (runArguments)
 import Ghcib.Effects.Display (runDisplayIO)
@@ -16,6 +17,7 @@ main :: IO ()
 main =
     runEff
         . runConsole
+        . runFile
         . runFileSystemIO
         . runArguments
         . runClock
