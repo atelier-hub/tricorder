@@ -9,6 +9,7 @@ import Effectful.Reader.Static (Reader, runReader)
 import Options.Applicative
     ( Parser
     , ParserInfo
+    , argument
     , command
     , execParser
     , fullDesc
@@ -18,10 +19,14 @@ import Options.Applicative
     , hsubparser
     , info
     , long
+    , metavar
     , progDesc
     , short
+    , str
     , switch
     )
+
+import Ghcib.GhcPkg.Types (ModuleName (..))
 
 
 data Command
@@ -30,6 +35,7 @@ data Command
     | Status Bool Bool Bool
     | Watch
     | Log Bool
+    | Source [ModuleName]
 
 
 runArguments :: (IOE :> es) => Eff (Reader Command : es) a -> Eff es a
@@ -58,6 +64,7 @@ commandParser =
             <> command "status" (info statusParser (progDesc "Print build diagnostics (--json for machine-readable output)"))
             <> command "watch" (info (pure Watch) (progDesc "Auto-refreshing terminal display"))
             <> command "log" (info logParser (progDesc "Show daemon log output"))
+            <> command "source" (info sourceParser (progDesc "Print the Haskell source of one or more installed modules"))
         )
 
 
@@ -87,3 +94,9 @@ statusParser =
                 <> short 'v'
                 <> help "Print full GHC message body under each diagnostic"
             )
+
+
+sourceParser :: Parser Command
+sourceParser =
+    Source
+        <$> some (argument (fromString <$> str) (metavar "MODULE" <> help "Dotted module name, e.g. Data.Map.Strict"))

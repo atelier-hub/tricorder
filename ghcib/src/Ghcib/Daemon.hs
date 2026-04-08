@@ -5,6 +5,7 @@ module Ghcib.Daemon
     ) where
 
 import Control.Exception (try)
+import Data.Default (def)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
 import Effectful.Reader.Static (runReader)
@@ -12,6 +13,7 @@ import System.FilePath (makeRelative)
 import System.Posix.Process (createSession, forkProcess)
 
 import Atelier.Component (runSystem)
+import Atelier.Effects.Cache (runCacheTtl)
 import Atelier.Effects.Clock (runClock)
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
@@ -22,10 +24,13 @@ import Ghcib.BuildState (DaemonInfo (..))
 import Ghcib.Config (Config (..), loadConfig, resolveTargets, resolveWatchDirs)
 import Ghcib.Effects.BuildStore (runBuildStore)
 import Ghcib.Effects.FileWatcher (runFileWatcherIO)
+import Ghcib.Effects.GhcPkg (runGhcPkgIO)
 import Ghcib.Effects.GhciSession (runGhciSessionIO)
 import Ghcib.Effects.UnixSocket (runUnixSocketIO)
+import Ghcib.GhcPkg.Types (ModuleName, PackageId)
 import Ghcib.Socket.Client (socketPath)
 
+import Atelier.Effects.Cache.Config qualified as CacheConfig
 import Atelier.Effects.Conc qualified as Conc
 import Ghcib.Config qualified as Config
 import Ghcib.GhciSession qualified as GhciSession
@@ -70,6 +75,10 @@ runDaemon projectRoot cfg = do
             . runUnixSocketIO
             . runFileSystemIO
             . runReader effectiveCfg
+            . runReader (def :: CacheConfig.Config)
+            . runGhcPkgIO
+            . runCacheTtl @ModuleName @PackageId
+            . runCacheTtl @(PackageId, ModuleName) @Text
             $ do
                 runBuildStore daemonInfo do
                     runSystem

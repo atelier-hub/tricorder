@@ -18,6 +18,7 @@ ghcib is a daemon-based GHCi build monitor. It exposes build state over a Unix s
 - `ghcib status --json` — output full build state as JSON
 - `ghcib status --wait --json` — wait then output JSON
 - `ghcib status --verbose` / `-v` — print full GHC message body under each diagnostic
+- `ghcib source MODULE...` — print Haskell source for one or more installed modules (e.g. `ghcib source Data.Map.Strict`)
 - `ghcib watch` — auto-refreshing terminal display (for humans)
 
 ## Checking Build Status

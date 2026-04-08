@@ -16,13 +16,17 @@ module Ghcib.Render
     , diagnosticLine
     , diagnosticBlock
     , formatDuration
+    , renderSourceResults
     ) where
 
 import Data.Time (UTCTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (TimeZone, utc, utcToLocalTime)
+import Effectful.Console.ByteString (Console)
 import Prettyprinter
 import System.FilePath (isAbsolute)
+
+import Effectful.Console.ByteString qualified as Console
 
 import Ghcib.BuildState
     ( BuildPhase (..)
@@ -33,6 +37,8 @@ import Ghcib.BuildState
     , Severity (..)
     )
 import Ghcib.Effects.Display (Style (..))
+import Ghcib.GhcPkg.Types (ModuleName (..), PackageId (..))
+import Ghcib.SourceLookup (ModuleSourceResult (..))
 
 
 -- | Map a 'Severity' to its display 'Style'.
@@ -158,3 +164,26 @@ instance Pretty DaemonInfo where
 
 instance Pretty BuildState where
     pretty bs = unAnnotate (buildStateDoc utc bs)
+
+
+renderSourceResults :: (Console :> es) => [ModuleSourceResult] -> Eff es ()
+renderSourceResults results = mapM_ renderOne results
+  where
+    renderOne (SourceFound modName src) = do
+        when (length results > 1) $ Console.putStrLn (encodeUtf8 $ "-- " <> unModuleName modName)
+        Console.putStr (encodeUtf8 src)
+        when (length results > 1) $ Console.putStrLn ""
+    renderOne (SourceNotFound modName) =
+        Console.putStrLn
+            $ encodeUtf8
+            $ "Not found: " <> unModuleName modName <> " (module not in any installed package)"
+    renderOne (SourceNoHaddock modName pkgId) =
+        Console.putStrLn
+            $ encodeUtf8
+            $ "No source available: "
+                <> unModuleName modName
+                <> " (package "
+                <> unPackageId pkgId
+                <> " was built without documentation; try `cabal get "
+                <> unPackageId pkgId
+                <> "`)"

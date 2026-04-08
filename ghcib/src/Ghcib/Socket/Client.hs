@@ -2,6 +2,7 @@ module Ghcib.Socket.Client
     ( queryStatus
     , queryStatusWait
     , queryWatch
+    , querySource
     , socketPath
     , isDaemonRunning
     ) where
@@ -18,7 +19,9 @@ import Data.ByteString.Lazy qualified as BSL
 import Atelier.Effects.FileSystem (FileSystem, canonicalizePath, createDirectoryIfMissing, getXdgRuntimeDir)
 import Ghcib.BuildState (BuildState)
 import Ghcib.Effects.UnixSocket (UnixSocket, withConnection)
+import Ghcib.GhcPkg.Types (ModuleName)
 import Ghcib.Socket.Protocol (Query (..), StatusQuery (..))
+import Ghcib.SourceLookup (ModuleSourceResult)
 
 
 -- | Query the current build status (non-blocking).
@@ -56,6 +59,20 @@ queryWatch sockPath handler = withConnection sockPath \h -> do
         case decode (BSL.fromStrict (encodeUtf8 (toText line))) of
             Nothing -> pure ()
             Just state -> handler state >> loop h
+
+
+-- | Look up the source for one or more modules via the daemon.
+querySource
+    :: (IOE :> es, UnixSocket :> es)
+    => FilePath
+    -> [ModuleName]
+    -> Eff es (Either Text [ModuleSourceResult])
+querySource sockPath moduleNames = withConnection sockPath \h -> do
+    liftIO $ sendQuery h (Source moduleNames)
+    line <- liftIO $ hGetLine h
+    case eitherDecode (BSL.fromStrict (encodeUtf8 (toText line))) of
+        Left err -> pure $ Left (toText err)
+        Right results -> pure $ Right results
 
 
 -- | Check whether the daemon is running by attempting a socket connection.

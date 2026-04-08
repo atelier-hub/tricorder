@@ -12,6 +12,7 @@ module Atelier.Effects.Cache
 
       -- * Interpreters
     , runCacheTtl
+    , runCacheForever
     ) where
 
 import Data.Time (NominalDiffTime, UTCTime, addUTCTime)
@@ -127,3 +128,29 @@ evictExpiredEntries store ttl now =
         )
         0
         $ Map.listT store
+
+
+-- | Run the Cache effect with no TTL (entries live forever).
+--
+-- Uses a plain STM 'Map' with no eviction. Useful for tests and
+-- session-scoped caches where eviction is never needed.
+runCacheForever
+    :: forall key value es a
+     . (Concurrent :> es, Hashable key)
+    => Eff (Cache key value : es) a
+    -> Eff es a
+runCacheForever action = do
+    store <- STM.atomically (Map.new :: STM (Map key value))
+    interpretWith action $ \_ -> \case
+        CacheLookup key ->
+            STM.atomically $ Map.lookup key store
+        CacheInsert key val ->
+            STM.atomically $ Map.insert val key store
+        CacheDelete key ->
+            STM.atomically $ Map.delete key store
+        CacheModify key f ->
+            STM.atomically $ do
+                existing <- Map.lookup key store
+                let newVal = f existing
+                Map.insert newVal key store
+                pure newVal

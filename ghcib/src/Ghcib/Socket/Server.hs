@@ -6,11 +6,15 @@ import Effectful.Exception (finally, throwIO)
 import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Component (Component (..), Trigger, defaultComponent)
+import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Delay (Delay, wait)
+import Atelier.Effects.FileSystem (FileSystem)
+import Atelier.Effects.Log (Log)
 import Atelier.Time (Millisecond)
 import Ghcib.BuildState (BuildPhase (..), BuildState (..))
 import Ghcib.Effects.BuildStore (BuildStore, getState, waitForNext, waitUntilDone)
+import Ghcib.Effects.GhcPkg (GhcPkg)
 import Ghcib.Effects.UnixSocket
     ( UnixSocket
     , acceptHandle
@@ -22,6 +26,7 @@ import Ghcib.Effects.UnixSocket
     , socketFileExists
     )
 import Ghcib.Socket.Protocol (ErrorResponse (..), Query (..), StatusQuery (..))
+import Ghcib.SourceLookup (ModuleName, PackageId, lookupModuleSource)
 
 import Atelier.Effects.Conc qualified as Conc
 
@@ -32,11 +37,16 @@ data SocketRemoved = SocketRemoved
 
 
 -- | SocketServer component.
--- Listens on a Unix socket and responds to status/watch queries.
+-- Listens on a Unix socket and responds to status/watch/source queries.
 component
     :: ( BuildStore :> es
+       , Cache (PackageId, ModuleName) Text :> es
+       , Cache ModuleName PackageId :> es
        , Conc :> es
        , Delay :> es
+       , FileSystem :> es
+       , GhcPkg :> es
+       , Log :> es
        , UnixSocket :> es
        )
     => FilePath
@@ -51,8 +61,13 @@ component sockPath =
 
 acceptTrigger
     :: ( BuildStore :> es
+       , Cache (PackageId, ModuleName) Text :> es
+       , Cache ModuleName PackageId :> es
        , Conc :> es
        , Delay :> es
+       , FileSystem :> es
+       , GhcPkg :> es
+       , Log :> es
        , UnixSocket :> es
        )
     => FilePath
@@ -73,7 +88,18 @@ socketMonitorTrigger sockPath = forever do
     unless exists $ throwIO SocketRemoved
 
 
-handleConnection :: (BuildStore :> es, Delay :> es, UnixSocket :> es) => Handle -> Eff es ()
+handleConnection
+    :: ( BuildStore :> es
+       , Cache (PackageId, ModuleName) Text :> es
+       , Cache ModuleName PackageId :> es
+       , Delay :> es
+       , FileSystem :> es
+       , GhcPkg :> es
+       , Log :> es
+       , UnixSocket :> es
+       )
+    => Handle
+    -> Eff es ()
 handleConnection h = do
     line <- readLine h
     case decode (BSL.fromStrict (encodeUtf8 line)) of
@@ -81,11 +107,24 @@ handleConnection h = do
         Just query -> dispatch query h
 
 
-dispatch :: (BuildStore :> es, Delay :> es, UnixSocket :> es) => Query -> Handle -> Eff es ()
+dispatch
+    :: ( BuildStore :> es
+       , Cache (PackageId, ModuleName) Text :> es
+       , Cache ModuleName PackageId :> es
+       , Delay :> es
+       , FileSystem :> es
+       , GhcPkg :> es
+       , Log :> es
+       , UnixSocket :> es
+       )
+    => Query
+    -> Handle
+    -> Eff es ()
 dispatch query h = case query of
     Status (StatusQuery False) -> respondOnce h
     Status (StatusQuery True) -> respondWhenDone h
     Watch -> watchStream h
+    Source moduleNames -> respondSource moduleNames h
 
 
 respondOnce :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()
@@ -128,6 +167,23 @@ watchStream h = do
         newState <- waitForNext bid
         sendJson h newState
         loop newState.buildId
+
+
+-- | Look up source for each requested module and send the results as a JSON array.
+respondSource
+    :: ( Cache (PackageId, ModuleName) Text :> es
+       , Cache ModuleName PackageId :> es
+       , FileSystem :> es
+       , GhcPkg :> es
+       , Log :> es
+       , UnixSocket :> es
+       )
+    => [ModuleName]
+    -> Handle
+    -> Eff es ()
+respondSource moduleNames h = do
+    results <- mapM lookupModuleSource moduleNames
+    sendJson h results
 
 
 sendJson :: (ToJSON a, UnixSocket :> es) => Handle -> a -> Eff es ()

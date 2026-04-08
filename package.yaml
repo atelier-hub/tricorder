@@ -149,7 +149,9 @@ internal-libraries:
     - network
     - prettyprinter
     - prettyprinter-ansi-terminal
+    - hashable
     - optparse-applicative
+    - typed-process
     - stm
     - text
     - time

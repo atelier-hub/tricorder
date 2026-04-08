@@ -1,5 +1,5 @@
 module Atelier.Effects.FileSystem
-    ( FileSystem
+    ( FileSystem (..)
     , readFileBs
     , readFileLbs
     , doesFileExist

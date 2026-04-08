@@ -197,14 +197,17 @@ library ghcib
       Ghcib.Effects.Display
       Ghcib.Effects.FileWatcher
       Ghcib.Effects.GhciSession
+      Ghcib.Effects.GhcPkg
       Ghcib.Effects.UnixSocket
       Ghcib.Events.FileChanged
       Ghcib.GhciSession
+      Ghcib.GhcPkg.Types
       Ghcib.Program
       Ghcib.Render
       Ghcib.Socket.Client
       Ghcib.Socket.Protocol
       Ghcib.Socket.Server
+      Ghcib.SourceLookup
       Ghcib.Watch
       Ghcib.Watcher
   other-modules:
@@ -249,6 +252,7 @@ library ghcib
     , filepath
     , fsnotify
     , ghcid
+    , hashable
     , network
     , optparse-applicative
     , prettyprinter
@@ -258,6 +262,7 @@ library ghcib
     , time
     , time-units
     , toml-reader
+    , typed-process
     , unix
   mixins:
       base hiding (Prelude)
@@ -370,7 +375,10 @@ test-suite ghcib-test
       Unit.Ghcib.DebounceSpec
       Unit.Ghcib.FileWatcherSpec
       Unit.Ghcib.GhciSessionSpec
+      Unit.Ghcib.GhcPkgSpec
       Unit.Ghcib.SocketSpec
+      Unit.Ghcib.SourceLookupSpec
+      Unit.Ghcib.SourceSpec
       Unit.Ghcib.WatchSpec
       Paths_atelier
   autogen-modules:

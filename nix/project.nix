@@ -28,6 +28,9 @@ pkgs.haskell-nix.cabalProject' {
   # Package-specific configuration
   modules = [
     {
+      # Build Haddock (including hyperlinked source) for all packages
+      doHaddock = true;
+
       packages = {
         # Disable tests for tmp-postgres
         tmp-postgres.doCheck = false;

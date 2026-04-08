@@ -123,6 +123,7 @@
             (hsPkgs."filepath" or (errorHandler.buildDepError "filepath"))
             (hsPkgs."fsnotify" or (errorHandler.buildDepError "fsnotify"))
             (hsPkgs."ghcid" or (errorHandler.buildDepError "ghcid"))
+            (hsPkgs."hashable" or (errorHandler.buildDepError "hashable"))
             (hsPkgs."network" or (errorHandler.buildDepError "network"))
             (hsPkgs."optparse-applicative" or (errorHandler.buildDepError "optparse-applicative"))
             (hsPkgs."prettyprinter" or (errorHandler.buildDepError "prettyprinter"))
@@ -132,6 +133,7 @@
             (hsPkgs."time" or (errorHandler.buildDepError "time"))
             (hsPkgs."time-units" or (errorHandler.buildDepError "time-units"))
             (hsPkgs."toml-reader" or (errorHandler.buildDepError "toml-reader"))
+            (hsPkgs."typed-process" or (errorHandler.buildDepError "typed-process"))
             (hsPkgs."unix" or (errorHandler.buildDepError "unix"))
           ];
           buildable = true;

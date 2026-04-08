@@ -5,10 +5,12 @@ import Data.Aeson (encode)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
 import Effectful (IOE, runEff)
+import Effectful.Console.ByteString (Console)
 import Effectful.Reader.Static (Reader, ask)
 import System.IO (hGetLine)
 
 import Data.ByteString.Lazy qualified as BSL
+import Effectful.Console.ByteString qualified as Console
 
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.FileSystem
@@ -30,9 +32,11 @@ import Ghcib.Config (loadConfig)
 import Ghcib.Daemon (startDaemon, stopDaemon)
 import Ghcib.Effects.Display (Display)
 import Ghcib.Effects.UnixSocket (UnixSocket, runUnixSocketIO)
-import Ghcib.Render (diagnosticBlock, diagnosticLine, formatDuration)
+import Ghcib.GhcPkg.Types (ModuleName)
+import Ghcib.Render (diagnosticBlock, diagnosticLine, formatDuration, renderSourceResults)
 import Ghcib.Socket.Client
     ( isDaemonRunning
+    , querySource
     , queryStatus
     , queryStatusWait
     , socketPath
@@ -44,6 +48,7 @@ import Ghcib.Config qualified as Config
 
 run
     :: ( Clock :> es
+       , Console :> es
        , Display :> es
        , FileSystem :> es
        , IOE :> es
@@ -58,28 +63,31 @@ run =
         (Status waitFlag jsonFlag verboseFlag) -> showStatus waitFlag jsonFlag verboseFlag
         (Log followFlag) -> showLog followFlag
         Watch -> watch
+        (Source moduleNames) -> showSource moduleNames
 
 
-start :: (FileSystem :> es, IOE :> es, UnixSocket :> es) => Eff es ()
+start :: (Console :> es, FileSystem :> es, IOE :> es, UnixSocket :> es) => Eff es ()
 start = do
     projectRoot <- getCurrentDirectory
     sp <- socketPath projectRoot
     running <- isDaemonRunning sp
-    liftIO
-        $ if running then
-            putStrLn "Daemon already running."
-        else
-            startDaemon projectRoot >> putStrLn "Daemon started."
+    if running then
+        Console.putStrLn "Daemon already running."
+    else do
+        liftIO $ startDaemon projectRoot
+        Console.putStrLn "Daemon started."
 
 
-stop :: (FileSystem :> es, IOE :> es) => Eff es ()
+stop :: (Console :> es, FileSystem :> es, IOE :> es) => Eff es ()
 stop = do
     projectRoot <- getCurrentDirectory
-    liftIO $ stopDaemon projectRoot >> putStrLn "Daemon stopped."
+    liftIO $ stopDaemon projectRoot
+    Console.putStrLn "Daemon stopped."
 
 
 showStatus
-    :: ( FileSystem :> es
+    :: ( Console :> es
+       , FileSystem :> es
        , IOE :> es
        , UnixSocket :> es
        )
@@ -92,29 +100,34 @@ showStatus waitFlag jsonFlag verboseFlag = do
     when (waitFlag && not jsonFlag) $ do
         current <- queryStatus sockPath
         case current of
-            Right BuildState {phase = Building} -> liftIO $ putStrLn "Building..."
+            Right BuildState {phase = Building} -> Console.putStrLn "Building..."
             _ -> pure ()
     result <-
         if waitFlag then
             queryStatusWait sockPath
         else
             queryStatus sockPath
-    liftIO $ case result of
-        Left err -> putStrLn $ "Error: " <> toString err
+    case result of
+        Left err -> Console.putStrLn $ encodeUtf8 $ "Error: " <> toString err
         Right state ->
-            if jsonFlag then
-                BSL.putStr (encode state) >> putStrLn ""
+            if jsonFlag then do
+                Console.putStr $ BSL.toStrict $ encode state
+                Console.putStrLn ""
             else
                 renderText verboseFlag state
   where
     renderText verbose state = case state.phase of
-        Building -> putStrLn "Building..."
+        Building -> Console.putStrLn "Building..."
         Done r -> do
-            tz <- getCurrentTimeZone
-            let printDiag = if verbose then putStr . diagnosticBlock else putStrLn . diagnosticLine
+            tz <- liftIO getCurrentTimeZone
+            let printDiag =
+                    if verbose then
+                        Console.putStr . encodeUtf8 . diagnosticBlock
+                    else
+                        Console.putStrLn . encodeUtf8 . diagnosticLine
             mapM_ printDiag r.diagnostics
-            putStrLn $ buildSummary tz r
-            when (any ((== SError) . (.severity)) r.diagnostics) exitFailure
+            Console.putStrLn $ encodeUtf8 $ buildSummary tz r
+            when (any ((== SError) . (.severity)) r.diagnostics) $ liftIO exitFailure
 
     buildSummary tz r =
         let errs = length $ filter ((== SError) . (.severity)) r.diagnostics
@@ -127,7 +140,7 @@ showStatus waitFlag jsonFlag verboseFlag = do
                 show errs <> " error(s), " <> show warns <> " warning(s) " <> stats <> " " <> ts
 
 
-showLog :: (FileSystem :> es, IOE :> es, UnixSocket :> es) => Bool -> Eff es ()
+showLog :: (Console :> es, FileSystem :> es, IOE :> es, UnixSocket :> es) => Bool -> Eff es ()
 showLog followFlag = do
     projectRoot <- getCurrentDirectory
     sp <- socketPath projectRoot
@@ -142,16 +155,16 @@ showLog followFlag = do
             Config.logFile <$> loadConfig projectRoot
     case mLogFile of
         Nothing ->
-            liftIO $ putStrLn "No log file configured. Add `log_file = \"/path/to/ghcib.log\"` to .ghcib.toml"
+            Console.putStrLn "No log file configured. Add `log_file = \"/path/to/ghcib.log\"` to .ghcib.toml"
         Just path -> do
             exists <- doesFileExist path
             if not exists then
-                liftIO $ putStrLn $ "Log file does not exist yet: " <> path
+                Console.putStrLn $ encodeUtf8 $ "Log file does not exist yet: " <> path
             else
                 if followFlag then
                     liftIO $ followLog path
                 else
-                    readFileLbs path >>= liftIO . BSL.putStr
+                    readFileLbs path >>= Console.putStr . BSL.toStrict
   where
     followLog path = withFile path ReadMode loop
     loop h =
@@ -174,6 +187,25 @@ watch = do
     running <- isDaemonRunning sockPath
     unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
     watchDisplay sockPath
+
+
+showSource
+    :: ( Console :> es
+       , FileSystem :> es
+       , IOE :> es
+       , UnixSocket :> es
+       )
+    => [ModuleName]
+    -> Eff es ()
+showSource moduleNames = do
+    projectRoot <- getCurrentDirectory
+    sockPath <- socketPath projectRoot
+    running <- isDaemonRunning sockPath
+    unless running $ liftIO $ startDaemon projectRoot >> waitForSocket sockPath
+    result <- querySource sockPath moduleNames
+    case result of
+        Left err -> Console.putStrLn $ encodeUtf8 $ "Error: " <> err
+        Right results -> renderSourceResults results
 
 
 -- | Poll until the daemon socket becomes connectable.

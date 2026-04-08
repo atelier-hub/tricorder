@@ -6,6 +6,8 @@ module Ghcib.Socket.Protocol
 
 import Data.Aeson (FromJSON, ToJSON)
 
+import Ghcib.GhcPkg.Types (ModuleName)
+
 
 data StatusQuery = StatusQuery {awaitDone :: Bool}
     deriving stock (Eq, Generic, Show)
@@ -15,6 +17,7 @@ data StatusQuery = StatusQuery {awaitDone :: Bool}
 data Query
     = Status StatusQuery
     | Watch
+    | Source [ModuleName]
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
 
