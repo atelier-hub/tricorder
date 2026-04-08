@@ -1,0 +1,17 @@
+{
+  "name": "atelier",
+  "metadata": {
+    "description": "Atelier plugin marketplace"
+  },
+  "owner": {
+    "name": "atelier"
+  },
+  "plugins": [
+    {
+      "name": "ghcib",
+      "source": "./.claude-plugin/ghcib",
+      "description": "Daemon-based GHCi build status monitor for Haskell projects",
+      "version": "0.1.0"
+    }
+  ]
+}
