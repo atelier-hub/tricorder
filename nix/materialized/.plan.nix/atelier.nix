@@ -54,6 +54,7 @@
           (hsPkgs."hs-opentelemetry-exporter-otlp" or (errorHandler.buildDepError "hs-opentelemetry-exporter-otlp"))
           (hsPkgs."hs-opentelemetry-sdk" or (errorHandler.buildDepError "hs-opentelemetry-sdk"))
           (hsPkgs."http-api-data" or (errorHandler.buildDepError "http-api-data"))
+          (hsPkgs."http-types" or (errorHandler.buildDepError "http-types"))
           (hsPkgs."ki" or (errorHandler.buildDepError "ki"))
           (hsPkgs."list-t" or (errorHandler.buildDepError "list-t"))
           (hsPkgs."prometheus-client" or (errorHandler.buildDepError "prometheus-client"))
@@ -66,6 +67,8 @@
           (hsPkgs."unagi-chan" or (errorHandler.buildDepError "unagi-chan"))
           (hsPkgs."unordered-containers" or (errorHandler.buildDepError "unordered-containers"))
           (hsPkgs."uuid" or (errorHandler.buildDepError "uuid"))
+          (hsPkgs."wai" or (errorHandler.buildDepError "wai"))
+          (hsPkgs."warp" or (errorHandler.buildDepError "warp"))
         ];
         buildable = true;
         modules = [ "Paths_atelier" ];

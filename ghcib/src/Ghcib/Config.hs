@@ -48,6 +48,7 @@ data Config = Config
     , debounceMs :: Millisecond
     , outputFile :: Maybe FilePath
     , logFile :: Maybe FilePath
+    , metricsPort :: Maybe Int
     }
     deriving stock (Eq, Generic, Show)
     deriving (FromJSON) via QuietSnake Config
@@ -61,6 +62,7 @@ instance Default Config where
             , debounceMs = 100
             , outputFile = Just "build.json"
             , logFile = Nothing
+            , metricsPort = Nothing
             }
 
 
@@ -76,6 +78,7 @@ instance DecodeTOML Config where
         debounceMs <- getFieldOr 100 "debounce_ms"
         outputFile <- getFieldOr (Just "build.json") "output_file"
         logFile <- getFieldOpt "log_file"
+        metricsPort <- getFieldOpt "metrics_port"
         pure
             Config
                 { command = command
@@ -83,6 +86,7 @@ instance DecodeTOML Config where
                 , debounceMs = debounceMs
                 , outputFile = outputFile
                 , logFile = logFile
+                , metricsPort = metricsPort
                 }
 
 

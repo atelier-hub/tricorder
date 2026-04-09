@@ -83,7 +83,7 @@ runBuildStoreSTM eff = do
         Building -> True
         Done _ -> False
 
-    emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing}
+    emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing, metricsPort = Nothing}
 
 
 -- | Production interpreter that shares a 'BuildStateRef' TVar with writers
