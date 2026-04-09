@@ -27,6 +27,7 @@ data DaemonInfo = DaemonInfo
     , watchDirs :: [FilePath]
     , sockPath :: FilePath
     , logFile :: Maybe FilePath
+    , metricsPort :: Maybe Int
     }
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)

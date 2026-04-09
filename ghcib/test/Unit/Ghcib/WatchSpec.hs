@@ -124,7 +124,7 @@ render = toString . renderStrict . layoutPretty defaultLayoutOptions
 
 
 emptyDaemonInfo :: DaemonInfo
-emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing}
+emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing, metricsPort = Nothing}
 
 
 buildingState :: BuildState

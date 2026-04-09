@@ -33,6 +33,7 @@ library
       Atelier.Effects.Log
       Atelier.Effects.Monitoring.Metrics
       Atelier.Effects.Monitoring.Metrics.Registry
+      Atelier.Effects.Monitoring.Metrics.Server
       Atelier.Effects.Monitoring.Tracing
       Atelier.Effects.Monitoring.Tracing.Provider
       Atelier.Effects.Publishing
@@ -90,6 +91,7 @@ library
     , hs-opentelemetry-exporter-otlp
     , hs-opentelemetry-sdk
     , http-api-data
+    , http-types
     , ki
     , list-t
     , prometheus-client
@@ -102,6 +104,8 @@ library
     , unagi-chan
     , unordered-containers
     , uuid
+    , wai
+    , warp
   mixins:
       base hiding (Prelude)
   default-language: GHC2021
@@ -202,6 +206,7 @@ library ghcib
       Ghcib.Events.FileChanged
       Ghcib.GhciSession
       Ghcib.GhcPkg.Types
+      Ghcib.Observability
       Ghcib.Program
       Ghcib.Render
       Ghcib.Socket.Client
@@ -293,7 +298,7 @@ executable ghcib-exe
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N"
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
   build-depends:
       atelier
     , atelier-prelude

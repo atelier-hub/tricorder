@@ -19,6 +19,7 @@ import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.FileSystem (removeFile, runFileSystemIO)
 import Atelier.Effects.Log (Severity (..), runLogNoOp, runLogToHandle)
+import Atelier.Effects.Monitoring.Metrics (runMetrics)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
 import Ghcib.BuildState (DaemonInfo (..))
 import Ghcib.Config (Config (..), loadConfig, resolveTargets, resolveWatchDirs)
@@ -34,6 +35,7 @@ import Atelier.Effects.Cache.Config qualified as CacheConfig
 import Atelier.Effects.Conc qualified as Conc
 import Ghcib.Config qualified as Config
 import Ghcib.GhciSession qualified as GhciSession
+import Ghcib.Observability qualified as Observability
 import Ghcib.Socket.Server qualified as SocketServer
 import Ghcib.Watcher qualified as Watcher
 
@@ -56,6 +58,7 @@ runDaemon projectRoot cfg = do
                 , watchDirs = map (makeRelative projectRoot) watchDirs
                 , sockPath
                 , logFile = cfg.logFile
+                , metricsPort = cfg.metricsPort
                 }
     case cfg.logFile of
         Nothing -> runWith runLogNoOp sockPath daemonInfo effectiveCfg
@@ -69,6 +72,7 @@ runDaemon projectRoot cfg = do
             . runTracingNoOp
             . runLogger
             . runClock
+            . runMetrics
             . runDelay
             . runConc
             . runFileWatcherIO
@@ -83,7 +87,8 @@ runDaemon projectRoot cfg = do
             $ do
                 runBuildStore daemonInfo do
                     runSystem
-                        [ Watcher.component
+                        [ Observability.component
+                        , Watcher.component
                         , GhciSession.component
                         , SocketServer.component sockPath
                         ]

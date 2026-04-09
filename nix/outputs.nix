@@ -25,6 +25,12 @@ let
 
   inherit (pkgs) lib;
 
+  # Observability stack (Prometheus, Grafana, Tempo, Loki, Node Exporter)
+  observability = import ./observability {
+    inherit pkgs lib;
+    config = "config/ghcib.yaml";
+  };
+
   # Custom hook to check materialization is up to date
   checkMaterialization = pkgs.writeShellScript "check-materialization" ''
     # Only check if nix/project.nix or cabal files changed
@@ -91,7 +97,7 @@ in
   };
 
   # Custom apps
-  apps = {
+  apps = observability.apps // {
     # ghcid with multi-repl for all packages and tests
     ghcid-multi = {
       type = "app";

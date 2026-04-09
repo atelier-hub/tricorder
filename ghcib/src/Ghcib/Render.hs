@@ -130,7 +130,10 @@ daemonInfoDoc di =
         <> annotate Emphasis "Socket:"
         <+> pretty di.sockPath
         <> foldMap (\p -> hardline <> annotate Emphasis "Log:" <+> pretty p) di.logFile
+        <> metricsDoc di.metricsPort
   where
+    metricsDoc Nothing = hardline <> annotate Emphasis "Metrics:" <+> annotate Warn "disabled"
+    metricsDoc (Just port) = hardline <> annotate Emphasis "Metrics:" <+> annotate Ok ("http://localhost:" <> pretty port <> "/metrics")
     targetsDoc =
         if null di.targets then
             "(all)"
