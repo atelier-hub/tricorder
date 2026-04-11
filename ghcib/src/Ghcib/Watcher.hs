@@ -8,7 +8,7 @@ import System.FilePath (takeExtension, takeFileName)
 import Atelier.Component (Component (..), defaultComponent)
 import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Ghcib.BuildState (ChangeKind (..))
-import Ghcib.Config (Config (..), resolveWatchDirs)
+import Ghcib.Config (Config, resolveWatchDirs)
 import Ghcib.Effects.BuildStore (BuildStore, markDirty)
 import Ghcib.Effects.FileWatcher (FileWatcher, watchDirs)
 
@@ -30,7 +30,7 @@ component =
         , triggers = do
             cfg <- ask @Config
             projectRoot <- getCurrentDirectory
-            dirs <- resolveWatchDirs cfg.targets projectRoot
+            dirs <- resolveWatchDirs cfg projectRoot
             pure [forever $ watchDirs dirs \path -> markDirty (changeKindFor path)]
         }
 

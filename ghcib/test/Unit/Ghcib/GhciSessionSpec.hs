@@ -25,7 +25,7 @@ import Ghcib.Effects.GhciSession
     , startGhci
     , stopGhci
     )
-import Ghcib.GhciSession (mergeDiagnostics, sessionListener)
+import Ghcib.GhciSession (filterToWatchDirs, mergeDiagnostics, sessionListener)
 
 
 spec_GhciSession :: Spec
@@ -33,6 +33,7 @@ spec_GhciSession = do
     describe "runGhciSessionScripted" testScripted
     describe "sessionListener" testSessionListener
     describe "mergeDiagnostics" testMergeDiagnostics
+    describe "filterToWatchDirs" testFilterToWatchDirs
     describe "extractTitle" testExtractTitle
 
 
@@ -109,7 +110,7 @@ testSessionListener = do
             let t0 = epoch
                 t1 = addUTCTime 2 epoch -- 2 seconds later
             result <- runListenerTest [t0, t1] [simpleResult []] do
-                void $ fork $ sessionListener "cabal repl" "/"
+                void $ fork $ sessionListener "cabal repl" "/" []
                 waitUntilDone
             case result.phase of
                 Done br -> br.durationMs `shouldBe` 2000
@@ -117,7 +118,7 @@ testSessionListener = do
 
         it "records moduleCount from LoadResult" do
             result <- runListenerTest [epoch, epoch] [simpleResultWith 7 []] do
-                void $ fork $ sessionListener "cabal repl" "/"
+                void $ fork $ sessionListener "cabal repl" "/" []
                 waitUntilDone
             case result.phase of
                 Done br -> br.moduleCount `shouldBe` 7
@@ -176,6 +177,47 @@ testMergeDiagnostics = do
                     }
         let merged = mergeDiagnostics Map.empty result
         Map.lookup warnMsg.file merged `shouldBe` Just [warnMsg]
+
+
+--------------------------------------------------------------------------------
+-- filterToWatchDirs tests
+--------------------------------------------------------------------------------
+
+testFilterToWatchDirs :: Spec
+testFilterToWatchDirs = do
+    let root = "/project"
+        watchDirs = ["/project/src"]
+
+    it "keeps diagnostics under a watched directory" do
+        -- ./src/Foo.hs is what toRelative produces for an absolute project file
+        let d = errMsg {file = "./src/Foo.hs"}
+        filterToWatchDirs root watchDirs [d] `shouldBe` [d]
+
+    it "drops diagnostics from outside the project (e.g. Nix store .h files)" do
+        let d = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
+        filterToWatchDirs root watchDirs [d] `shouldBe` []
+
+    it "drops diagnostics with mangled CPP filenames" do
+        -- The ghcid parser produces "In file included from <path>" as the file
+        -- field for GCC-style CPP include-chain messages.
+        let d = errMsg {file = "In file included from src/Foo.hs"}
+        filterToWatchDirs root watchDirs [d] `shouldBe` []
+
+    it "drops mangled CPP filenames when watchDirs is [\".\"] (project root)" do
+        -- With watchDirs=["."], the watch dir resolves to projectRoot itself.
+        -- A mangled path joined onto projectRoot would incorrectly start with
+        -- projectRoot+"/", so this case requires an explicit guard.
+        let d = errMsg {file = "In file included from src/Foo.hs"}
+        filterToWatchDirs root ["."] [d] `shouldBe` []
+
+    it "passes everything through when watchDirs is empty" do
+        let d = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
+        filterToWatchDirs root [] [d] `shouldBe` [d]
+
+    it "works with the '.' fallback watch dir (whole project root)" do
+        let d = errMsg {file = "./src/Foo.hs"}
+            nixD = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
+        filterToWatchDirs root ["."] [d, nixD] `shouldBe` [d]
 
 
 --------------------------------------------------------------------------------

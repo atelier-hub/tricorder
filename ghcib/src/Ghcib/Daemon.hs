@@ -46,7 +46,8 @@ runDaemon projectRoot cfg = do
         runEff . runFileSystemIO $ do
             sp <- socketPath projectRoot
             et <- resolveTargets cfg.targets projectRoot
-            wd <- resolveWatchDirs et projectRoot
+            let effectiveCfg' = cfg {Config.targets = et}
+            wd <- resolveWatchDirs effectiveCfg' projectRoot
             pure (sp, et, wd)
     let effectiveCfg = cfg {Config.targets = effectiveTargets}
     let daemonInfo =

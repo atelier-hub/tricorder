@@ -1,8 +1,9 @@
-module Ghcib.GhciSession (component, mergeDiagnostics, sessionListener) where
+module Ghcib.GhciSession (component, filterToWatchDirs, mergeDiagnostics, sessionListener) where
 
 import Data.Time (diffUTCTime)
 import Effectful.Exception (throwIO, try)
 import Effectful.Reader.Static (Reader, ask)
+import System.FilePath (isAbsolute, (</>))
 
 import Data.Map.Strict qualified as Map
 
@@ -14,7 +15,7 @@ import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
 import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..))
-import Ghcib.Config (Config (..), resolveCommand)
+import Ghcib.Config (Config (..), resolveCommand, resolveWatchDirs)
 import Ghcib.Effects.BuildStore (BuildStore, setPhase, waitDirty)
 import Ghcib.Effects.GhciSession (GhciSession, LoadResult (..))
 
@@ -34,6 +35,31 @@ mergeDiagnostics prev LoadResult {compiledFiles, diagnostics} =
     let cleared = foldr Map.delete prev compiledFiles
         newByFile = Map.fromListWith (++) [(d.file, [d]) | d <- diagnostics]
     in  Map.union newByFile cleared
+
+
+-- | Keep only diagnostics whose file is under one of the watched directories.
+--
+-- Diagnostics from outside the project (e.g. @.h@ files in the Nix store) and
+-- those with mangled filenames produced by the C preprocessor (e.g.
+-- @"In file included from ..."@) are dropped here, before they can enter the
+-- accumulation map where they would be impossible to evict.
+filterToWatchDirs :: FilePath -> [FilePath] -> [Diagnostic] -> [Diagnostic]
+filterToWatchDirs _ [] diags = diags
+filterToWatchDirs projectRoot watchDirs diags =
+    filter (isUnderAnyWatchDir . (.file)) diags
+  where
+    absWatchDirs = map toAbsWd watchDirs
+    toAbsWd wd
+        | wd == "." = projectRoot
+        | isAbsolute wd = wd
+        | otherwise = projectRoot </> wd
+    isUnderAnyWatchDir file
+        | not (isAbsolute file) && not ("./" `isPrefixOf` file) = False
+        | isAbsolute file =
+            any (\wd -> (wd ++ "/") `isPrefixOf` file || wd == file) absWatchDirs
+        | otherwise =
+            let absFile = projectRoot </> drop 2 file
+            in  any (\wd -> (wd ++ "/") `isPrefixOf` absFile || wd == absFile) absWatchDirs
 
 
 -- | GhciSession component.
@@ -57,9 +83,10 @@ component =
             cfg <- ask @Config
             projectRoot <- getCurrentDirectory
             cmd <- resolveCommand cfg projectRoot
+            watchDirs <- resolveWatchDirs cfg projectRoot
             Log.debug $ "GhciSession.component: resolved command = " <> cmd
             Log.debug $ "GhciSession.component: projectRoot = " <> toText projectRoot
-            pure [sessionListener cmd projectRoot]
+            pure [sessionListener cmd projectRoot watchDirs]
         }
 
 
@@ -72,9 +99,12 @@ sessionListener
        )
     => Text
     -> FilePath
+    -> [FilePath]
     -> Listener es
-sessionListener cmd projectRoot = startSession (BuildId 1)
+sessionListener cmd projectRoot watchDirs = startSession (BuildId 1)
   where
+    filterDiags = filterToWatchDirs projectRoot watchDirs
+
     startSession (BuildId n) = do
         Log.info $ "Starting GHCi session #" <> show n <> ": " <> cmd
         t0 <- Clock.currentTime
@@ -89,10 +119,11 @@ sessionListener cmd projectRoot = startSession (BuildId 1)
                 startSession (BuildId n)
             Right LoadResult {moduleCount, diagnostics = msgs} -> do
                 t1 <- Clock.currentTime
-                Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length msgs) <> " diagnostics"
+                let filteredMsgs = filterDiags msgs
+                Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length filteredMsgs) <> " diagnostics"
                 let durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
-                    buildResult = BuildResult {completedAt = t1, durationMs, moduleCount, diagnostics = msgs}
-                    accumulated = Map.fromListWith (++) [(d.file, [d]) | d <- msgs]
+                    buildResult = BuildResult {completedAt = t1, durationMs, moduleCount, diagnostics = filteredMsgs}
+                    accumulated = Map.fromListWith (++) [(d.file, [d]) | d <- filteredMsgs]
                 setPhase (BuildId n) (Done buildResult)
                 Log.debug $ "Build state updated to Done (session #" <> show n <> ")"
                 listenLoop (BuildId (n + 1)) accumulated
@@ -119,8 +150,14 @@ sessionListener cmd projectRoot = startSession (BuildId 1)
                         startSession nextId
                     Right loadResult -> do
                         t1 <- Clock.currentTime
-                        let durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
-                            newAccumulated = mergeDiagnostics accumulated loadResult
+                        let filteredResult =
+                                LoadResult
+                                    { moduleCount = loadResult.moduleCount
+                                    , compiledFiles = loadResult.compiledFiles
+                                    , diagnostics = filterDiags loadResult.diagnostics
+                                    }
+                            durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
+                            newAccumulated = mergeDiagnostics accumulated filteredResult
                             allMsgs = concat (Map.elems newAccumulated)
                             buildResult = BuildResult {completedAt = t1, durationMs, moduleCount = loadResult.moduleCount, diagnostics = allMsgs}
                         setPhase (BuildId n) (Done buildResult)

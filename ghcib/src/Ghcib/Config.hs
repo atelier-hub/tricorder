@@ -45,6 +45,7 @@ import Atelier.Types.QuietSnake (QuietSnake (..))
 data Config = Config
     { command :: Maybe Text
     , targets :: [Text]
+    , watchDirs :: [FilePath]
     , debounceMs :: Millisecond
     , outputFile :: Maybe FilePath
     , logFile :: Maybe FilePath
@@ -58,6 +59,7 @@ instance Default Config where
         Config
             { command = Nothing
             , targets = []
+            , watchDirs = []
             , debounceMs = 100
             , outputFile = Just "build.json"
             , logFile = Nothing
@@ -73,6 +75,7 @@ instance DecodeTOML Config where
     tomlDecoder = do
         command <- getFieldOpt "command"
         targets <- getFieldOr [] "targets"
+        watchDirs <- getFieldOr [] "watch_dirs"
         debounceMs <- getFieldOr 100 "debounce_ms"
         outputFile <- getFieldOr (Just "build.json") "output_file"
         logFile <- getFieldOpt "log_file"
@@ -80,6 +83,7 @@ instance DecodeTOML Config where
             Config
                 { command = command
                 , targets = targets
+                , watchDirs = watchDirs
                 , debounceMs = debounceMs
                 , outputFile = outputFile
                 , logFile = logFile
@@ -123,12 +127,22 @@ detectCommand targets projectRoot = do
             | otherwise -> "cabal repl " <> targetStr
 
 
--- | Resolve the directories to watch based on the configured targets.
--- Parses the .cabal file and extracts hs-source-dirs for each target.
--- Falls back to ["."] if targets is empty or the cabal file can't be parsed.
-resolveWatchDirs :: (FileSystem :> es) => [Text] -> FilePath -> Eff es [FilePath]
-resolveWatchDirs [] _ = pure ["."]
-resolveWatchDirs targets projectRoot = do
+-- | Resolve the directories to watch.
+--
+-- Priority:
+-- 1. @watch_dirs@ from config, if non-empty (used as-is relative to project root)
+-- 2. @hs-source-dirs@ inferred from cabal targets, if targets are set
+-- 3. Falls back to @["."]@ (project root) if neither is available
+resolveWatchDirs :: (FileSystem :> es) => Config -> FilePath -> Eff es [FilePath]
+resolveWatchDirs cfg projectRoot =
+    case cfg.watchDirs of
+        dirs@(_ : _) -> pure (map (projectRoot </>) dirs)
+        [] -> resolveWatchDirsFromTargets cfg.targets projectRoot
+
+
+resolveWatchDirsFromTargets :: (FileSystem :> es) => [Text] -> FilePath -> Eff es [FilePath]
+resolveWatchDirsFromTargets [] _ = pure ["."]
+resolveWatchDirsFromTargets targets projectRoot = do
     cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
     case cabalFiles of
         [] -> pure ["."]
