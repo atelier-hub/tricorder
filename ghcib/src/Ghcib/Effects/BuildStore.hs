@@ -81,6 +81,7 @@ runBuildStoreSTM eff = do
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
         Building -> True
+        Testing -> True
         Done _ -> False
 
     emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing, metricsPort = Nothing}
@@ -104,6 +105,7 @@ runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef} =
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
         Building -> True
+        Testing -> True
         Done _ -> False
 
 
@@ -153,6 +155,7 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
         Building -> True
+        Testing -> True
         Done _ -> False
 
     advance :: (BuildState -> Bool) -> Eff (State [BuildState] : es) BuildState

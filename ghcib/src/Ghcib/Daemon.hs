@@ -27,6 +27,7 @@ import Ghcib.Effects.BuildStore (runBuildStore)
 import Ghcib.Effects.FileWatcher (runFileWatcherIO)
 import Ghcib.Effects.GhcPkg (runGhcPkgIO)
 import Ghcib.Effects.GhciSession (runGhciSessionIO)
+import Ghcib.Effects.TestRunner (runTestRunnerIO)
 import Ghcib.Effects.UnixSocket (runUnixSocketIO)
 import Ghcib.GhcPkg.Types (ModuleName, PackageId)
 import Ghcib.Socket.Client (socketPath)
@@ -77,6 +78,7 @@ runDaemon projectRoot cfg = do
             . runConc
             . runFileWatcherIO
             . runGhciSessionIO
+            . runTestRunnerIO projectRoot
             . runUnixSocketIO
             . runFileSystemIO
             . runReader effectiveCfg

@@ -33,6 +33,8 @@ import Ghcib.BuildState
     , DaemonInfo (..)
     , Diagnostic (..)
     , Severity (..)
+    , TestOutcome (..)
+    , TestRun (..)
     )
 import Ghcib.Effects.Display (Style (..))
 import Ghcib.GhcPkg.Types (ModuleName (..), PackageId (..))
@@ -57,11 +59,14 @@ buildStateDoc tz bs =
     statusDoc = case bs.phase of
         Building ->
             annotate Warn "Building..."
+        Testing ->
+            annotate Warn "Testing..."
         Done result
             | null result.diagnostics ->
                 annotate Ok "All good."
                     <+> buildSummaryDoc result.moduleCount result.durationMs
                     <+> timestampDoc tz result.completedAt
+                    <> testRunsSection result.testRuns
         Done result ->
             let msgs = result.diagnostics
                 errCount = length $ filter (\m -> m.severity == SError) msgs
@@ -77,6 +82,7 @@ buildStateDoc tz bs =
                     <> hardline
                     <> hardline
                     <> vsep (map diagnosticDoc msgs)
+                    <> testRunsSection result.testRuns
 
 
 buildSummaryDoc :: Int -> Int -> Doc ann
@@ -85,6 +91,21 @@ buildSummaryDoc mods ms = "(" <> pretty mods <+> "modules," <+> pretty (formatDu
 
 durationDoc :: Int -> Doc ann
 durationDoc ms = "(" <> pretty (formatDuration ms) <> ")"
+
+
+testRunsSection :: [TestRun] -> Doc Style
+testRunsSection [] = mempty
+testRunsSection runs = hardline <> hardline <> vsep (map testRunLine runs)
+
+
+testRunLine :: TestRun -> Doc Style
+testRunLine tr = pretty tr.target <> "  " <> testOutcomeDoc tr.outcome
+
+
+testOutcomeDoc :: TestOutcome -> Doc Style
+testOutcomeDoc TestsPassed = annotate Ok "passed"
+testOutcomeDoc TestsFailed = annotate Err "failed"
+testOutcomeDoc (TestsError msg) = annotate Err "error:" <+> pretty msg
 
 
 timestampDoc :: TimeZone -> UTCTime -> Doc ann

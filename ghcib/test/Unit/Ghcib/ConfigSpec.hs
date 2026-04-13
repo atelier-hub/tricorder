@@ -1,14 +1,16 @@
 module Unit.Ghcib.ConfigSpec (spec_Config) where
 
+import Data.Default (Default (..))
 import Distribution.PackageDescription.Parsec (parseGenericPackageDescriptionMaybe)
 import Distribution.Types.GenericPackageDescription (GenericPackageDescription)
 import Test.Hspec
 
-import Ghcib.Config (allComponentTargets, sourceDirsForTarget)
+import Ghcib.Config (Config (..), allComponentTargets, resolveTestTargets, sourceDirsForTarget)
 
 
 spec_Config :: Spec
 spec_Config = do
+    describe "resolveTestTargets" testResolveTestTargets
     describe "sourceDirsForTarget" do
         describe "lib:" do
             it "returns main library source dirs" do
@@ -53,6 +55,29 @@ spec_Config = do
         it "returns all four components for the fixture" do
             allComponentTargets gpd
                 `shouldBe` ["lib:myapp", "lib:myapp-utils", "exe:myapp-exe", "test:myapp-test"]
+
+
+testResolveTestTargets :: Spec
+testResolveTestTargets = do
+    it "infers test: components from targets when testTargets is absent" do
+        let cfg = def {targets = ["lib:mylib", "test:mylib-test"]}
+        resolveTestTargets cfg `shouldBe` ["test:mylib-test"]
+
+    it "returns empty list when no test: components in targets" do
+        let cfg = def {targets = ["lib:mylib", "exe:myapp"]}
+        resolveTestTargets cfg `shouldBe` []
+
+    it "uses explicit testTargets list when set" do
+        let cfg = def {targets = ["lib:a", "test:a-test", "test:b-test"], testTargets = Just ["test:b-test"]}
+        resolveTestTargets cfg `shouldBe` ["test:b-test"]
+
+    it "returns empty list when testTargets is explicitly empty" do
+        let cfg = def {targets = ["lib:a", "test:a-test"], testTargets = Just []}
+        resolveTestTargets cfg `shouldBe` []
+
+    it "infers multiple test: components" do
+        let cfg = def {targets = ["lib:a", "test:a-test", "test:b-test"]}
+        resolveTestTargets cfg `shouldBe` ["test:a-test", "test:b-test"]
 
 
 --------------------------------------------------------------------------------

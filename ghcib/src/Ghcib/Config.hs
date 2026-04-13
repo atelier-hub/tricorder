@@ -5,6 +5,7 @@ module Ghcib.Config
     , loadConfig
     , resolveCommand
     , resolveTargets
+    , resolveTestTargets
     , resolveWatchDirs
     , allComponentTargets
     , sourceDirsForTarget
@@ -46,6 +47,7 @@ data Config = Config
     { command :: Maybe Text
     , targets :: [Text]
     , watchDirs :: [FilePath]
+    , testTargets :: Maybe [Text]
     , debounceMs :: Millisecond
     , outputFile :: Maybe FilePath
     , logFile :: Maybe FilePath
@@ -61,6 +63,7 @@ instance Default Config where
             { command = Nothing
             , targets = []
             , watchDirs = []
+            , testTargets = Nothing
             , debounceMs = 100
             , outputFile = Just "build.json"
             , logFile = Nothing
@@ -78,6 +81,7 @@ instance DecodeTOML Config where
         command <- getFieldOpt "command"
         targets <- getFieldOr [] "targets"
         watchDirs <- getFieldOr [] "watch_dirs"
+        testTargets <- getFieldOpt "test_targets"
         debounceMs <- getFieldOr 100 "debounce_ms"
         outputFile <- getFieldOr (Just "build.json") "output_file"
         logFile <- getFieldOpt "log_file"
@@ -87,6 +91,7 @@ instance DecodeTOML Config where
                 { command = command
                 , targets = targets
                 , watchDirs = watchDirs
+                , testTargets = testTargets
                 , debounceMs = debounceMs
                 , outputFile = outputFile
                 , logFile = logFile
@@ -210,3 +215,13 @@ sourceDirsForTarget gpd target =
     libDirs = hsSourceDirs . libBuildInfo
     testDirs = hsSourceDirs . testBuildInfo
     exeDirs = hsSourceDirs . buildInfo
+
+
+-- | Resolve which test suites to run after a clean build.
+--
+-- When 'testTargets' is set in config, those suites are used directly.
+-- Otherwise, all @test:@ components in 'targets' are inferred.
+resolveTestTargets :: Config -> [Text]
+resolveTestTargets cfg = case cfg.testTargets of
+    Just explicit -> explicit
+    Nothing -> filter ("test:" `T.isPrefixOf`) cfg.targets

@@ -14,6 +14,8 @@ import Ghcib.BuildState
     , DaemonInfo (..)
     , Diagnostic (..)
     , Severity (..)
+    , TestOutcome (..)
+    , TestRun (..)
     )
 import Ghcib.Effects.Display (Style)
 import Ghcib.Render (buildStateDoc, daemonInfoDoc, diagnosticBlock, diagnosticDoc)
@@ -60,6 +62,38 @@ spec_Watch = do
                 let rendered = render (buildStateDoc utc (doneState 0 [errMsg, warnMsg]))
                 rendered `shouldContain` "1 error(s)"
                 rendered `shouldContain` "1 warning(s)"
+
+        describe "test runs" do
+            it "shows nothing extra when testRuns is empty" do
+                render (buildStateDoc utc (doneState 0 []))
+                    `shouldNotContain` "passed"
+
+            it "shows 'passed' for a passing suite" do
+                render (buildStateDoc utc (doneStateWith [] [passingRun]))
+                    `shouldContain` "test:foo  passed"
+
+            it "shows 'failed' for a failing suite" do
+                render (buildStateDoc utc (doneStateWith [] [failingRun]))
+                    `shouldContain` "test:bar  failed"
+
+            it "shows 'error:' for a crashed suite" do
+                render (buildStateDoc utc (doneStateWith [] [errorRun]))
+                    `shouldContain` "error: Crashed"
+
+            it "shows all suites when multiple test runs are present" do
+                let rendered = render (buildStateDoc utc (doneStateWith [] [passingRun, failingRun]))
+                rendered `shouldContain` "test:foo  passed"
+                rendered `shouldContain` "test:bar  failed"
+
+            it "shows test runs after 'All good.' for a clean build" do
+                let rendered = render (buildStateDoc utc (doneStateWith [] [passingRun]))
+                rendered `shouldContain` "All good."
+                rendered `shouldContain` "test:foo  passed"
+
+            it "shows test runs after diagnostics when build has warnings" do
+                let rendered = render (buildStateDoc utc (doneStateWith [warnMsg] [passingRun]))
+                rendered `shouldContain` "warning(s)"
+                rendered `shouldContain` "test:foo  passed"
 
     describe "diagnosticDoc" do
         it "shows file location" do
@@ -135,7 +169,23 @@ buildingState = BuildState (BuildId 1) Building emptyDaemonInfo
 
 
 doneState :: Int -> [Diagnostic] -> BuildState
-doneState mods msgs = BuildState (BuildId 1) (Done (BuildResult {completedAt = epoch, durationMs = 500, moduleCount = mods, diagnostics = msgs})) emptyDaemonInfo
+doneState mods msgs = BuildState (BuildId 1) (Done (BuildResult {completedAt = epoch, durationMs = 500, moduleCount = mods, diagnostics = msgs, testRuns = []})) emptyDaemonInfo
+
+
+doneStateWith :: [Diagnostic] -> [TestRun] -> BuildState
+doneStateWith msgs runs = BuildState (BuildId 1) (Done (BuildResult {completedAt = epoch, durationMs = 500, moduleCount = 0, diagnostics = msgs, testRuns = runs})) emptyDaemonInfo
+
+
+passingRun :: TestRun
+passingRun = TestRun {target = "test:foo", outcome = TestsPassed, output = ""}
+
+
+failingRun :: TestRun
+failingRun = TestRun {target = "test:bar", outcome = TestsFailed, output = "1 failure\n"}
+
+
+errorRun :: TestRun
+errorRun = TestRun {target = "test:baz", outcome = TestsError "Crashed", output = ""}
 
 
 epoch :: UTCTime

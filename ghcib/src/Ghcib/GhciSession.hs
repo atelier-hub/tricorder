@@ -14,14 +14,16 @@ import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
-import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..))
-import Ghcib.Config (Config (..), resolveCommand, resolveWatchDirs)
+import Ghcib.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..), Severity (..), TestRun)
+import Ghcib.Config (Config (..), resolveCommand, resolveTestTargets, resolveWatchDirs)
 import Ghcib.Effects.BuildStore (BuildStore, setPhase, waitDirty)
 import Ghcib.Effects.GhciSession (GhciSession, LoadResult (..))
+import Ghcib.Effects.TestRunner (TestRunner)
 
 import Atelier.Effects.Clock qualified as Clock
 import Atelier.Effects.Log qualified as Log
 import Ghcib.Effects.GhciSession qualified as GhciSession
+import Ghcib.Effects.TestRunner qualified as TestRunner
 
 
 -- | Merge a new 'LoadResult' into the accumulated per-file diagnostic map.
@@ -74,6 +76,7 @@ component
        , GhciSession :> es
        , Log :> es
        , Reader Config :> es
+       , TestRunner :> es
        )
     => Component es
 component =
@@ -84,9 +87,10 @@ component =
             projectRoot <- getCurrentDirectory
             cmd <- resolveCommand cfg projectRoot
             watchDirs <- resolveWatchDirs cfg projectRoot
+            let testTargets = resolveTestTargets cfg
             Log.debug $ "GhciSession.component: resolved command = " <> cmd
             Log.debug $ "GhciSession.component: projectRoot = " <> toText projectRoot
-            pure [sessionListener cmd projectRoot watchDirs]
+            pure [sessionListener cmd projectRoot watchDirs testTargets]
         }
 
 
@@ -96,12 +100,14 @@ sessionListener
        , Delay :> es
        , GhciSession :> es
        , Log :> es
+       , TestRunner :> es
        )
     => Text
     -> FilePath
     -> [FilePath]
+    -> [Text]
     -> Listener es
-sessionListener cmd projectRoot watchDirs = startSession (BuildId 1)
+sessionListener cmd projectRoot watchDirs testTargets = startSession (BuildId 1)
   where
     filterDiags = filterToWatchDirs projectRoot watchDirs
 
@@ -122,8 +128,9 @@ sessionListener cmd projectRoot watchDirs = startSession (BuildId 1)
                 let filteredMsgs = filterDiags msgs
                 Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length filteredMsgs) <> " diagnostics"
                 let durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
-                    buildResult = BuildResult {completedAt = t1, durationMs, moduleCount, diagnostics = filteredMsgs}
                     accumulated = Map.fromListWith (++) [(d.file, [d]) | d <- filteredMsgs]
+                testRuns <- runTestsIfClean (BuildId n) filteredMsgs
+                let buildResult = BuildResult {completedAt = t1, durationMs, moduleCount, diagnostics = filteredMsgs, testRuns}
                 setPhase (BuildId n) (Done buildResult)
                 Log.debug $ "Build state updated to Done (session #" <> show n <> ")"
                 listenLoop (BuildId (n + 1)) accumulated
@@ -159,6 +166,24 @@ sessionListener cmd projectRoot watchDirs = startSession (BuildId 1)
                             durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
                             newAccumulated = mergeDiagnostics accumulated filteredResult
                             allMsgs = concat (Map.elems newAccumulated)
-                            buildResult = BuildResult {completedAt = t1, durationMs, moduleCount = loadResult.moduleCount, diagnostics = allMsgs}
+                        testRuns <- runTestsIfClean (BuildId n) allMsgs
+                        let buildResult = BuildResult {completedAt = t1, durationMs, moduleCount = loadResult.moduleCount, diagnostics = allMsgs, testRuns}
                         setPhase (BuildId n) (Done buildResult)
                         listenLoop nextId newAccumulated
+
+    -- Run all configured test suites if the build has no errors.
+    -- Transitions to 'Testing' phase while suites are running.
+    runTestsIfClean
+        :: (BuildStore :> es, Log :> es, TestRunner :> es)
+        => BuildId -> [Diagnostic] -> Eff es [TestRun]
+    runTestsIfClean bid diags
+        | not (null testTargets) && not (any (\d -> d.severity == SError) diags) = do
+            setPhase bid Testing
+            Log.info $ "Running " <> show (length testTargets) <> " test suite(s)"
+            mapM
+                ( \target -> do
+                    Log.info $ "Running tests: " <> target
+                    TestRunner.runTestSuite target
+                )
+                testTargets
+        | otherwise = pure []

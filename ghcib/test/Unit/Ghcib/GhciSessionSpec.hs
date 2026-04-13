@@ -25,6 +25,7 @@ import Ghcib.Effects.GhciSession
     , startGhci
     , stopGhci
     )
+import Ghcib.Effects.TestRunner (TestRunner, runTestRunnerScripted)
 import Ghcib.GhciSession (filterToWatchDirs, mergeDiagnostics, sessionListener)
 
 
@@ -110,7 +111,7 @@ testSessionListener = do
             let t0 = epoch
                 t1 = addUTCTime 2 epoch -- 2 seconds later
             result <- runListenerTest [t0, t1] [simpleResult []] do
-                void $ fork $ sessionListener "cabal repl" "/" []
+                void $ fork $ sessionListener "cabal repl" "/" [] []
                 waitUntilDone
             case result.phase of
                 Done br -> br.durationMs `shouldBe` 2000
@@ -118,7 +119,7 @@ testSessionListener = do
 
         it "records moduleCount from LoadResult" do
             result <- runListenerTest [epoch, epoch] [simpleResultWith 7 []] do
-                void $ fork $ sessionListener "cabal repl" "/" []
+                void $ fork $ sessionListener "cabal repl" "/" [] []
                 waitUntilDone
             case result.phase of
                 Done br -> br.moduleCount `shouldBe` 7
@@ -354,7 +355,7 @@ runScripted results = runEff . runGhciSessionScripted results
 runListenerTest
     :: [UTCTime]
     -> [Either SomeException LoadResult]
-    -> Eff '[GhciSession, Conc, Clock, BuildStore, Delay, Log, Concurrent, IOE] a
+    -> Eff '[GhciSession, TestRunner, Conc, Clock, BuildStore, Delay, Log, Concurrent, IOE] a
     -> IO a
 runListenerTest times results =
     runEff
@@ -364,4 +365,5 @@ runListenerTest times results =
         . runBuildStoreSTM
         . runClockList times
         . runConc
+        . runTestRunnerScripted []
         . runGhciSessionScripted results
