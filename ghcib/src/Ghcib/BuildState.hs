@@ -3,6 +3,8 @@ module Ghcib.BuildState
     , BuildState (..)
     , BuildPhase (..)
     , BuildResult (..)
+    , TestRun (..)
+    , TestOutcome (..)
     , DaemonInfo (..)
     , Diagnostic (..)
     , Severity (..)
@@ -33,11 +35,26 @@ data DaemonInfo = DaemonInfo
     deriving anyclass (FromJSON, ToJSON)
 
 
+data TestOutcome = TestsPassed | TestsFailed | TestsError Text
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass (FromJSON, ToJSON)
+
+
+data TestRun = TestRun
+    { target :: Text
+    , outcome :: TestOutcome
+    , output :: Text
+    }
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass (FromJSON, ToJSON)
+
+
 data BuildResult = BuildResult
     { completedAt :: UTCTime
     , durationMs :: Int
     , moduleCount :: Int
     , diagnostics :: [Diagnostic]
+    , testRuns :: [TestRun]
     }
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
@@ -45,6 +62,7 @@ data BuildResult = BuildResult
 
 data BuildPhase
     = Building
+    | Testing
     | Done BuildResult
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
@@ -91,6 +109,7 @@ instance ToJSON Severity where
 
 stateLabel :: BuildPhase -> Text
 stateLabel Building = "building"
+stateLabel Testing = "testing"
 stateLabel (Done result)
     | any (\m -> m.severity == SError) result.diagnostics = "error"
     | any (\m -> m.severity == SWarning) result.diagnostics = "warning"

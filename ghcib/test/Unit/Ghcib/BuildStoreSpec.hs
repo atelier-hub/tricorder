@@ -139,7 +139,7 @@ buildingAt n = BuildState (BuildId n) Building emptyDaemonInfo
 
 
 doneAt :: Int -> BuildState
-doneAt n = BuildState (BuildId n) (Done (BuildResult {completedAt = epoch, durationMs = 0, moduleCount = 0, diagnostics = []})) emptyDaemonInfo
+doneAt n = BuildState (BuildId n) (Done (BuildResult {completedAt = epoch, durationMs = 0, moduleCount = 0, diagnostics = [], testRuns = []})) emptyDaemonInfo
 
 
 epoch :: UTCTime

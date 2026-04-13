@@ -204,6 +204,7 @@ library ghcib
       Ghcib.Effects.FileWatcher
       Ghcib.Effects.GhciSession
       Ghcib.Effects.GhcPkg
+      Ghcib.Effects.TestRunner
       Ghcib.Effects.UnixSocket
       Ghcib.Events.FileChanged
       Ghcib.GhciSession
@@ -387,6 +388,7 @@ test-suite ghcib-test
       Unit.Ghcib.SocketSpec
       Unit.Ghcib.SourceLookupSpec
       Unit.Ghcib.SourceSpec
+      Unit.Ghcib.TestRunnerSpec
       Unit.Ghcib.WatchSpec
       Paths_atelier
   autogen-modules:

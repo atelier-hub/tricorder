@@ -144,6 +144,7 @@ respondWhenDone h = awaitResult >>= sendJson h
         s <- getState
         case s.phase of
             Building -> waitUntilDone
+            Testing -> waitUntilDone
             Done _ -> awaitBuildStart (5 :: Int) s
 
     -- Poll up to n × 50ms for a build to start, then wait for it to finish.
@@ -153,6 +154,7 @@ respondWhenDone h = awaitResult >>= sendJson h
         s' <- getState
         case s'.phase of
             Building -> waitUntilDone
+            Testing -> waitUntilDone
             Done _ -> awaitBuildStart (n - 1) s'
 
 

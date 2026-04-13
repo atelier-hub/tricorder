@@ -26,6 +26,8 @@ import Ghcib.BuildState
     , DaemonInfo (..)
     , Diagnostic (..)
     , Severity (..)
+    , TestOutcome (..)
+    , TestRun (..)
     )
 import Ghcib.Config (loadConfig)
 import Ghcib.Daemon (startDaemon, stopDaemon)
@@ -104,6 +106,7 @@ showStatus waitFlag jsonFlag verboseFlag = do
         current <- queryStatus sockPath
         case current of
             Right BuildState {phase = Building} -> Console.putStrLn "Building..."
+            Right BuildState {phase = Testing} -> Console.putStrLn "Testing..."
             _ -> pure ()
     result <-
         if waitFlag then
@@ -121,6 +124,7 @@ showStatus waitFlag jsonFlag verboseFlag = do
   where
     renderText verbose state = case state.phase of
         Building -> Console.putStrLn "Building..."
+        Testing -> Console.putStrLn "Testing..."
         Done r -> do
             tz <- liftIO getCurrentTimeZone
             let printDiag =
@@ -130,7 +134,20 @@ showStatus waitFlag jsonFlag verboseFlag = do
                         Console.putTextLn . diagnosticLine
             mapM_ printDiag r.diagnostics
             Console.putTextLn $ buildSummary tz r
-            when (any ((== SError) . (.severity)) r.diagnostics) $ liftIO exitFailure
+            mapM_ (printTestRun verbose) r.testRuns
+            when (buildHasErrors r || testsFailed r) $ liftIO exitFailure
+
+    printTestRun verbose tr = do
+        Console.putTextLn $ testRunSummary tr.target tr.outcome
+        when verbose
+            $ mapM_ (Console.putTextLn . ("  " <>) . toText) (lines tr.output)
+      where
+        testRunSummary t TestsPassed = t <> "  passed"
+        testRunSummary t TestsFailed = t <> "  failed"
+        testRunSummary t (TestsError msg) = t <> "  error: " <> msg
+
+    buildHasErrors r = any ((== SError) . (.severity)) r.diagnostics
+    testsFailed r = any ((/= TestsPassed) . (.outcome)) r.testRuns
 
     buildSummary tz r =
         let errs = length $ filter ((== SError) . (.severity)) r.diagnostics
