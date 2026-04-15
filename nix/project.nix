@@ -11,11 +11,6 @@ pkgs.haskell-nix.cabalProject' {
   materialized = ./materialized;
   checkMaterialization = true;
 
-  # Enable CHaP (Cardano Haskell Packages) repository
-  inputMap = {
-    "https://chap.intersectmbo.org/" = inputs.CHaP;
-  };
-
   # Add tmp-postgres from flake input
   cabalProjectLocal = ''
     source-repository-package

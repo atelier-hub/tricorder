@@ -31,6 +31,61 @@ Test utilities for database-backed tests using [tmp-postgres](https://github.com
 
 A GHCi-based incremental build daemon. Watches source files, triggers reloads, and exposes build state over a Unix socket. See `ghcib/` for details.
 
+## Using with Nix
+
+> [!TIP]
+> Configure the binary cache to avoid building GHC from scratch:
+> ```nix
+> nix.settings = {
+>   extra-substituters = [ "https://atelier.cachix.org" ];
+>   extra-trusted-public-keys = [ "atelier.cachix.org-1:rEyd/Z4TiXZbBVuU/lDnKZ/7WtnFTwJ17OKHGcahVUo=" ];
+> };
+> ```
+
+### Try it out
+
+```bash
+nix run --accept-flake-config github:atelier-hub/atelier#ghcib
+```
+
+`--accept-flake-config` tells Nix to use the binary caches declared in this flake. Without it, Nix will build the entire Haskell toolchain from source.
+
+### Dev shell
+
+To make `ghcib` available in a project's dev shell without installing it system-wide:
+
+```nix
+inputs.ghcib.url = "github:atelier-hub/atelier";
+
+devShells.default = pkgs.mkShell {
+  packages = [ inputs.ghcib.packages.${system}.ghcib ];
+};
+```
+
+### Installing
+
+Add the flake input and apply the overlay:
+
+```nix
+inputs.ghcib.url = "github:cgeorgii/atelier";
+
+nixpkgs.overlays = [ inputs.ghcib.overlays.default ];
+```
+
+### Home Manager
+
+```nix
+imports = [ inputs.ghcib.homeManagerModules.default ];
+programs.ghcib.enable = true;
+```
+
+### NixOS (without Home Manager)
+
+```nix
+imports = [ inputs.ghcib.nixosModules.default ];
+programs.ghcib.enable = true;
+```
+
 ## Development
 
 Enter the dev shell:

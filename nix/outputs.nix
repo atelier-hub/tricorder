@@ -1,4 +1,8 @@
-{ inputs, system }:
+{
+  inputs,
+  system,
+  self,
+}:
 let
   # GHC version to use across all tools and the project
   compiler-nix-name = "ghc9102";
@@ -49,6 +53,13 @@ let
     fi
   '';
 
+  ghcibExe = projectFlake.packages."atelier:exe:ghcib-exe";
+  # Wrap the cabal executable (ghcib-exe) so consumers get a binary named `ghcib`
+  ghcib = pkgs.runCommand "ghcib" { } ''
+    mkdir -p $out/bin
+    ln -s ${ghcibExe}/bin/ghcib-exe $out/bin/ghcib
+  '';
+
   # Git hooks check (defined once, used in both checks and shell)
   gitHooks = inputs.git-hooks.lib.${system}.run {
     src = ../.;
@@ -83,7 +94,8 @@ in
 {
   # Expose packages built by haskell.nix
   packages = projectFlake.packages // {
-    default = projectFlake.packages."atelier:exe:ghcib-exe";
+    default = ghcib;
+    ghcib = ghcib;
   };
 
   # Development shell
@@ -98,6 +110,10 @@ in
 
   # Custom apps
   apps = observability.apps // {
+    ghcib = {
+      type = "app";
+      program = "${ghcib}/bin/ghcib";
+    };
     # ghcid with multi-repl for all packages and tests
     ghcid-multi = {
       type = "app";
@@ -141,6 +157,16 @@ in
   checks = projectFlake.checks // {
     git-hooks = gitHooks;
     # Ensure the executable builds in CI
-    ghcib-exe = projectFlake.packages."atelier:exe:ghcib-exe";
+    ghcib-exe = ghcibExe;
+    # Ensure the overlay correctly exposes pkgs.ghcib
+    overlay =
+      pkgs.runCommand "check-overlay"
+        {
+          ghcib = (pkgs.extend self.overlays.default).ghcib;
+        }
+        ''
+          test -x $ghcib/bin/ghcib
+          touch $out
+        '';
   };
 }
