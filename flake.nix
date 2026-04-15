@@ -43,11 +43,19 @@
   };
 
   outputs =
-    inputs:
+    { self, ... }@inputs:
     inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (
       system:
       import ./nix/outputs.nix {
-        inherit inputs system;
+        inherit inputs system self;
       }
-    );
+    )
+    // {
+      overlays.default = final: _: {
+        ghcib = self.packages.${final.stdenv.system}.default;
+      };
+
+      homeManagerModules.default = import ./nix/home-module.nix;
+      nixosModules.default = import ./nix/nixos-module.nix;
+    };
 }
