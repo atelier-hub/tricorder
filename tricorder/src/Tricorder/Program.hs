@@ -96,11 +96,9 @@ stop = do
 
 showStatus
     :: ( Console :> es
-       , Delay :> es
        , File :> es
        , FileSystem :> es
        , IOE :> es
-       , Process :> es
        , UnixSocket :> es
        )
     => Bool -> Bool -> Bool -> Eff es ()
@@ -108,28 +106,28 @@ showStatus waitFlag jsonFlag verboseFlag = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
     running <- isDaemonRunning sockPath
-    unless running $ do
-        startDaemon projectRoot
-        waitForSocket sockPath
-    when (waitFlag && not jsonFlag) $ do
-        current <- queryStatus sockPath
-        case current of
-            Right BuildState {phase = Building} -> Console.putStrLn "Building..."
-            Right BuildState {phase = Testing} -> Console.putStrLn "Testing..."
-            _ -> pure ()
-    result <-
-        if waitFlag then
-            queryStatusWait sockPath
-        else
-            queryStatus sockPath
-    case result of
-        Left err -> Console.putTextLn $ "Error: " <> err
-        Right state ->
-            if jsonFlag then do
-                Console.putStr $ BSL.toStrict $ encode state
-                Console.putStrLn ""
+    if not running then
+        Console.putStrLn "Stopped."
+    else do
+        when (waitFlag && not jsonFlag) $ do
+            current <- queryStatus sockPath
+            case current of
+                Right BuildState {phase = Building} -> Console.putStrLn "Building..."
+                Right BuildState {phase = Testing} -> Console.putStrLn "Testing..."
+                _ -> pure ()
+        result <-
+            if waitFlag then
+                queryStatusWait sockPath
             else
-                renderText verboseFlag state
+                queryStatus sockPath
+        case result of
+            Left err -> Console.putTextLn $ "Error: " <> err
+            Right state ->
+                if jsonFlag then do
+                    Console.putStr $ BSL.toStrict $ encode state
+                    Console.putStrLn ""
+                else
+                    renderText verboseFlag state
   where
     renderText verbose state = case state.phase of
         Building -> Console.putStrLn "Building..."
