@@ -194,38 +194,38 @@ library atelier-testing
       base hiding (Prelude)
   default-language: GHC2021
 
-library ghcib
+library tricorder
   exposed-modules:
-      Ghcib.Arguments
-      Ghcib.BuildState
-      Ghcib.Config
-      Ghcib.Daemon
-      Ghcib.Debounce
-      Ghcib.Effects.BuildStore
-      Ghcib.Effects.Display
-      Ghcib.Effects.FileWatcher
-      Ghcib.Effects.GhciSession
-      Ghcib.Effects.GhcPkg
-      Ghcib.Effects.TestRunner
-      Ghcib.Effects.UnixSocket
-      Ghcib.Events.FileChanged
-      Ghcib.GhciSession
-      Ghcib.GhcPkg.Types
-      Ghcib.Observability
-      Ghcib.Program
-      Ghcib.Render
-      Ghcib.Socket.Client
-      Ghcib.Socket.Protocol
-      Ghcib.Socket.Server
-      Ghcib.SourceLookup
-      Ghcib.Watch
-      Ghcib.Watcher
+      Tricorder.Arguments
+      Tricorder.BuildState
+      Tricorder.Config
+      Tricorder.Daemon
+      Tricorder.Debounce
+      Tricorder.Effects.BuildStore
+      Tricorder.Effects.Display
+      Tricorder.Effects.FileWatcher
+      Tricorder.Effects.GhciSession
+      Tricorder.Effects.GhcPkg
+      Tricorder.Effects.TestRunner
+      Tricorder.Effects.UnixSocket
+      Tricorder.Events.FileChanged
+      Tricorder.GhciSession
+      Tricorder.GhcPkg.Types
+      Tricorder.Observability
+      Tricorder.Program
+      Tricorder.Render
+      Tricorder.Socket.Client
+      Tricorder.Socket.Protocol
+      Tricorder.Socket.Server
+      Tricorder.SourceLookup
+      Tricorder.Watch
+      Tricorder.Watcher
   other-modules:
       Paths_atelier
   autogen-modules:
       Paths_atelier
   hs-source-dirs:
-      ghcib/src
+      tricorder/src
   default-extensions:
       BlockArguments
       DataKinds
@@ -277,14 +277,14 @@ library ghcib
       base hiding (Prelude)
   default-language: GHC2021
 
-executable ghcib-exe
+executable tricorder-exe
   main-is: Main.hs
   other-modules:
       Paths_atelier
   autogen-modules:
       Paths_atelier
   hs-source-dirs:
-      ghcib/app
+      tricorder/app
   default-extensions:
       BlockArguments
       DataKinds
@@ -310,7 +310,7 @@ executable ghcib-exe
     , effectful
     , effectful-core
     , effectful-plugin
-    , ghcib
+    , tricorder
   mixins:
       base hiding (Prelude)
   default-language: GHC2021
@@ -375,27 +375,27 @@ test-suite atelier-test
       base hiding (Prelude)
   default-language: GHC2021
 
-test-suite ghcib-test
+test-suite tricorder-test
   type: exitcode-stdio-1.0
   main-is: Driver.hs
   other-modules:
-      Unit.Ghcib.BuildStateSpec
-      Unit.Ghcib.BuildStoreSpec
-      Unit.Ghcib.ConfigSpec
-      Unit.Ghcib.DebounceSpec
-      Unit.Ghcib.FileWatcherSpec
-      Unit.Ghcib.GhciSessionSpec
-      Unit.Ghcib.GhcPkgSpec
-      Unit.Ghcib.SocketSpec
-      Unit.Ghcib.SourceLookupSpec
-      Unit.Ghcib.SourceSpec
-      Unit.Ghcib.TestRunnerSpec
-      Unit.Ghcib.WatchSpec
+      Unit.Tricorder.BuildStateSpec
+      Unit.Tricorder.BuildStoreSpec
+      Unit.Tricorder.ConfigSpec
+      Unit.Tricorder.DebounceSpec
+      Unit.Tricorder.FileWatcherSpec
+      Unit.Tricorder.GhciSessionSpec
+      Unit.Tricorder.GhcPkgSpec
+      Unit.Tricorder.SocketSpec
+      Unit.Tricorder.SourceLookupSpec
+      Unit.Tricorder.SourceSpec
+      Unit.Tricorder.TestRunnerSpec
+      Unit.Tricorder.WatchSpec
       Paths_atelier
   autogen-modules:
       Paths_atelier
   hs-source-dirs:
-      ghcib/test
+      tricorder/test
   default-extensions:
       BlockArguments
       DataKinds
@@ -427,7 +427,6 @@ test-suite ghcib-test
     , effectful
     , effectful-core
     , effectful-plugin
-    , ghcib
     , hspec
     , prettyprinter
     , prettyprinter-ansi-terminal
@@ -438,6 +437,7 @@ test-suite ghcib-test
     , text
     , time
     , time-units
+    , tricorder
   mixins:
       base hiding (Prelude)
   default-language: GHC2021

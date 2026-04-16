@@ -1,3 +1,0 @@
-targets = ["lib:ghcib", "exe:ghcib-exe", "lib:atelier", "lib:atelier-testing", "test:atelier-test", "test:ghcib-test"]
-log_file = "/tmp/ghcib.log"
-metrics_port = 9091

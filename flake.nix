@@ -52,7 +52,7 @@
     )
     // {
       overlays.default = final: _: {
-        ghcib = self.packages.${final.stdenv.system}.default;
+        tricorder = self.packages.${final.stdenv.system}.default;
       };
 
       homeManagerModules.default = import ./nix/home-module.nix;

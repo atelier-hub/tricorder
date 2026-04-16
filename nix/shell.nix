@@ -17,7 +17,7 @@ let
     ]);
 in
 project.shellFor {
-  name = "ghcib-shell-${compiler-nix-name}";
+  name = "tricorder-shell-${compiler-nix-name}";
 
   # Include local packages
   packages = ps: [ ps.atelier ];

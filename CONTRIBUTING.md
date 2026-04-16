@@ -4,7 +4,7 @@
 
 ## Proposals
 
-Proposals live under `<component>/proposals/` (e.g. `ghcib/proposals/`).
+Proposals live under `<component>/proposals/` (e.g. `tricorder/proposals/`).
 
 Each proposal is a folder named `NNN-short-title/` where `NNN` is a zero-padded
 ascending integer. Lower numbers are older; higher numbers are newer. A template is

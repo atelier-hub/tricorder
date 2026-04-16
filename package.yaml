@@ -131,8 +131,8 @@ internal-libraries:
     - unix
     - uuid
 
-  ghcib:
-    source-dirs: ghcib/src
+  tricorder:
+    source-dirs: tricorder/src
     dependencies:
     - name: base
       mixin:
@@ -164,9 +164,9 @@ internal-libraries:
     - toml-reader
 
 executables:
-  ghcib-exe:
+  tricorder-exe:
     main:                Main.hs
-    source-dirs:         ghcib/app
+    source-dirs:         tricorder/app
     ghc-options:
     - '"-with-rtsopts=-N -T"'
     dependencies:
@@ -174,7 +174,7 @@ executables:
       mixin:
         - hiding (Prelude)
     - atelier-prelude
-    - ghcib
+    - tricorder
     - atelier
     - effectful
 
@@ -207,9 +207,9 @@ tests:
     - tasty-hspec
     - time
 
-  ghcib-test:
+  tricorder-test:
     main:                Driver.hs
-    source-dirs:         ghcib/test
+    source-dirs:         tricorder/test
     ghc-options:
     - -Wno-prepositive-qualified-module
     - -threaded
@@ -220,7 +220,7 @@ tests:
       mixin:
         - hiding (Prelude)
     - atelier-prelude
-    - ghcib
+    - tricorder
     - Cabal-syntax
     - aeson
     - atelier

@@ -32,7 +32,7 @@ let
   # Observability stack (Prometheus, Grafana, Tempo, Loki, Node Exporter)
   observability = import ./observability {
     inherit pkgs lib;
-    config = "config/ghcib.yaml";
+    config = "config/tricorder.yaml";
   };
 
   # Custom hook to check materialization is up to date
@@ -53,11 +53,11 @@ let
     fi
   '';
 
-  ghcibExe = projectFlake.packages."atelier:exe:ghcib-exe";
-  # Wrap the cabal executable (ghcib-exe) so consumers get a binary named `ghcib`
-  ghcib = pkgs.runCommand "ghcib" { } ''
+  tricorderExe = projectFlake.packages."atelier:exe:tricorder-exe";
+  # Wrap the cabal executable (tricorder-exe) so consumers get a binary named `tricorder`
+  tricorder = pkgs.runCommand "tricorder" { } ''
     mkdir -p $out/bin
-    ln -s ${ghcibExe}/bin/ghcib-exe $out/bin/ghcib
+    ln -s ${tricorderExe}/bin/tricorder-exe $out/bin/tricorder
   '';
 
   # Git hooks check (defined once, used in both checks and shell)
@@ -94,8 +94,8 @@ in
 {
   # Expose packages built by haskell.nix
   packages = projectFlake.packages // {
-    default = ghcib;
-    ghcib = ghcib;
+    default = tricorder;
+    tricorder = tricorder;
   };
 
   # Development shell
@@ -110,16 +110,16 @@ in
 
   # Custom apps
   apps = observability.apps // {
-    ghcib = {
+    tricorder = {
       type = "app";
-      program = "${ghcib}/bin/ghcib";
+      program = "${tricorder}/bin/tricorder";
     };
     # ghcid with multi-repl for all packages and tests
     ghcid-multi = {
       type = "app";
       program = "${pkgs.writeShellScript "ghcid-multi" ''
         exec ${pkgs.haskell-nix.tool compiler-nix-name "ghcid" "latest"}/bin/ghcid \
-          -c 'cabal repl --enable-multi-repl all atelier-test ghcib-test' \
+          -c 'cabal repl --enable-multi-repl all atelier-test tricorder-test' \
           --restart=atelier.cabal \
           --clear \
           --outputfile=build.log \
@@ -157,15 +157,15 @@ in
   checks = projectFlake.checks // {
     git-hooks = gitHooks;
     # Ensure the executable builds in CI
-    ghcib-exe = ghcibExe;
-    # Ensure the overlay correctly exposes pkgs.ghcib
+    tricorder-exe = tricorderExe;
+    # Ensure the overlay correctly exposes pkgs.tricorder
     overlay =
       pkgs.runCommand "check-overlay"
         {
-          ghcib = (pkgs.extend self.overlays.default).ghcib;
+          tricorder = (pkgs.extend self.overlays.default).tricorder;
         }
         ''
-          test -x $ghcib/bin/ghcib
+          test -x $tricorder/bin/tricorder
           touch $out
         '';
   };

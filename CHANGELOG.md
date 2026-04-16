@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-#### ghcib
+#### tricorder
 
 - Daemon-based GHCi build monitor communicating over a Unix socket
 - Commands: `start`, `stop`, `status [--wait]`, `watch`
@@ -16,5 +16,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Each message includes `severity`, `file`, `line`/`col`, `title` (first line), and `text` (full body)
 - Auto-detects cabal/stack projects and builds the `cabal repl --enable-multi-repl` command
 - Parses `.cabal` file to resolve `hs-source-dirs` for targeted file watching
-- Configurable via `.ghcib.toml` (targets, debounce, log file, etc.)
+- Configurable via `.tricorder.toml` (targets, debounce, log file, etc.)
 - File watcher with debouncing; auto-restarts GHCi session on crash (fixes ghcid's crash-on-file-removal bug)

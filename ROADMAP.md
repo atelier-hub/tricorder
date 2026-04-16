@@ -5,13 +5,13 @@
 - **Optional `doctor` field on `Atelier.Component`**
     - Check status of components (any diagnostics accumulated during execution of the component).
 
-## ghcib
+## tricorder
 
 ### Features
 
-- **Plugin-Based Structured Diagnostics** [[WP-002](ghcib/proposals/002-plugin-diagnostics/)] — introduce `ghcib-plugin`, a GHC compiler plugin that forwards native structured diagnostics (error codes, hints, related spans) to the daemon over a Unix socket. Falls back to the current behaviour for projects that do not install the plugin.
+- **Plugin-Based Structured Diagnostics** [[WP-002](tricorder/proposals/002-plugin-diagnostics/)] — introduce `tricorder-plugin`, a GHC compiler plugin that forwards native structured diagnostics (error codes, hints, related spans) to the daemon over a Unix socket. Falls back to the current behaviour for projects that do not install the plugin.
 
-- **Package Search** [[WP-003](ghcib/proposals/003-source-lookup/)] — `ghcib search` command that queries a local Hoogle database and returns haddock source, with a `--contents` flag to include source inline. The daemon checks for and generates a local Hoogle database at startup.
+- **Package Search** [[WP-003](tricorder/proposals/003-source-lookup/)] — `tricorder search` command that queries a local Hoogle database and returns haddock source, with a `--contents` flag to include source inline. The daemon checks for and generates a local Hoogle database at startup.
 
 ### Ideas
 
@@ -30,7 +30,7 @@
     - Add a hotkey to watch mode to toggle between verbose/concise mode.
 
 - **Real-time streaming output**
-    - Stream `ghcib status --wait` output as it becomes available rather than blocking until completion.
+    - Stream `tricorder status --wait` output as it becomes available rather than blocking until completion.
     - Print progress while building: "Building... (29/40 modules)".
     - Print diagnostics + summary when done.
 
@@ -39,16 +39,16 @@
 
 ### Completed
 
-- **Verbose diagnostic output** — `ghcib status --verbose` (or `-v`) to print the full GHC
+- **Verbose diagnostic output** — `tricorder status --verbose` (or `-v`) to print the full GHC
   message body under each diagnostic, avoiding the need to re-query with `--json` when the
   one-line title isn't enough to diagnose an error.
 
-- **Rename `Message` → `Diagnostic`** [[WP-001](ghcib/proposals/001-diagnostic-rename/)] — aligned wire protocol and codebase with LSP/GHC ecosystem terminology.
+- **Rename `Message` → `Diagnostic`** [[WP-001](tricorder/proposals/001-diagnostic-rename/)] — aligned wire protocol and codebase with LSP/GHC ecosystem terminology.
 
-- **Text output for `ghcib status`** — human-readable text is now the default (`E file:line title` per diagnostic, summary line); `--json` flag preserves structured output for tool integration. Exit code reflects error presence.
+- **Text output for `tricorder status`** — human-readable text is now the default (`E file:line title` per diagnostic, summary line); `--json` flag preserves structured output for tool integration. Exit code reflects error presence.
 
 - **Reliable rebuild triggering** — replaced debounce + channel queuing with a dirty-flag model; multiple saves during a build coalesce to exactly one follow-up build with no dropped or redundant rebuilds.
 
 - **Cabal change detection** — changes to `.cabal`, `package.yaml`, or `cabal.project` now trigger a full GHCi session restart instead of a `:reload`, picking up new dependencies and target changes automatically.
 
-- **`ghcib log`** — shows daemon log output; `--follow` / `-f` streams new lines as they are written.
+- **`tricorder log`** — shows daemon log output; `--follow` / `-f` streams new lines as they are written.

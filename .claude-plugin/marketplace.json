@@ -8,8 +8,8 @@
   },
   "plugins": [
     {
-      "name": "ghcib",
-      "source": "./.claude-plugin/ghcib",
+      "name": "tricorder",
+      "source": "./.claude-plugin/tricorder",
       "description": "Daemon-based GHCi build status monitor for Haskell projects",
       "version": "0.1.0"
     }

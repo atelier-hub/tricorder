@@ -108,7 +108,7 @@
           modules = [ "Paths_atelier" ];
           hsSourceDirs = [ "atelier/testing" ];
         };
-        "ghcib" = {
+        "tricorder" = {
           depends = [
             (hsPkgs."Cabal-syntax" or (errorHandler.buildDepError "Cabal-syntax"))
             (hsPkgs."aeson" or (errorHandler.buildDepError "aeson"))
@@ -141,11 +141,11 @@
           ];
           buildable = true;
           modules = [ "Paths_atelier" ];
-          hsSourceDirs = [ "ghcib/src" ];
+          hsSourceDirs = [ "tricorder/src" ];
         };
       };
       exes = {
-        "ghcib-exe" = {
+        "tricorder-exe" = {
           depends = [
             (hsPkgs."atelier" or (errorHandler.buildDepError "atelier"))
             (hsPkgs."atelier".components.sublibs.atelier-prelude or (errorHandler.buildDepError "atelier:atelier-prelude"))
@@ -153,11 +153,11 @@
             (hsPkgs."effectful" or (errorHandler.buildDepError "effectful"))
             (hsPkgs."effectful-core" or (errorHandler.buildDepError "effectful-core"))
             (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))
-            (hsPkgs."atelier".components.sublibs.ghcib or (errorHandler.buildDepError "atelier:ghcib"))
+            (hsPkgs."atelier".components.sublibs.tricorder or (errorHandler.buildDepError "atelier:tricorder"))
           ];
           buildable = true;
           modules = [ "Paths_atelier" ];
-          hsSourceDirs = [ "ghcib/app" ];
+          hsSourceDirs = [ "tricorder/app" ];
           mainPath = [ "Main.hs" ];
         };
       };
@@ -189,7 +189,7 @@
           hsSourceDirs = [ "atelier/test" ];
           mainPath = [ "Driver.hs" ];
         };
-        "ghcib-test" = {
+        "tricorder-test" = {
           depends = [
             (hsPkgs."Cabal-syntax" or (errorHandler.buildDepError "Cabal-syntax"))
             (hsPkgs."aeson" or (errorHandler.buildDepError "aeson"))
@@ -201,7 +201,6 @@
             (hsPkgs."effectful" or (errorHandler.buildDepError "effectful"))
             (hsPkgs."effectful-core" or (errorHandler.buildDepError "effectful-core"))
             (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))
-            (hsPkgs."atelier".components.sublibs.ghcib or (errorHandler.buildDepError "atelier:ghcib"))
             (hsPkgs."hspec" or (errorHandler.buildDepError "hspec"))
             (hsPkgs."prettyprinter" or (errorHandler.buildDepError "prettyprinter"))
             (hsPkgs."prettyprinter-ansi-terminal" or (errorHandler.buildDepError "prettyprinter-ansi-terminal"))
@@ -212,13 +211,14 @@
             (hsPkgs."text" or (errorHandler.buildDepError "text"))
             (hsPkgs."time" or (errorHandler.buildDepError "time"))
             (hsPkgs."time-units" or (errorHandler.buildDepError "time-units"))
+            (hsPkgs."atelier".components.sublibs.tricorder or (errorHandler.buildDepError "atelier:tricorder"))
           ];
           build-tools = [
             (hsPkgs.pkgsBuildBuild.tasty-discover.components.exes.tasty-discover or (pkgs.pkgsBuildBuild.tasty-discover or (errorHandler.buildToolDepError "tasty-discover:tasty-discover")))
           ];
           buildable = true;
           modules = [ "Paths_atelier" ];
-          hsSourceDirs = [ "ghcib/test" ];
+          hsSourceDirs = [ "tricorder/test" ];
           mainPath = [ "Driver.hs" ];
         };
       };

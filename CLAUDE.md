@@ -1,8 +1,8 @@
 # Claude Code Plugin
 
-The ghcib plugin provides a skill for checking build status from within Claude Code sessions.
+The tricorder plugin provides a skill for checking build status from within Claude Code sessions.
 
-See `.claude-plugin/ghcib/INSTALL.md` for installation instructions.
+See `.claude-plugin/tricorder/INSTALL.md` for installation instructions.
 
 ---
 

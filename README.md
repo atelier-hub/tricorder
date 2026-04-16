@@ -27,9 +27,9 @@ Custom prelude based on [relude](https://github.com/kowainik/relude), enforcing 
 
 Test utilities for database-backed tests using [tmp-postgres](https://github.com/jfischoff/tmp-postgres).
 
-### `ghcib`
+### `tricorder`
 
-A GHCi-based incremental build daemon. Watches source files, triggers reloads, and exposes build state over a Unix socket. See `ghcib/` for details.
+A GHCi-based incremental build daemon. Watches source files, triggers reloads, and exposes build state over a Unix socket. See `tricorder/` for details.
 
 ## Using with Nix
 
@@ -45,20 +45,20 @@ A GHCi-based incremental build daemon. Watches source files, triggers reloads, a
 ### Try it out
 
 ```bash
-nix run --accept-flake-config github:atelier-hub/atelier#ghcib
+nix run --accept-flake-config github:atelier-hub/atelier#tricorder
 ```
 
 `--accept-flake-config` tells Nix to use the binary caches declared in this flake. Without it, Nix will build the entire Haskell toolchain from source.
 
 ### Dev shell
 
-To make `ghcib` available in a project's dev shell without installing it system-wide:
+To make `tricorder` available in a project's dev shell without installing it system-wide:
 
 ```nix
-inputs.ghcib.url = "github:atelier-hub/atelier";
+inputs.tricorder.url = "github:atelier-hub/atelier";
 
 devShells.default = pkgs.mkShell {
-  packages = [ inputs.ghcib.packages.${system}.ghcib ];
+  packages = [ inputs.tricorder.packages.${system}.tricorder ];
 };
 ```
 
@@ -67,23 +67,23 @@ devShells.default = pkgs.mkShell {
 Add the flake input and apply the overlay:
 
 ```nix
-inputs.ghcib.url = "github:cgeorgii/atelier";
+inputs.tricorder.url = "github:cgeorgii/atelier";
 
-nixpkgs.overlays = [ inputs.ghcib.overlays.default ];
+nixpkgs.overlays = [ inputs.tricorder.overlays.default ];
 ```
 
 ### Home Manager
 
 ```nix
-imports = [ inputs.ghcib.homeManagerModules.default ];
-programs.ghcib.enable = true;
+imports = [ inputs.tricorder.homeManagerModules.default ];
+programs.tricorder.enable = true;
 ```
 
 ### NixOS (without Home Manager)
 
 ```nix
-imports = [ inputs.ghcib.nixosModules.default ];
-programs.ghcib.enable = true;
+imports = [ inputs.tricorder.nixosModules.default ];
+programs.tricorder.enable = true;
 ```
 
 ## Development
@@ -101,8 +101,8 @@ cabal build all
 cabal test all
 ```
 
-Run the ghcib daemon:
+Run the tricorder daemon:
 
 ```bash
-cabal run ghcib-exe -- start
+cabal run tricorder-exe -- start
 ```

@@ -538,7 +538,6 @@
           "integer-conversion".components.library.planned = lib.mkOverride 900 true;
           "pretty-show".components.library.planned = lib.mkOverride 900 true;
           "monad-loops".components.library.planned = lib.mkOverride 900 true;
-          "atelier".components.tests."ghcib-test".planned = lib.mkOverride 900 true;
           "quickcheck-io".components.library.planned = lib.mkOverride 900 true;
           "thread-utils-context".components.library.planned = lib.mkOverride 900 true;
           "hasql".components.sublibs."testing-kit".planned = lib.mkOverride 900 true;
@@ -594,7 +593,6 @@
           "hs-opentelemetry-exporter-otlp".components.library.planned = lib.mkOverride 900 true;
           "array".components.library.planned = lib.mkOverride 900 true;
           "tmp-postgres".components.exes."soak-test".planned = lib.mkOverride 900 true;
-          "atelier".components.sublibs."ghcib".planned = lib.mkOverride 900 true;
           "opaleye".components.library.planned = lib.mkOverride 900 true;
           "happy-lib".components.sublibs."backend-glr".planned = lib.mkOverride 900 true;
           "unix".components.library.planned = lib.mkOverride 900 true;
@@ -643,7 +641,6 @@
           "tasty-discover".components.library.planned = lib.mkOverride 900 true;
           "hasql-pool".components.library.planned = lib.mkOverride 900 true;
           "text-builder-core".components.library.planned = lib.mkOverride 900 true;
-          "atelier".components.exes."ghcib-exe".planned = lib.mkOverride 900 true;
           "cryptohash-md5".components.library.planned = lib.mkOverride 900 true;
           "bytestring-tree-builder".components.library.planned = lib.mkOverride 900 true;
           "concurrent-output".components.library.planned = lib.mkOverride 900 true;
@@ -742,6 +739,7 @@
           "toml-reader".components.library.planned = lib.mkOverride 900 true;
           "http-semantics".components.library.planned = lib.mkOverride 900 true;
           "base64".components.library.planned = lib.mkOverride 900 true;
+          "atelier".components.sublibs."tricorder".planned = lib.mkOverride 900 true;
           "cryptohash-sha1".components.library.planned = lib.mkOverride 900 true;
           "network-control".components.library.planned = lib.mkOverride 900 true;
           "ghc-internal".components.library.planned = lib.mkOverride 900 true;
@@ -751,6 +749,7 @@
           "primitive".components.library.planned = lib.mkOverride 900 true;
           "crypton-x509-store".components.library.planned = lib.mkOverride 900 true;
           "ghc-bignum".components.library.planned = lib.mkOverride 900 true;
+          "atelier".components.tests."tricorder-test".planned = lib.mkOverride 900 true;
           "proto-lens".components.library.planned = lib.mkOverride 900 true;
           "pretty".components.library.planned = lib.mkOverride 900 true;
           "recv".components.library.planned = lib.mkOverride 900 true;
@@ -800,6 +799,7 @@
           "ansi-terminal".components.library.planned = lib.mkOverride 900 true;
           "tasty-hspec".components.library.planned = lib.mkOverride 900 true;
           "atelier".components.sublibs."atelier-testing".planned = lib.mkOverride 900 true;
+          "atelier".components.exes."tricorder-exe".planned = lib.mkOverride 900 true;
           "text-builder".components.library.planned = lib.mkOverride 900 true;
           "hspec-expectations".components.library.planned = lib.mkOverride 900 true;
           "serialise".components.library.planned = lib.mkOverride 900 true;
