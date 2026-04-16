@@ -141,6 +141,7 @@ internal-libraries:
     - atelier
     - aeson
     - ansi-terminal
+    - brick
     - bytestring
     - containers
     - data-default
@@ -150,9 +151,8 @@ internal-libraries:
     - filepath
     - fsnotify
     - ghcid
+    - mtl
     - network
-    - prettyprinter
-    - prettyprinter-ansi-terminal
     - hashable
     - optparse-applicative
     - typed-process
@@ -160,6 +160,8 @@ internal-libraries:
     - text
     - time
     - time-units
+    - vty
+    - vty-crossplatform
     - Cabal-syntax
     - yaml
 
@@ -229,8 +231,6 @@ tests:
     - data-default
     - effectful
     - hspec
-    - prettyprinter
-    - prettyprinter-ansi-terminal
     - stm
     - tasty
     - tasty-discover

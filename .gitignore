@@ -8,3 +8,4 @@ dist-newstyle/
 build.log
 .env.local
 data
+.claude/*.local.*

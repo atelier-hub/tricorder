@@ -36,8 +36,9 @@ import Tricorder.BuildState
     )
 import Tricorder.Config (Config)
 import Tricorder.Daemon (startDaemon, stopDaemon)
+import Tricorder.Effects.Brick (Brick)
+import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.Display (Display)
 import Tricorder.Effects.FileWatcher (FileWatcher)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.GhciSession (GhciSession)
@@ -62,14 +63,15 @@ import Tricorder.Observability qualified as Observability
 
 
 run
-    :: ( BuildStore :> es
+    :: ( Brick :> es
+       , BrickChan :> es
+       , BuildStore :> es
        , Cache (PackageId, ModuleName) Text :> es
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
        , Console :> es
        , Delay :> es
-       , Display :> es
        , File :> es
        , FileSystem :> es
        , FileWatcher :> es
@@ -256,13 +258,14 @@ showLog followFlag = do
 
 
 watch
-    :: ( BuildStore :> es
+    :: ( Brick :> es
+       , BrickChan :> es
+       , BuildStore :> es
        , Cache (PackageId, ModuleName) Text :> es
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
        , Delay :> es
-       , Display :> es
        , File :> es
        , FileSystem :> es
        , FileWatcher :> es

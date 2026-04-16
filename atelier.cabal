@@ -201,8 +201,9 @@ library tricorder
       Tricorder.Config
       Tricorder.Daemon
       Tricorder.Debounce
+      Tricorder.Effects.Brick
+      Tricorder.Effects.BrickChan
       Tricorder.Effects.BuildStore
-      Tricorder.Effects.Display
       Tricorder.Effects.FileWatcher
       Tricorder.Effects.GhciSession
       Tricorder.Effects.GhcPkg
@@ -254,6 +255,7 @@ library tricorder
     , atelier
     , atelier-prelude
     , base
+    , brick
     , bytestring
     , containers
     , data-default
@@ -266,15 +268,16 @@ library tricorder
     , fsnotify
     , ghcid
     , hashable
+    , mtl
     , network
     , optparse-applicative
-    , prettyprinter
-    , prettyprinter-ansi-terminal
     , stm
     , text
     , time
     , time-units
     , typed-process
+    , vty
+    , vty-crossplatform
     , yaml
   mixins:
       base hiding (Prelude)
@@ -390,11 +393,11 @@ test-suite tricorder-test
       Unit.Tricorder.FileWatcherSpec
       Unit.Tricorder.GhciSessionSpec
       Unit.Tricorder.GhcPkgSpec
+      Unit.Tricorder.RenderSpec
       Unit.Tricorder.SocketSpec
       Unit.Tricorder.SourceLookupSpec
       Unit.Tricorder.SourceSpec
       Unit.Tricorder.TestRunnerSpec
-      Unit.Tricorder.WatchSpec
       Paths_atelier
   autogen-modules:
       Paths_atelier
@@ -432,8 +435,6 @@ test-suite tricorder-test
     , effectful-core
     , effectful-plugin
     , hspec
-    , prettyprinter
-    , prettyprinter-ansi-terminal
     , stm
     , tasty
     , tasty-discover
