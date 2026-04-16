@@ -17,8 +17,9 @@ import Atelier.Effects.Posix.Process (runProcess)
 import Tricorder.Arguments (runArguments)
 import Tricorder.BuildState (runDaemonInfo)
 import Tricorder.Config (runConfig)
+import Tricorder.Effects.Brick (runBrick)
+import Tricorder.Effects.BrickChan (runBrickChan)
 import Tricorder.Effects.BuildStore (runBuildStore)
-import Tricorder.Effects.Display (runDisplayIO)
 import Tricorder.Effects.FileWatcher (runFileWatcherIO)
 import Tricorder.Effects.GhcPkg (runGhcPkgIO)
 import Tricorder.Effects.GhciSession (runGhciSessionIO)
@@ -38,6 +39,8 @@ main =
     runEff
         . runConcurrent
         . runConc
+        . runBrickChan
+        . runBrick
         . runConsole
         . runProcess
         . runClock
@@ -60,5 +63,4 @@ main =
         . runBuildStore
         . runArguments
         . runUnixSocketIO
-        . runDisplayIO
         $ Program.run

@@ -1,5 +1,7 @@
 module Atelier.Effects.Clock
     ( Clock
+    , UTCTime
+    , TimeZone
     , currentTime
     , currentTimeZone
     , runClock
