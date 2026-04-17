@@ -13,7 +13,7 @@ tricorder is a daemon-based GHCi build monitor. It exposes build state over a Un
 
 - `tricorder start` — start the daemon (no-op if already running)
 - `tricorder stop` — stop the daemon
-- `tricorder status` — print current build state as text (auto-starts daemon if not running)
+- `tricorder status` — print current build state as text
 - `tricorder status --wait` — same, but blocks until the current build cycle finishes
 - `tricorder status --json` — output full build state as JSON
 - `tricorder status --wait --json` — wait then output JSON
@@ -24,6 +24,8 @@ tricorder is a daemon-based GHCi build monitor. It exposes build state over a Un
 ## Checking Build Status
 
 Run `tricorder status --wait` after making edits. The `--wait` flag ensures you get the result of the build triggered by your changes, not a stale one.
+
+If `tricorder status` returns `Stopped.`, start the daemon with `tricorder start`.
 
 ### Text output (default)
 
