@@ -4,7 +4,7 @@ import Data.Aeson (encode)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
 import Effectful (IOE)
-import Effectful.Reader.Static (Reader, ask)
+import Effectful.Reader.Static (Reader, ask, asks)
 
 import Data.ByteString.Lazy qualified as BSL
 
@@ -34,7 +34,7 @@ import Tricorder.BuildState
     , TestOutcome (..)
     , TestRun (..)
     )
-import Tricorder.Config (Config, loadConfig)
+import Tricorder.Config (Config)
 import Tricorder.Daemon (startDaemon, stopDaemon)
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.Display (Display)
@@ -58,7 +58,7 @@ import Atelier.Effects.Console qualified as Console
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.File qualified as File
 import Atelier.Effects.Log qualified as Log
-import Tricorder.Config qualified as Config
+import Tricorder.Observability qualified as Observability
 
 
 run
@@ -80,6 +80,7 @@ run
        , Process :> es
        , Reader Command :> es
        , Reader Config :> es
+       , Reader Observability.Config :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -112,6 +113,7 @@ start
        , Log.Log :> es
        , Process :> es
        , Reader Config :> es
+       , Reader Observability.Config :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -213,6 +215,7 @@ showLog
        , Delay :> es
        , File :> es
        , FileSystem :> es
+       , Reader Observability.Config :> es
        , UnixSocket :> es
        )
     => Bool -> Eff es ()
@@ -227,10 +230,10 @@ showLog followFlag = do
                 Right state -> state.daemonInfo.logFile
                 Left _ -> Nothing
         else
-            Config.logFile <$> loadConfig projectRoot
+            asks @Observability.Config (.logFile)
     case mLogFile of
         Nothing ->
-            Console.putStrLn "No log file configured. Add `log_file = \"/path/to/tricorder.log\"` to .tricorder.toml"
+            Console.putStrLn "No log file configured. Add `log_file: /path/to/tricorder.log` to .tricorder.yaml"
         Just path -> do
             exists <- doesFileExist path
             if not exists then
@@ -269,6 +272,7 @@ watch
        , Log.Log :> es
        , Process :> es
        , Reader Config :> es
+       , Reader Observability.Config :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -302,6 +306,7 @@ showSource
        , Log.Log :> es
        , Process :> es
        , Reader Config :> es
+       , Reader Observability.Config :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es

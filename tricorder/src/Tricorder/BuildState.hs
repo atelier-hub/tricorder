@@ -26,6 +26,8 @@ import Tricorder.Config (Config (..), resolveWatchDirs)
 import Tricorder.Project (ProjectRoot (..))
 import Tricorder.Socket.SocketPath (SocketPath (..))
 
+import Tricorder.Observability qualified as Observability
+
 
 newtype BuildId = BuildId Int
     deriving stock (Eq, Show)
@@ -46,12 +48,14 @@ data DaemonInfo = DaemonInfo
 runDaemonInfo
     :: ( FileSystem :> es
        , Reader Config :> es
+       , Reader Observability.Config :> es
        , Reader ProjectRoot :> es
        , Reader SocketPath :> es
        )
     => Eff (Reader DaemonInfo : es) a -> Eff es a
 runDaemonInfo act = do
     cfg <- ask
+    obsCfg <- ask @Observability.Config
     ProjectRoot projectRoot <- ask
     SocketPath sockPath <- ask
     watchDirs <- resolveWatchDirs cfg projectRoot
@@ -60,8 +64,8 @@ runDaemonInfo act = do
                 { targets = cfg.targets
                 , watchDirs = map (makeRelative projectRoot) watchDirs
                 , sockPath
-                , logFile = cfg.logFile
-                , metricsPort = cfg.metricsPort
+                , logFile = obsCfg.logFile
+                , metricsPort = obsCfg.metricsPort
                 }
     runReader daemonInfo act
 

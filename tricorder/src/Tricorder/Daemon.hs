@@ -50,6 +50,7 @@ runDaemon
        , IOE :> es
        , Log :> es
        , Reader Config :> es
+       , Reader Observability.Config :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -83,6 +84,7 @@ startDaemon
        , Log :> es
        , Process :> es
        , Reader Config :> es
+       , Reader Observability.Config :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es

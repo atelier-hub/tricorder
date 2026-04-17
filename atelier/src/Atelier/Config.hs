@@ -3,6 +3,7 @@
 module Atelier.Config
     ( envOverrides
     , deepMerge
+    , extractConfig
     , LoadedConfig (..)
     , runConfig
     ) where
@@ -71,6 +72,25 @@ deepMerge _ r = r
 
 
 newtype LoadedConfig = LoadedConfig Value
+
+
+-- | Pure variant of 'runConfig': extract and decode a config section from a 'LoadedConfig'
+-- without entering the effect stack. Falls back to the type's 'Default' instance on
+-- missing key or decode failure.
+extractConfig
+    :: forall (key :: Symbol) r
+     . (Default r, FromJSON r, KnownSymbol key)
+    => LoadedConfig
+    -> r
+extractConfig (LoadedConfig root) =
+    case root of
+        Aeson.Object m ->
+            case KM.lookup (fromString (symbolVal (Proxy @key))) m of
+                Nothing -> def
+                Just v -> case Aeson.fromJSON v of
+                    Aeson.Success a -> a
+                    Aeson.Error _ -> def
+        _ -> def
 
 
 -- | Extract and decode a config section by type-level key from the root config Value.

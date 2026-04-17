@@ -1,3 +1,0 @@
-targets = ["lib:tricorder", "exe:tricorder-exe", "lib:atelier", "lib:atelier-testing", "test:atelier-test", "test:tricorder-test"]
-log_file = "/tmp/tricorder.log"
-metrics_port = 9091

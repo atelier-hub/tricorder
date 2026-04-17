@@ -161,7 +161,7 @@ internal-libraries:
     - time
     - time-units
     - Cabal-syntax
-    - toml-reader
+    - yaml
 
 executables:
   tricorder-exe:

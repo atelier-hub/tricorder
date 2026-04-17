@@ -1,8 +1,6 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 module Tricorder.Config
     ( Config (..)
-    , loadConfig
+    , loadTricorderConfig
     , resolveCommand
     , resolveTargets
     , resolveTestTargets
@@ -36,14 +34,19 @@ import Distribution.Types.UnqualComponentName (mkUnqualComponentName, unUnqualCo
 import Distribution.Utils.Path (getSymbolicPath)
 import Effectful.Reader.Static (Reader, ask, runReader)
 import System.FilePath (takeExtension, (</>))
-import TOML (DecodeTOML (..), decode, getFieldOpt, getFieldOr)
 
+import Data.Aeson qualified as Aeson
+import Data.Aeson.KeyMap qualified as KM
 import Data.Text qualified as T
+import Data.Yaml qualified as Yaml
 
+import Atelier.Config (LoadedConfig (..), extractConfig)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, listDirectory, readFileBs)
 import Atelier.Time (Millisecond)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 import Tricorder.Project (ProjectRoot (..))
+
+import Tricorder.Observability qualified as Observability
 
 
 data Config = Config
@@ -53,8 +56,6 @@ data Config = Config
     , testTargets :: Maybe [Text]
     , debounceMs :: Millisecond
     , outputFile :: Maybe FilePath
-    , logFile :: Maybe FilePath
-    , metricsPort :: Maybe Int
     }
     deriving stock (Eq, Generic, Show)
     deriving (FromJSON) via QuietSnake Config
@@ -69,52 +70,23 @@ instance Default Config where
             , testTargets = Nothing
             , debounceMs = 100
             , outputFile = Just "build.json"
-            , logFile = Nothing
-            , metricsPort = Nothing
             }
 
 
--- Orphan instance — lives here since Millisecond is not in tricorder's dependency tree
-instance DecodeTOML Millisecond where
-    tomlDecoder = fromInteger <$> tomlDecoder
-
-
-instance DecodeTOML Config where
-    tomlDecoder = do
-        command <- getFieldOpt "command"
-        targets <- getFieldOr [] "targets"
-        watchDirs <- getFieldOr [] "watch_dirs"
-        testTargets <- getFieldOpt "test_targets"
-        debounceMs <- getFieldOr 100 "debounce_ms"
-        outputFile <- getFieldOr (Just "build.json") "output_file"
-        logFile <- getFieldOpt "log_file"
-        metricsPort <- getFieldOpt "metrics_port"
-        pure
-            Config
-                { command = command
-                , targets = targets
-                , watchDirs = watchDirs
-                , testTargets = testTargets
-                , debounceMs = debounceMs
-                , outputFile = outputFile
-                , logFile = logFile
-                , metricsPort = metricsPort
-                }
-
-
--- | Load config from .tricorder.toml in the project root, falling back to defaults.
--- CLI flags should be merged on top by the caller.
-loadConfig :: (FileSystem :> es) => FilePath -> Eff es Config
-loadConfig projectRoot = do
-    let tomlPath = projectRoot </> ".tricorder.toml"
-    exists <- doesFileExist tomlPath
-    if exists then do
-        content <- readFileBs tomlPath
-        case decode (decodeUtf8 content) of
-            Left _ -> pure def
-            Right cfg -> pure cfg
-    else
-        pure def
+-- | Load config from .tricorder.yaml in the project root.
+-- Falls back to empty config (all defaults) if the file is absent or cannot be parsed.
+loadTricorderConfig :: (FileSystem :> es) => FilePath -> Eff es LoadedConfig
+loadTricorderConfig projectRoot = do
+    exists <- doesFileExist yamlPath
+    if not exists then
+        pure $ LoadedConfig (Aeson.Object KM.empty)
+    else do
+        bs <- readFileBs yamlPath
+        pure . LoadedConfig $ case Yaml.decodeEither' @Aeson.Value bs of
+            Left _ -> Aeson.Object KM.empty
+            Right v -> v
+  where
+    yamlPath = projectRoot </> ".tricorder.yaml"
 
 
 -- | Resolve the GHCi command, using config if set or autodetecting otherwise.
@@ -235,11 +207,13 @@ runConfig
        , HasCallStack
        , Reader ProjectRoot :> es
        )
-    => Eff (Reader Config : es) a
+    => Eff (Reader Config : Reader Observability.Config : es) a
     -> Eff es a
 runConfig act = do
     ProjectRoot projectRoot <- ask
-    cfg <- loadConfig projectRoot
+    loadedCfg <- loadTricorderConfig projectRoot
+    let cfg = extractConfig @"session" loadedCfg
+        obsCfg = extractConfig @"observability" loadedCfg
     effectiveTargets <- resolveTargets cfg.targets projectRoot
     let cfg' = cfg {targets = effectiveTargets}
-    runReader cfg' act
+    runReader obsCfg $ runReader cfg' act

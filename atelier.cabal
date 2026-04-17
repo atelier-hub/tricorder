@@ -274,8 +274,8 @@ library tricorder
     , text
     , time
     , time-units
-    , toml-reader
     , typed-process
+    , yaml
   mixins:
       base hiding (Prelude)
   default-language: GHC2021

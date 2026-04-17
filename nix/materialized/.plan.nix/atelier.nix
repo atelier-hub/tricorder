@@ -136,8 +136,8 @@
             (hsPkgs."text" or (errorHandler.buildDepError "text"))
             (hsPkgs."time" or (errorHandler.buildDepError "time"))
             (hsPkgs."time-units" or (errorHandler.buildDepError "time-units"))
-            (hsPkgs."toml-reader" or (errorHandler.buildDepError "toml-reader"))
             (hsPkgs."typed-process" or (errorHandler.buildDepError "typed-process"))
+            (hsPkgs."yaml" or (errorHandler.buildDepError "yaml"))
           ];
           buildable = true;
           modules = [ "Paths_atelier" ];
