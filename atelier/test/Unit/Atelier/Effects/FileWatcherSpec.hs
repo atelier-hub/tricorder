@@ -1,6 +1,6 @@
 module Unit.Atelier.Effects.FileWatcherSpec (spec_FileWatcher) where
 
-import Hedgehog (Gen, Property, forAll, property, (===))
+import Hedgehog (Gen, PropertyT, forAll, (===))
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Test.Hspec.Hedgehog (hedgehog)
 
@@ -35,29 +35,29 @@ spec_FileWatcher = do
 -- Properties
 --------------------------------------------------------------------------------
 
-propAntichain :: Property
-propAntichain = property do
+propAntichain :: PropertyT IO ()
+propAntichain = do
     dirs <- forAll genDirs
     let result = deduplicateDirs dirs
     let pairs = [(a, b) | a <- result, b <- result, a /= b]
     all (\(a, b) -> not (isStrictAncestor a b)) pairs === True
 
 
-propCoverage :: Property
-propCoverage = property do
+propCoverage :: PropertyT IO ()
+propCoverage = do
     dirs <- forAll genDirs
     let result = deduplicateDirs dirs
     all (isCoveredBy result) dirs === True
 
 
-propIdempotent :: Property
-propIdempotent = property do
+propIdempotent :: PropertyT IO ()
+propIdempotent = do
     dirs <- forAll genDirs
     deduplicateDirs (deduplicateDirs dirs) === deduplicateDirs dirs
 
 
-propSubset :: Property
-propSubset = property do
+propSubset :: PropertyT IO ()
+propSubset = do
     dirs <- forAll genDirs
     let result = deduplicateDirs dirs
     all (`elem` dirs) result === True
@@ -80,7 +80,7 @@ genAbsDir = do
 
 
 genSegment :: Gen String
-genSegment = Gen.string (Range.linear 1 3) (Gen.element "abcd")
+genSegment = Gen.string (Range.linear 1 3) (Gen.element ['a', 'b', 'c', 'd'])
 
 
 --------------------------------------------------------------------------------
