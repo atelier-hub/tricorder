@@ -32,6 +32,7 @@ library
       Atelier.Effects.Env
       Atelier.Effects.File
       Atelier.Effects.FileSystem
+      Atelier.Effects.FileWatcher
       Atelier.Effects.Log
       Atelier.Effects.Monitoring.Metrics
       Atelier.Effects.Monitoring.Metrics.Registry
@@ -87,6 +88,8 @@ library
     , effectful-core
     , effectful-plugin
     , effectful-th
+    , filepath
+    , fsnotify
     , hasql
     , hasql-pool
     , hasql-transaction
@@ -100,6 +103,7 @@ library
     , prometheus-client
     , prometheus-metrics-ghc
     , rel8
+    , stm
     , stm-containers
     , text
     , time
@@ -204,7 +208,6 @@ library tricorder
       Tricorder.Effects.Brick
       Tricorder.Effects.BrickChan
       Tricorder.Effects.BuildStore
-      Tricorder.Effects.FileWatcher
       Tricorder.Effects.GhciSession
       Tricorder.Effects.GhcPkg
       Tricorder.Effects.Logging
@@ -265,7 +268,6 @@ library tricorder
     , effectful-plugin
     , effectful-th
     , filepath
-    , fsnotify
     , ghcid
     , hashable
     , mtl
@@ -333,6 +335,7 @@ test-suite atelier-test
       Unit.Atelier.Effects.ConcSpec
       Unit.Atelier.Effects.ConsoleSpec
       Unit.Atelier.Effects.DelaySpec
+      Unit.Atelier.Effects.FileWatcherSpec
       Unit.Atelier.Effects.LogSpec
       Unit.Atelier.Effects.PublishingSpec
       Unit.Atelier.Effects.TallySpec

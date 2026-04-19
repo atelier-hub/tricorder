@@ -20,6 +20,7 @@ import Atelier.Effects.FileSystem
     , getCurrentDirectory
     , readFileLbs
     )
+import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Process (Process)
 import Atelier.Time (Millisecond)
