@@ -226,6 +226,9 @@ library tricorder
       Tricorder.Socket.SocketPath
       Tricorder.SourceLookup
       Tricorder.Watch
+      Tricorder.Watch.Event
+      Tricorder.Watch.State
+      Tricorder.Watch.View
       Tricorder.Watcher
   other-modules:
       Paths_atelier
