@@ -1,5 +1,6 @@
 module Unit.Atelier.Effects.FileWatcherSpec (spec_FileWatcher) where
 
+import Data.List (isSuffixOf)
 import Hedgehog (Gen, PropertyT, forAll, (===))
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Test.Hspec.Hedgehog (hedgehog)
@@ -7,7 +8,7 @@ import Test.Hspec.Hedgehog (hedgehog)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 
-import Atelier.Effects.FileWatcher (deduplicateDirs)
+import Atelier.Effects.FileWatcher (deduplicateDirs, dir, dirWhere, matchesAny)
 
 
 spec_FileWatcher :: Spec
@@ -29,6 +30,23 @@ spec_FileWatcher = do
 
             it "does not treat a dir as an ancestor of a similarly named dir" do
                 deduplicateDirs ["/src", "/srcover"] `shouldBe` ["/src", "/srcover"]
+
+    describe "matchesAny" do
+        it "matches a file under a watched directory" do
+            matchesAny [dir "/proj/src"] "/proj/src/Foo.hs"
+                `shouldBe` True
+
+        it "does not match a relative watch dir against an absolute event path" do
+            -- runFileWatcherIO must canonicalize Watch paths to absolute before
+            -- calling matchesAny, because fsnotify always reports absolute paths.
+            matchesAny [dir "src"] "/proj/src/Foo.hs"
+                `shouldBe` False
+
+        it "applies the file predicate" do
+            matchesAny [dirWhere "/proj/src" (\f -> ".hs" `isSuffixOf` f)] "/proj/src/Foo.hs"
+                `shouldBe` True
+            matchesAny [dirWhere "/proj/src" (\f -> ".hs" `isSuffixOf` f)] "/proj/src/Foo.js"
+                `shouldBe` False
 
 
 --------------------------------------------------------------------------------

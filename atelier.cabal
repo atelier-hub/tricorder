@@ -28,6 +28,7 @@ library
       Atelier.Effects.DB
       Atelier.Effects.DB.Config
       Atelier.Effects.DB.Rel8
+      Atelier.Effects.Debounce
       Atelier.Effects.Delay
       Atelier.Effects.Env
       Atelier.Effects.File
@@ -204,7 +205,6 @@ library tricorder
       Tricorder.BuildState
       Tricorder.Config
       Tricorder.Daemon
-      Tricorder.Debounce
       Tricorder.Effects.Brick
       Tricorder.Effects.BrickChan
       Tricorder.Effects.BuildStore
@@ -334,6 +334,7 @@ test-suite atelier-test
       Unit.Atelier.Effects.Conc.TracedSpec
       Unit.Atelier.Effects.ConcSpec
       Unit.Atelier.Effects.ConsoleSpec
+      Unit.Atelier.Effects.DebounceSpec
       Unit.Atelier.Effects.DelaySpec
       Unit.Atelier.Effects.FileWatcherSpec
       Unit.Atelier.Effects.LogSpec
@@ -392,7 +393,6 @@ test-suite tricorder-test
       Unit.Tricorder.BuildStateSpec
       Unit.Tricorder.BuildStoreSpec
       Unit.Tricorder.ConfigSpec
-      Unit.Tricorder.DebounceSpec
       Unit.Tricorder.FileWatcherSpec
       Unit.Tricorder.GhciSessionSpec
       Unit.Tricorder.GhcPkgSpec

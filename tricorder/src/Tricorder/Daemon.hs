@@ -1,10 +1,12 @@
 module Tricorder.Daemon
     ( runDaemon
+    , runDebounce
     , startDaemon
     , stopDaemon
     ) where
 
 import Effectful (IOE)
+import Effectful.Concurrent (Concurrent)
 import Effectful.Exception (try)
 import Effectful.Reader.Static (Reader, ask)
 
@@ -12,6 +14,7 @@ import Atelier.Component (runSystem)
 import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.FileSystem (FileSystem, removeFile)
 import Atelier.Effects.FileWatcher (FileWatcher)
@@ -28,6 +31,7 @@ import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Socket.SocketPath (SocketPath (..))
 
 import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.Debounce qualified as Debounce
 import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
 import Tricorder.Socket.Server qualified as SocketServer
@@ -42,6 +46,7 @@ runDaemon
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
+       , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
        , FileWatcher :> es
@@ -67,6 +72,21 @@ runDaemon = do
     Conc.awaitAll
 
 
+-- | Run the 'Debounce' effect using the settle window from 'Config'.
+runDebounce
+    :: ( Conc :> es
+       , Concurrent :> es
+       , Delay :> es
+       , IOE :> es
+       , Reader Config :> es
+       )
+    => Eff (Debounce FilePath : es) a
+    -> Eff es a
+runDebounce eff = do
+    cfg <- ask @Config
+    Debounce.runDebounce cfg.debounceMs eff
+
+
 -- | Fork the daemon as a background process and return immediately.
 -- No-op if the daemon is already running (caller should check beforehand).
 startDaemon
@@ -75,6 +95,7 @@ startDaemon
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
+       , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
        , FileWatcher :> es

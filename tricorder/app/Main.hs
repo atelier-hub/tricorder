@@ -18,10 +18,10 @@ import Atelier.Effects.Posix.Process (runProcess)
 import Tricorder.Arguments (runArguments)
 import Tricorder.BuildState (runDaemonInfo)
 import Tricorder.Config (runConfig)
+import Tricorder.Daemon (runDebounce)
 import Tricorder.Effects.Brick (runBrick)
 import Tricorder.Effects.BrickChan (runBrickChan)
 import Tricorder.Effects.BuildStore (runBuildStore)
-import Tricorder.Effects.FileWatcher (runFileWatcherIO)
 import Tricorder.Effects.GhcPkg (runGhcPkgIO)
 import Tricorder.Effects.GhciSession (runGhciSessionIO)
 import Tricorder.Effects.Logging (runLogging)
@@ -60,6 +60,7 @@ main =
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.ModuleName) @Text
         . runGhciSessionIO
         . runFileWatcherIO
+        . runDebounce
         . runGhcPkgIO
         . runBuildStore
         . runArguments

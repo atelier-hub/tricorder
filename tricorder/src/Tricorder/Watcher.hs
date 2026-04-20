@@ -6,10 +6,11 @@ import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (takeExtension, takeFileName)
 
 import Atelier.Component (Component (..), defaultComponent)
+import Atelier.Effects.Debounce (Debounce, debounced)
 import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Atelier.Effects.FileWatcher (FileWatcher, Watch, containing, dirExt, dirWhere, excluding, watchFilePaths)
 import Tricorder.BuildState (ChangeKind (..))
-import Tricorder.Config (Config, resolveWatchDirs)
+import Tricorder.Config (Config (..), resolveWatchDirs)
 import Tricorder.Effects.BuildStore (BuildStore, markDirty)
 
 
@@ -19,6 +20,7 @@ import Tricorder.Effects.BuildStore (BuildStore, markDirty)
 -- or session restart accordingly.
 component
     :: ( BuildStore :> es
+       , Debounce FilePath :> es
        , FileSystem :> es
        , FileWatcher :> es
        , Reader Config :> es
@@ -32,7 +34,10 @@ component =
             projectRoot <- getCurrentDirectory
             dirs <- resolveWatchDirs cfg projectRoot
             let watches = sourceWatches dirs <> cabalWatches projectRoot
-            pure [forever $ watchFilePaths watches \path -> markDirty (changeKindFor path)]
+            pure
+                [ forever $ watchFilePaths watches \path ->
+                    debounced path (markDirty (changeKindFor path))
+                ]
         }
 
 
