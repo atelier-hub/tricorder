@@ -12,6 +12,7 @@ import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Console (Console)
+import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem
@@ -40,7 +41,6 @@ import Tricorder.Daemon (startDaemon, stopDaemon)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.FileWatcher (FileWatcher)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
@@ -72,6 +72,7 @@ run
        , Clock :> es
        , Conc :> es
        , Console :> es
+       , Debounce FilePath :> es
        , Delay :> es
        , File :> es
        , FileSystem :> es
@@ -107,6 +108,7 @@ start
        , Clock :> es
        , Conc :> es
        , Console :> es
+       , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
        , FileWatcher :> es
@@ -266,6 +268,7 @@ watch
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
+       , Debounce FilePath :> es
        , Delay :> es
        , File :> es
        , FileSystem :> es
@@ -300,6 +303,7 @@ showSource
        , Clock :> es
        , Conc :> es
        , Console :> es
+       , Debounce FilePath :> es
        , Delay :> es
        , File :> es
        , FileSystem :> es

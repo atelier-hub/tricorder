@@ -60,6 +60,7 @@ module Atelier.Effects.FileWatcher
 
       -- * Internals (exported for testing)
     , deduplicateDirs
+    , matchesAny
     ) where
 
 import Control.Concurrent (threadDelay)
@@ -71,6 +72,7 @@ import Effectful.Concurrent.STM (atomically)
 import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift, localUnliftIO, reinterpret)
 import Effectful.State.Static.Shared (evalState, get, put)
 import Effectful.TH (makeEffect)
+import System.Directory (makeAbsolute)
 import System.FSNotify (eventPath, watchTree, withManager)
 import System.FilePath (takeExtension)
 
@@ -142,11 +144,13 @@ makeEffect ''FileWatcher
 runFileWatcherIO :: (IOE :> es) => Eff (FileWatcher : es) a -> Eff es a
 runFileWatcherIO eff = interpretWith eff \env -> \case
     WatchFilePaths watches callback ->
-        localUnliftIO env concStrat \unliftIO ->
+        localUnliftIO env concStrat \unliftIO -> do
+            absWatches <- forM watches \(Watch p predicate) ->
+                (\absP -> Watch absP predicate) <$> makeAbsolute p
             withManager \mgr -> do
-                let dedupedDirs = deduplicateDirs [p | Watch p _ <- watches]
+                let dedupedDirs = deduplicateDirs [p | Watch p _ <- absWatches]
                 for_ dedupedDirs \d ->
-                    watchTree mgr d (matchesAny watches . eventPath) \event ->
+                    watchTree mgr d (matchesAny absWatches . eventPath) \event ->
                         void $ unliftIO $ callback (eventPath event)
                 forever $ threadDelay 1_000_000
 
