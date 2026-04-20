@@ -2,6 +2,8 @@ module Tricorder.Watch.State
     ( Name (..)
     , State (..)
     , init
+    , Collapsible (..)
+    , invertCollapsible
     ) where
 
 import Atelier.Effects.Clock (Clock, TimeZone)
@@ -18,8 +20,20 @@ data Name = Watcher
 data State = State
     { buildState :: Maybe BuildState
     , timeZone :: TimeZone
+    , daemonInfoView :: Collapsible
     , showHelp :: Bool
     }
+
+
+data Collapsible
+    = Expanded
+    | Collapsed
+    deriving stock (Eq)
+
+
+invertCollapsible :: Collapsible -> Collapsible
+invertCollapsible Expanded = Collapsed
+invertCollapsible Collapsed = Expanded
 
 
 init :: (Clock :> es) => Eff es State
@@ -29,5 +43,6 @@ init = do
         State
             { buildState = Nothing
             , timeZone = tz
+            , daemonInfoView = Collapsed
             , showHelp = False
             }

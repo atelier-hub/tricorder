@@ -14,6 +14,7 @@ import Brick.Widgets.Core
     ( Padding (..)
     , emptyWidget
     , hBox
+    , padBottom
     , padLeft
     , padTop
     , txt
@@ -37,7 +38,7 @@ import Tricorder.BuildState
     , TestRun (..)
     )
 import Tricorder.Watch.Event (viewKeybindings)
-import Tricorder.Watch.State (Name (..), State (..))
+import Tricorder.Watch.State (Collapsible (..), Name (..), State (..))
 
 import Tricorder.Watch.Event qualified as Event
 
@@ -72,12 +73,27 @@ viewBuildState state bs =
     vBoxSpaced
         1
         [ viewBuildPhase state.timeZone bs.phase
-        , viewDaemonInfo bs.daemonInfo
+        , viewDaemonInfo state bs.daemonInfo
         ]
 
 
-viewDaemonInfo :: DaemonInfo -> Widget n
-viewDaemonInfo di =
+viewDaemonInfo :: State -> DaemonInfo -> Widget n
+viewDaemonInfo state di =
+    vBox
+        [ case state.daemonInfoView of
+            Expanded ->
+                padBottom (Pad 1)
+                    $ viewExpandedDaemonInfo di
+            Collapsed ->
+                emptyWidget
+        , viewHint
+        ]
+viewHint :: Widget n
+viewHint = txt "Press 'h' for help"
+
+
+viewExpandedDaemonInfo :: DaemonInfo -> Widget n
+viewExpandedDaemonInfo di =
     vBox
         $ [ viewTargets di.targets
           , viewWatchDirs di.watchDirs

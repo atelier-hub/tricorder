@@ -46,7 +46,7 @@ import Data.Text qualified as T
 import Graphics.Vty qualified as Vty
 
 import Tricorder.BuildState (BuildState (..))
-import Tricorder.Watch.State (Name (..), State (..))
+import Tricorder.Watch.State (Name (..), State (..), invertCollapsible)
 
 
 data Event
@@ -66,7 +66,8 @@ handleAppEvent = \case
 
 
 data KeyEvent
-    = Quit
+    = ToggleDaemonInfoView
+    | Quit
     | ScrollUp
     | ScrollDown
     | ToggleHelp
@@ -76,7 +77,8 @@ data KeyEvent
 keys :: KeyEvents KeyEvent
 keys =
     keyEvents
-        [ ("quit", Quit)
+        [ ("toggle daemon info", ToggleDaemonInfoView)
+        , ("quit", Quit)
         , ("scroll up", ScrollUp)
         , ("scroll down", ScrollDown)
         , ("toggle help", ToggleHelp)
@@ -85,7 +87,8 @@ keys =
 
 bindings :: [(KeyEvent, [Binding])]
 bindings =
-    [ (Quit, [bind 'q', ctrl 'c', binding KEsc []])
+    [ (ToggleDaemonInfoView, [bind 'g'])
+    , (Quit, [bind 'q', ctrl 'c', binding KEsc []])
     , (ScrollUp, [binding KUp []])
     , (ScrollDown, [binding KDown []])
     , (ToggleHelp, [bind 'h'])
@@ -103,7 +106,9 @@ dispatcher =
     either (error . ("Invalid key dispatcher config: " <>) . stringify) id
         $ keyDispatcher
             keyConfig
-            [ onEvent Quit "Exit" do
+            [ onEvent ToggleDaemonInfoView "Toggle daemon info view" do
+                modify \s -> s {daemonInfoView = invertCollapsible s.daemonInfoView}
+            , onEvent Quit "Exit" do
                 halt
             , onEvent ScrollUp "Scrolling upwards" do
                 vScrollBy (viewportScroll Watcher) (-1)
