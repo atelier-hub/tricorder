@@ -77,7 +77,6 @@ runDebounce
     :: ( Conc :> es
        , Concurrent :> es
        , Delay :> es
-       , IOE :> es
        )
     => Eff (Debounce FilePath : es) a
     -> Eff es a
