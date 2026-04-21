@@ -1,5 +1,5 @@
-module Tricorder.Watch
-    ( watchDisplay
+module Tricorder.UI
+    ( viewUi
     ) where
 
 import Brick
@@ -19,19 +19,19 @@ import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.Socket.Client (queryWatch)
-import Tricorder.Watch.Event (Event (..), handleEvent)
-import Tricorder.Watch.State (Name (..), State (..))
-import Tricorder.Watch.View (view)
+import Tricorder.UI.Event (Event (..), handleEvent)
+import Tricorder.UI.State (Name (..), State (..))
+import Tricorder.UI.View (view)
 
 import Atelier.Effects.Conc qualified as Conc
 import Tricorder.Effects.Brick qualified as Brick
 import Tricorder.Effects.BrickChan qualified as BrickChan
-import Tricorder.Watch.State qualified as Model
+import Tricorder.UI.State qualified as Model
 
 
 -- | Connect to the daemon and render a live-updating build status display using
 -- a brick TUI. Quits on @q@ or @Esc@; arrow keys scroll the viewport.
-watchDisplay
+viewUi
     :: ( Brick :> es
        , BrickChan :> es
        , Clock :> es
@@ -40,7 +40,7 @@ watchDisplay
        , UnixSocket :> es
        )
     => FilePath -> Eff es ()
-watchDisplay sockPath = do
+viewUi sockPath = do
     chan <- BrickChan.newBChan 10
     initialState <- Model.init
     Conc.scoped do

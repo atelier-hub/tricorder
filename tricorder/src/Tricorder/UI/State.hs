@@ -1,4 +1,4 @@
-module Tricorder.Watch.State
+module Tricorder.UI.State
     ( Name (..)
     , State (..)
     , init
@@ -13,7 +13,7 @@ import Prelude hiding (init)
 import Atelier.Effects.Clock qualified as Clock
 
 
-data Name = Watcher
+data Name = UI
     deriving stock (Eq, Ord, Show)
 
 

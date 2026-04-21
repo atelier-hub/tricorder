@@ -33,7 +33,7 @@ data Command
     = Start
     | Stop
     | Status Bool Bool Bool
-    | Watch
+    | UI
     | Log Bool
     | Source [ModuleName]
 
@@ -62,7 +62,7 @@ commandParser =
         ( command "start" (info (pure Start) (progDesc "Start the daemon (no-op if already running)"))
             <> command "stop" (info (pure Stop) (progDesc "Stop the daemon"))
             <> command "status" (info statusParser (progDesc "Print build diagnostics (--json for machine-readable output)"))
-            <> command "watch" (info (pure Watch) (progDesc "Auto-refreshing terminal display"))
+            <> command "ui" (info (pure UI) (progDesc "Auto-refreshing terminal display"))
             <> command "log" (info logParser (progDesc "Show daemon log output"))
             <> command "source" (info sourceParser (progDesc "Print the Haskell source of one or more installed modules"))
         )

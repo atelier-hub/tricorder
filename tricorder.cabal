@@ -39,10 +39,10 @@ library
       Tricorder.Socket.Server
       Tricorder.Socket.SocketPath
       Tricorder.SourceLookup
-      Tricorder.Watch
-      Tricorder.Watch.Event
-      Tricorder.Watch.State
-      Tricorder.Watch.View
+      Tricorder.UI
+      Tricorder.UI.Event
+      Tricorder.UI.State
+      Tricorder.UI.View
       Tricorder.Watcher
   other-modules:
       Paths_tricorder

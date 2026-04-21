@@ -4,9 +4,9 @@
 
 Like similar tools (`ghcid`, `ghciwatch`), it builds the code continuously on every change, presents diagnostics, and runs the tests afterwards. However, `tricorder` offers other advantages:
 
-- **Designed for humans** - A `tricorder watch` interactive TUI mode that presents stats in real time for developers.
+- **Designed for humans** - A `tricorder ui` interactive TUI mode that presents stats in real time for developers.
 - **Designed for agents** - A `SKILL` is provided to inform agentic usage via the `tricorder` CLI.
-- **Background builds** - Building in the background using a daemon allows different clients to query the build state simultaneously without triggering multiple rebuilds. For instance, we ship the `tricorder watch` TUI and the `tricorder status` CLI command that communicate witha single daemon via a socket.
+- **Background builds** - Building in the background using a daemon allows different clients to query the build state simultaneously without triggering multiple rebuilds. For instance, we ship the `tricorder ui` TUI and the `tricorder status` CLI command that communicate witha single daemon via a socket.
 - **Sane defaults** - Running `tricorder start` should Just Work™ for most cabal-based Haskell projects.
   - Daemon restarts automatically when cabal files change
   - If customization is needed it can be provided at different levels via a `.tricorder.yaml` or CLI args.
