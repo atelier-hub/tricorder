@@ -53,7 +53,7 @@ let
     fi
   '';
 
-  tricorderExe = projectFlake.packages."atelier:exe:tricorder-exe";
+  tricorderExe = projectFlake.packages."tricorder:exe:tricorder-exe";
   # Wrap the cabal executable (tricorder-exe) so consumers get a binary named `tricorder`
   tricorder = pkgs.runCommand "tricorder" { } ''
     mkdir -p $out/bin
@@ -120,7 +120,7 @@ in
       program = "${pkgs.writeShellScript "ghcid-multi" ''
         exec ${pkgs.haskell-nix.tool compiler-nix-name "ghcid" "latest"}/bin/ghcid \
           -c 'cabal repl --enable-multi-repl all atelier-test tricorder-test' \
-          --restart=atelier.cabal \
+          --restart=tricorder.cabal \
           --clear \
           --outputfile=build.log \
           "$@"

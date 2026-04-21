@@ -1,5 +1,5 @@
 {
-  description = "Atelier";
+  description = "Tricorder";
 
   nixConfig = {
     extra-substituters = [

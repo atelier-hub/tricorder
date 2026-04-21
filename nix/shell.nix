@@ -20,7 +20,7 @@ project.shellFor {
   name = "tricorder-shell-${compiler-nix-name}";
 
   # Include local packages
-  packages = ps: [ ps.atelier ];
+  packages = ps: [ ps.tricorder ];
 
   # Enable Hoogle documentation
   withHoogle = true;

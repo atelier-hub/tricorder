@@ -4,7 +4,7 @@ cabal-version: 2.0
 --
 -- see: https://github.com/sol/hpack
 
-name:           atelier
+name:           tricorder
 version:        0.1.0.0
 synopsis:       TODO write a short description
 description:    TODO write a long description
@@ -14,6 +14,95 @@ license:        MIT
 build-type:     Simple
 
 library
+  exposed-modules:
+      Tricorder.Arguments
+      Tricorder.BuildState
+      Tricorder.Config
+      Tricorder.Daemon
+      Tricorder.Effects.Brick
+      Tricorder.Effects.BrickChan
+      Tricorder.Effects.BuildStore
+      Tricorder.Effects.GhciSession
+      Tricorder.Effects.GhcPkg
+      Tricorder.Effects.Logging
+      Tricorder.Effects.TestRunner
+      Tricorder.Effects.UnixSocket
+      Tricorder.Events.FileChanged
+      Tricorder.GhciSession
+      Tricorder.GhcPkg.Types
+      Tricorder.Observability
+      Tricorder.Program
+      Tricorder.Project
+      Tricorder.Render
+      Tricorder.Socket.Client
+      Tricorder.Socket.Protocol
+      Tricorder.Socket.Server
+      Tricorder.Socket.SocketPath
+      Tricorder.SourceLookup
+      Tricorder.Watch
+      Tricorder.Watch.Event
+      Tricorder.Watch.State
+      Tricorder.Watch.View
+      Tricorder.Watcher
+  other-modules:
+      Paths_tricorder
+  autogen-modules:
+      Paths_tricorder
+  hs-source-dirs:
+      tricorder/src
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded
+  build-depends:
+      Cabal-syntax
+    , aeson
+    , ansi-terminal
+    , atelier
+    , atelier-prelude
+    , base
+    , brick
+    , bytestring
+    , containers
+    , data-default
+    , directory
+    , effectful
+    , effectful-core
+    , effectful-plugin
+    , effectful-th
+    , filepath
+    , ghcid
+    , hashable
+    , mtl
+    , network
+    , optparse-applicative
+    , stm
+    , text
+    , time
+    , time-units
+    , typed-process
+    , vty
+    , vty-crossplatform
+    , yaml
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021
+
+library atelier
   exposed-modules:
       Atelier.Component
       Atelier.Config
@@ -51,9 +140,9 @@ library
       Atelier.Types.JsonReadShow
       Atelier.Types.QuietSnake
   other-modules:
-      Paths_atelier
+      Paths_tricorder
   autogen-modules:
-      Paths_atelier
+      Paths_tricorder
   hs-source-dirs:
       atelier/src
   default-extensions:
@@ -123,9 +212,9 @@ library atelier-prelude
   exposed-modules:
       Prelude
   other-modules:
-      Paths_atelier
+      Paths_tricorder
   autogen-modules:
-      Paths_atelier
+      Paths_tricorder
   hs-source-dirs:
       atelier/prelude
   default-extensions:
@@ -157,9 +246,9 @@ library atelier-testing
   exposed-modules:
       Atelier.Testing.Database
   other-modules:
-      Paths_atelier
+      Paths_tricorder
   autogen-modules:
-      Paths_atelier
+      Paths_tricorder
   hs-source-dirs:
       atelier/testing
   default-extensions:
@@ -199,101 +288,12 @@ library atelier-testing
       base hiding (Prelude)
   default-language: GHC2021
 
-library tricorder
-  exposed-modules:
-      Tricorder.Arguments
-      Tricorder.BuildState
-      Tricorder.Config
-      Tricorder.Daemon
-      Tricorder.Effects.Brick
-      Tricorder.Effects.BrickChan
-      Tricorder.Effects.BuildStore
-      Tricorder.Effects.GhciSession
-      Tricorder.Effects.GhcPkg
-      Tricorder.Effects.Logging
-      Tricorder.Effects.TestRunner
-      Tricorder.Effects.UnixSocket
-      Tricorder.Events.FileChanged
-      Tricorder.GhciSession
-      Tricorder.GhcPkg.Types
-      Tricorder.Observability
-      Tricorder.Program
-      Tricorder.Project
-      Tricorder.Render
-      Tricorder.Socket.Client
-      Tricorder.Socket.Protocol
-      Tricorder.Socket.Server
-      Tricorder.Socket.SocketPath
-      Tricorder.SourceLookup
-      Tricorder.Watch
-      Tricorder.Watch.Event
-      Tricorder.Watch.State
-      Tricorder.Watch.View
-      Tricorder.Watcher
-  other-modules:
-      Paths_atelier
-  autogen-modules:
-      Paths_atelier
-  hs-source-dirs:
-      tricorder/src
-  default-extensions:
-      BlockArguments
-      DataKinds
-      DeriveAnyClass
-      DerivingStrategies
-      DerivingVia
-      DuplicateRecordFields
-      FlexibleContexts
-      GADTs
-      LambdaCase
-      MultiWayIf
-      OverloadedLabels
-      OverloadedRecordDot
-      OverloadedStrings
-      StrictData
-      TemplateHaskell
-      TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded
-  build-depends:
-      Cabal-syntax
-    , aeson
-    , ansi-terminal
-    , atelier
-    , atelier-prelude
-    , base
-    , brick
-    , bytestring
-    , containers
-    , data-default
-    , directory
-    , effectful
-    , effectful-core
-    , effectful-plugin
-    , effectful-th
-    , filepath
-    , ghcid
-    , hashable
-    , mtl
-    , network
-    , optparse-applicative
-    , stm
-    , text
-    , time
-    , time-units
-    , typed-process
-    , vty
-    , vty-crossplatform
-    , yaml
-  mixins:
-      base hiding (Prelude)
-  default-language: GHC2021
-
 executable tricorder-exe
   main-is: Main.hs
   other-modules:
-      Paths_atelier
+      Paths_tricorder
   autogen-modules:
-      Paths_atelier
+      Paths_tricorder
   hs-source-dirs:
       tricorder/app
   default-extensions:
@@ -343,9 +343,9 @@ test-suite atelier-test
       Unit.Atelier.Effects.LogSpec
       Unit.Atelier.Effects.PublishingSpec
       Unit.Atelier.Effects.TallySpec
-      Paths_atelier
+      Paths_tricorder
   autogen-modules:
-      Paths_atelier
+      Paths_tricorder
   hs-source-dirs:
       atelier/test
   default-extensions:
@@ -403,9 +403,9 @@ test-suite tricorder-test
       Unit.Tricorder.SourceLookupSpec
       Unit.Tricorder.SourceSpec
       Unit.Tricorder.TestRunnerSpec
-      Paths_atelier
+      Paths_tricorder
   autogen-modules:
-      Paths_atelier
+      Paths_tricorder
   hs-source-dirs:
       tricorder/test
   default-extensions:

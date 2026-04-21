@@ -1,4 +1,4 @@
-name:                atelier
+name:                tricorder
 version:             0.1.0.0
 synopsis:            TODO write a short description
 description:         TODO write a long description
@@ -65,51 +65,84 @@ default-extensions:
 - TypeFamilies
 
 library:
-  source-dirs: atelier/src
+  source-dirs: tricorder/src
   dependencies:
   - name: base
     mixin:
       - hiding (Prelude)
   - atelier-prelude
+  - atelier
   - aeson
-  - base64-bytestring
+  - ansi-terminal
+  - brick
   - bytestring
-  - casing
   - containers
-  - contra-tracer
   - data-default
   - directory
   - effectful
   - effectful-th
   - filepath
-  - fsnotify
-  - ki
+  - ghcid
+  - mtl
+  - network
+  - hashable
+  - optparse-applicative
+  - typed-process
   - stm
-  - hasql
-  - hasql-pool
-  - hasql-transaction
-  - hs-opentelemetry-api
-  - hs-opentelemetry-exporter-otlp
-  - hs-opentelemetry-sdk
-  - http-api-data
-  - ki
-  - list-t
-  - http-types
-  - prometheus-client
-  - prometheus-metrics-ghc
-  - wai
-  - warp
-  - rel8
-  - stm-containers
   - text
   - time
   - time-units
-  - unagi-chan
-  - unix
-  - unordered-containers
-  - uuid
+  - vty
+  - vty-crossplatform
+  - Cabal-syntax
+  - yaml
 
 internal-libraries:
+  atelier:
+    source-dirs: atelier/src
+    dependencies:
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - atelier-prelude
+    - aeson
+    - base64-bytestring
+    - bytestring
+    - casing
+    - containers
+    - contra-tracer
+    - data-default
+    - directory
+    - effectful
+    - effectful-th
+    - filepath
+    - fsnotify
+    - ki
+    - stm
+    - hasql
+    - hasql-pool
+    - hasql-transaction
+    - hs-opentelemetry-api
+    - hs-opentelemetry-exporter-otlp
+    - hs-opentelemetry-sdk
+    - http-api-data
+    - ki
+    - list-t
+    - http-types
+    - prometheus-client
+    - prometheus-metrics-ghc
+    - wai
+    - warp
+    - rel8
+    - stm-containers
+    - text
+    - time
+    - time-units
+    - unagi-chan
+    - unix
+    - unordered-containers
+    - uuid
+
   atelier-prelude:
     source-dirs: atelier/prelude
     dependencies:
@@ -134,39 +167,6 @@ internal-libraries:
     - tmp-postgres
     - unix
     - uuid
-
-  tricorder:
-    source-dirs: tricorder/src
-    dependencies:
-    - name: base
-      mixin:
-        - hiding (Prelude)
-    - atelier-prelude
-    - atelier
-    - aeson
-    - ansi-terminal
-    - brick
-    - bytestring
-    - containers
-    - data-default
-    - directory
-    - effectful
-    - effectful-th
-    - filepath
-    - ghcid
-    - mtl
-    - network
-    - hashable
-    - optparse-applicative
-    - typed-process
-    - stm
-    - text
-    - time
-    - time-units
-    - vty
-    - vty-crossplatform
-    - Cabal-syntax
-    - yaml
 
 executables:
   tricorder-exe:

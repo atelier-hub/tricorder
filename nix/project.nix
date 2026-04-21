@@ -30,8 +30,8 @@ pkgs.haskell-nix.cabalProject' {
         # Disable tests for tmp-postgres
         tmp-postgres.doCheck = false;
 
-        # Configure atelier package
-        atelier = {
+        # Configure tricorder package
+        tricorder = {
           # Treat warnings as errors in Nix builds (CI), but not in local dev
           ghcOptions = [ "-Werror" ];
         };
