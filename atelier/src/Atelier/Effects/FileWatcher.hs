@@ -143,13 +143,14 @@ makeEffect ''FileWatcher
 
 -- | Like 'watchFilePaths' but automatically debounces by path.
 -- Rapid successive events for the same file coalesce into a single callback.
+-- Uses a 100ms settle window.
 watchFilePathsDebounced
     :: (Debounce FilePath :> es, FileWatcher :> es)
     => [Watch]
     -> (FilePath -> Eff es ())
     -> Eff es Void
 watchFilePathsDebounced watches callback =
-    watchFilePaths watches \path -> debounced path (callback path)
+    watchFilePaths watches \path -> debounced 100 path (callback path)
 
 
 -- | Production interpreter backed by fsnotify.
