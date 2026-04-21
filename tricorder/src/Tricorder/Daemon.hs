@@ -1,12 +1,10 @@
 module Tricorder.Daemon
     ( runDaemon
-    , runDebounce
     , startDaemon
     , stopDaemon
     ) where
 
 import Effectful (IOE)
-import Effectful.Concurrent (Concurrent)
 import Effectful.Exception (try)
 import Effectful.Reader.Static (Reader, ask)
 
@@ -31,7 +29,6 @@ import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Socket.SocketPath (SocketPath (..))
 
 import Atelier.Effects.Conc qualified as Conc
-import Atelier.Effects.Debounce qualified as Debounce
 import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
 import Tricorder.Socket.Server qualified as SocketServer
@@ -70,17 +67,6 @@ runDaemon = do
         , SocketServer.component
         ]
     Conc.awaitAll
-
-
--- | Run the 'Debounce' effect.
-runDebounce
-    :: ( Conc :> es
-       , Concurrent :> es
-       , Delay :> es
-       )
-    => Eff (Debounce FilePath : es) a
-    -> Eff es a
-runDebounce = Debounce.runDebounce
 
 
 -- | Fork the daemon as a background process and return immediately.
