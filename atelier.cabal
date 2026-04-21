@@ -393,7 +393,6 @@ test-suite tricorder-test
       Unit.Tricorder.BuildStateSpec
       Unit.Tricorder.BuildStoreSpec
       Unit.Tricorder.ConfigSpec
-      Unit.Tricorder.FileWatcherSpec
       Unit.Tricorder.GhciSessionSpec
       Unit.Tricorder.GhcPkgSpec
       Unit.Tricorder.RenderSpec
