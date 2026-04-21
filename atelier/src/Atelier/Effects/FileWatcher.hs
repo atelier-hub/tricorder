@@ -31,11 +31,10 @@
 -- @
 --
 -- Combine source and cabal watches with a single callback that dispatches on
--- the path:
+-- the path, with automatic debouncing:
 --
 -- @
--- watchFilePaths (sourceWatches ++ cabalWatches) \path ->
---     markDirty (changeKindFor path)
+-- watchFilePathsDebounced (sourceWatches ++ cabalWatches) (markDirty . changeKindFor)
 -- @
 module Atelier.Effects.FileWatcher
     ( -- * Watch specification
@@ -53,6 +52,7 @@ module Atelier.Effects.FileWatcher
       -- * Effect
     , FileWatcher
     , watchFilePaths
+    , watchFilePathsDebounced
 
       -- * Interpreters
     , runFileWatcherIO
@@ -79,6 +79,7 @@ import System.FilePath (takeExtension)
 import Data.Text qualified as T
 
 import Atelier.Effects.Conc (concStrat)
+import Atelier.Effects.Debounce (Debounce, debounced)
 
 
 -- | Specification of a directory to watch recursively, with a file predicate.
@@ -133,11 +134,22 @@ data FileWatcher :: Effect where
     -- each matching file path. Registers the minimal set of OS watchers needed
     -- to cover all entries (deduplication by path prefix). The callback is
     -- invoked at most once per raw filesystem event regardless of how many
-    -- entries match.
-    WatchFilePaths :: [Watch] -> (FilePath -> m a) -> FileWatcher m a
+    -- entries match. Never returns.
+    WatchFilePaths :: [Watch] -> (FilePath -> m a) -> FileWatcher m Void
 
 
 makeEffect ''FileWatcher
+
+
+-- | Like 'watchFilePaths' but automatically debounces by path.
+-- Rapid successive events for the same file coalesce into a single callback.
+watchFilePathsDebounced
+    :: (Debounce FilePath :> es, FileWatcher :> es)
+    => [Watch]
+    -> (FilePath -> Eff es ())
+    -> Eff es Void
+watchFilePathsDebounced watches callback =
+    watchFilePaths watches \path -> debounced path (callback path)
 
 
 -- | Production interpreter backed by fsnotify.
@@ -156,15 +168,17 @@ runFileWatcherIO eff = interpretWith eff \env -> \case
 
 
 -- | Scripted interpreter for testing.
--- Each 'watchFilePaths' call pops the next path from the list and invokes the
--- callback with it. Blocks indefinitely once the list is exhausted.
+-- Delivers all scripted paths to the callback in order, then blocks
+-- indefinitely — matching the blocking semantics of 'runFileWatcherIO'.
 -- The 'Watch' specification is ignored; the caller controls what paths are fed in.
 runFileWatcherScripted :: (Concurrent :> es) => [FilePath] -> Eff (FileWatcher : es) a -> Eff es a
 runFileWatcherScripted paths = reinterpret (evalState paths) \env -> \case
     WatchFilePaths _ callback ->
-        get >>= \case
-            p : rest -> put rest >> localSeqUnlift env \unlift -> unlift (callback p)
-            [] -> atomically retry
+        localSeqUnlift env \unlift -> do
+            paths' <- get
+            put []
+            for_ paths' (unlift . callback)
+            atomically retry
 
 
 -- Helpers
