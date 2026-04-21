@@ -42,7 +42,6 @@ import Data.Yaml qualified as Yaml
 
 import Atelier.Config (LoadedConfig (..), extractConfig)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, listDirectory, readFileBs)
-import Atelier.Time (Millisecond)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 import Tricorder.Project (ProjectRoot (..))
 
@@ -54,7 +53,6 @@ data Config = Config
     , targets :: [Text]
     , watchDirs :: [FilePath]
     , testTargets :: Maybe [Text]
-    , debounceMs :: Millisecond
     , outputFile :: Maybe FilePath
     }
     deriving stock (Eq, Generic, Show)
@@ -68,7 +66,6 @@ instance Default Config where
             , targets = []
             , watchDirs = []
             , testTargets = Nothing
-            , debounceMs = 100
             , outputFile = Just "build.json"
             }
 

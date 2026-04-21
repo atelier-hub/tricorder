@@ -72,19 +72,16 @@ runDaemon = do
     Conc.awaitAll
 
 
--- | Run the 'Debounce' effect using the settle window from 'Config'.
+-- | Run the 'Debounce' effect.
 runDebounce
     :: ( Conc :> es
        , Concurrent :> es
        , Delay :> es
        , IOE :> es
-       , Reader Config :> es
        )
     => Eff (Debounce FilePath : es) a
     -> Eff es a
-runDebounce eff = do
-    cfg <- ask @Config
-    Debounce.runDebounce cfg.debounceMs eff
+runDebounce = Debounce.runDebounce
 
 
 -- | Fork the daemon as a background process and return immediately.

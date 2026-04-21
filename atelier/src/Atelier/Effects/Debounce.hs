@@ -42,7 +42,7 @@ import Atelier.Effects.Delay qualified as Delay
 data Debounce key :: Effect where
     -- | Schedule @action@ to run after the settle window unless a newer call
     -- with the same @key@ arrives first.
-    Debounced :: key -> m () -> Debounce key m ()
+    Debounced :: Millisecond -> key -> m () -> Debounce key m ()
 
 
 makeEffect ''Debounce
@@ -59,13 +59,12 @@ runDebounce
        , Hashable key
        , IOE :> es
        )
-    => Millisecond
-    -> Eff (Debounce key : es) a
+    => Eff (Debounce key : es) a
     -> Eff es a
-runDebounce settleMs eff = do
+runDebounce eff = do
     counters <- STM.atomically (Map.new :: STM (Map.Map key Int))
     interpretWith eff \env -> \case
-        Debounced key action -> do
+        Debounced settleMs key action -> do
             -- localUnliftIO must be called in the handler thread (not inside a fork).
             -- We use it to pre-create an IO action that's safe to run from any thread.
             fireIO <- localUnliftIO env concStrat \unlift -> pure (unlift action)
@@ -89,4 +88,4 @@ runDebounce settleMs eff = do
 -- Useful for tests where timing is controlled externally.
 runDebounceNoOp :: Eff (Debounce key : es) a -> Eff es a
 runDebounceNoOp eff = interpretWith eff \env -> \case
-    Debounced _ action -> localSeqUnlift env \unlift -> unlift action
+    Debounced _ _ action -> localSeqUnlift env \unlift -> unlift action
