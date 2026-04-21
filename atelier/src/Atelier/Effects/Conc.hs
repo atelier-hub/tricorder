@@ -30,7 +30,10 @@ import Ki qualified
 
 
 data Conc :: Effect where
+    -- | Fork a thread that terminates. Use @void . fork@ to discard the handle.
     Fork :: m a -> Conc m (Thread a)
+    -- | Fork a thread that never terminates (e.g. a server loop).
+    -- The @Void@ return type enforces this — use 'fork' for threads that exit.
     Fork_ :: m Void -> Conc m ()
     Await :: Thread a -> Conc m a
     AwaitAll :: Conc m ()
