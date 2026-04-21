@@ -496,7 +496,7 @@
   extras = hackage:
     {
       packages = {
-        atelier = ./.plan.nix/atelier.nix;
+        tricorder = ./.plan.nix/tricorder.nix;
         tmp-postgres = ./.plan.nix/tmp-postgres.nix;
       };
     };
@@ -544,7 +544,7 @@
     ({ lib, ... }:
       {
         packages = {
-          "atelier" = { flags = {}; };
+          "tricorder" = { flags = {}; };
           "tmp-postgres" = { flags = {}; };
         };
       })
@@ -558,6 +558,7 @@
           "Cabal-syntax".components.library.planned = lib.mkOverride 900 true;
           "crypton-asn1-encoding".components.library.planned = lib.mkOverride 900 true;
           "product-profunctors".components.library.planned = lib.mkOverride 900 true;
+          "tricorder".components.exes."tricorder-exe".planned = lib.mkOverride 900 true;
           "integer-conversion".components.library.planned = lib.mkOverride 900 true;
           "pretty-show".components.library.planned = lib.mkOverride 900 true;
           "monad-loops".components.library.planned = lib.mkOverride 900 true;
@@ -569,6 +570,7 @@
           "data-sketches-core".components.library.planned = lib.mkOverride 900 true;
           "attoparsec".components.sublibs."attoparsec-internal".planned = lib.mkOverride 900 true;
           "resourcet".components.library.planned = lib.mkOverride 900 true;
+          "tricorder".components.sublibs."atelier".planned = lib.mkOverride 900 true;
           "http-types".components.library.planned = lib.mkOverride 900 true;
           "iproute".components.library.planned = lib.mkOverride 900 true;
           "list-t".components.library.planned = lib.mkOverride 900 true;
@@ -593,7 +595,6 @@
           "prometheus-metrics-ghc".components.library.planned = lib.mkOverride 900 true;
           "unordered-containers".components.library.planned = lib.mkOverride 900 true;
           "these".components.library.planned = lib.mkOverride 900 true;
-          "atelier".components.tests."atelier-test".planned = lib.mkOverride 900 true;
           "QuickCheck".components.library.planned = lib.mkOverride 900 true;
           "time-hourglass".components.library.planned = lib.mkOverride 900 true;
           "unagi-chan".components.library.planned = lib.mkOverride 900 true;
@@ -678,14 +679,15 @@
           "crypton".components.library.planned = lib.mkOverride 900 true;
           "aeson".components.library.planned = lib.mkOverride 900 true;
           "Only".components.library.planned = lib.mkOverride 900 true;
+          "tricorder".components.tests."tricorder-test".planned = lib.mkOverride 900 true;
           "http-client-tls".components.library.planned = lib.mkOverride 900 true;
           "tmp-postgres".components.exes."with-cache-loop".planned = lib.mkOverride 900 true;
+          "tricorder".components.sublibs."atelier-prelude".planned = lib.mkOverride 900 true;
           "attoparsec-aeson".components.library.planned = lib.mkOverride 900 true;
           "Cabal".components.library.planned = lib.mkOverride 900 true;
           "rel8".components.library.planned = lib.mkOverride 900 true;
           "string-conversions".components.library.planned = lib.mkOverride 900 true;
           "ghc".components.library.planned = lib.mkOverride 900 true;
-          "atelier".components.library.planned = lib.mkOverride 900 true;
           "simple-sendfile".components.library.planned = lib.mkOverride 900 true;
           "http-date".components.library.planned = lib.mkOverride 900 true;
           "mmorph".components.library.planned = lib.mkOverride 900 true;
@@ -713,7 +715,6 @@
           "th-lift-instances".components.library.planned = lib.mkOverride 900 true;
           "typed-process".components.library.planned = lib.mkOverride 900 true;
           "auto-update".components.library.planned = lib.mkOverride 900 true;
-          "atelier".components.sublibs."atelier-prelude".planned = lib.mkOverride 900 true;
           "safe-exceptions".components.library.planned = lib.mkOverride 900 true;
           "StateVar".components.library.planned = lib.mkOverride 900 true;
           "stm".components.library.planned = lib.mkOverride 900 true;
@@ -735,6 +736,7 @@
           "bytestring".components.library.planned = lib.mkOverride 900 true;
           "postgresql-libpq-configure".components.library.planned = lib.mkOverride 900 true;
           "bitvec".components.library.planned = lib.mkOverride 900 true;
+          "tricorder".components.sublibs."atelier-testing".planned = lib.mkOverride 900 true;
           "streaming-commons".components.library.planned = lib.mkOverride 900 true;
           "time-locale-compat".components.library.planned = lib.mkOverride 900 true;
           "time-manager".components.library.planned = lib.mkOverride 900 true;
@@ -762,6 +764,7 @@
           "contra-tracer".components.library.planned = lib.mkOverride 900 true;
           "zlib".components.library.planned = lib.mkOverride 900 true;
           "hs-opentelemetry-api".components.library.planned = lib.mkOverride 900 true;
+          "tricorder".components.tests."atelier-test".planned = lib.mkOverride 900 true;
           "filepath".components.library.planned = lib.mkOverride 900 true;
           "assoc".components.library.planned = lib.mkOverride 900 true;
           "OneTuple".components.library.planned = lib.mkOverride 900 true;
@@ -770,7 +773,6 @@
           "happy".components.exes."happy".planned = lib.mkOverride 900 true;
           "http-semantics".components.library.planned = lib.mkOverride 900 true;
           "base64".components.library.planned = lib.mkOverride 900 true;
-          "atelier".components.sublibs."tricorder".planned = lib.mkOverride 900 true;
           "cryptohash-sha1".components.library.planned = lib.mkOverride 900 true;
           "network-control".components.library.planned = lib.mkOverride 900 true;
           "ghc-internal".components.library.planned = lib.mkOverride 900 true;
@@ -781,7 +783,6 @@
           "primitive".components.library.planned = lib.mkOverride 900 true;
           "crypton-x509-store".components.library.planned = lib.mkOverride 900 true;
           "ghc-bignum".components.library.planned = lib.mkOverride 900 true;
-          "atelier".components.tests."tricorder-test".planned = lib.mkOverride 900 true;
           "proto-lens".components.library.planned = lib.mkOverride 900 true;
           "pretty".components.library.planned = lib.mkOverride 900 true;
           "recv".components.library.planned = lib.mkOverride 900 true;
@@ -799,6 +800,7 @@
           "prettyprinter-ansi-terminal".components.library.planned = lib.mkOverride 900 true;
           "ki".components.library.planned = lib.mkOverride 900 true;
           "th-abstraction".components.library.planned = lib.mkOverride 900 true;
+          "tricorder".components.library.planned = lib.mkOverride 900 true;
           "regex-tdfa".components.library.planned = lib.mkOverride 900 true;
           "hs-opentelemetry-sdk".components.library.planned = lib.mkOverride 900 true;
           "crypton-x509".components.library.planned = lib.mkOverride 900 true;
@@ -831,8 +833,6 @@
           "data-default".components.library.planned = lib.mkOverride 900 true;
           "ansi-terminal".components.library.planned = lib.mkOverride 900 true;
           "tasty-hspec".components.library.planned = lib.mkOverride 900 true;
-          "atelier".components.sublibs."atelier-testing".planned = lib.mkOverride 900 true;
-          "atelier".components.exes."tricorder-exe".planned = lib.mkOverride 900 true;
           "text-builder".components.library.planned = lib.mkOverride 900 true;
           "terminfo".components.library.planned = lib.mkOverride 900 true;
           "hspec-expectations".components.library.planned = lib.mkOverride 900 true;
