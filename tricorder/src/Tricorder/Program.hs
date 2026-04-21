@@ -161,7 +161,8 @@ showStatus waitFlag jsonFlag verboseFlag = do
             current <- queryStatus sockPath
             case current of
                 Right BuildState {phase = Building} -> Console.putStrLn "Building..."
-                Right BuildState {phase = Testing} -> Console.putStrLn "Testing..."
+                Right BuildState {phase = Restarting} -> Console.putStrLn "Restarting..."
+                Right BuildState {phase = Testing _} -> Console.putStrLn "Testing..."
                 _ -> pure ()
         result <-
             if waitFlag then
@@ -179,7 +180,8 @@ showStatus waitFlag jsonFlag verboseFlag = do
   where
     renderText verbose state = case state.phase of
         Building -> Console.putStrLn "Building..."
-        Testing -> Console.putStrLn "Testing..."
+        Restarting -> Console.putStrLn "Restarting..."
+        Testing _ -> Console.putStrLn "Testing..."
         Done r -> do
             tz <- liftIO getCurrentTimeZone
             let printDiag =
@@ -197,12 +199,17 @@ showStatus waitFlag jsonFlag verboseFlag = do
         when verbose
             $ mapM_ (Console.putTextLn . ("  " <>) . toText) (lines tr.output)
       where
+        testRunSummary t TestsRunning = t <> "  running..."
         testRunSummary t TestsPassed = t <> "  passed"
         testRunSummary t TestsFailed = t <> "  failed"
         testRunSummary t (TestsError msg) = t <> "  error: " <> msg
 
     buildHasErrors r = any ((== SError) . (.severity)) r.diagnostics
-    testsFailed r = any ((/= TestsPassed) . (.outcome)) r.testRuns
+    testsFailed r = any (notPassed . (.outcome)) r.testRuns
+      where
+        notPassed TestsPassed = False
+        notPassed TestsRunning = False
+        notPassed _ = True
 
     buildSummary tz r =
         let errs = length $ filter ((== SError) . (.severity)) r.diagnostics
