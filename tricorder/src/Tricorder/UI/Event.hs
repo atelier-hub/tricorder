@@ -1,4 +1,4 @@
-module Tricorder.Watch.Event
+module Tricorder.UI.Event
     ( Event (..)
     , handleEvent
     , keys
@@ -46,7 +46,7 @@ import Data.Text qualified as T
 import Graphics.Vty qualified as Vty
 
 import Tricorder.BuildState (BuildState (..))
-import Tricorder.Watch.State (Name (..), State (..), invertCollapsible)
+import Tricorder.UI.State (Name (..), State (..), invertCollapsible)
 
 
 data Event
@@ -111,9 +111,9 @@ dispatcher =
             , onEvent Quit "Exit" do
                 halt
             , onEvent ScrollUp "Scrolling upwards" do
-                vScrollBy (viewportScroll Watcher) (-1)
+                vScrollBy (viewportScroll UI) (-1)
             , onEvent ScrollDown "Scrolling downwards" do
-                vScrollBy (viewportScroll Watcher) 1
+                vScrollBy (viewportScroll UI) 1
             , onEvent ToggleHelp "Toggle help" do
                 modify \s -> s {showHelp = not s.showHelp}
             ]

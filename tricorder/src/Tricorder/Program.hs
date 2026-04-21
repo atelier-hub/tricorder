@@ -54,7 +54,7 @@ import Tricorder.Socket.Client
     , queryStatusWait
     )
 import Tricorder.Socket.SocketPath (SocketPath, socketPath)
-import Tricorder.Watch (watchDisplay)
+import Tricorder.UI (viewUi)
 
 import Atelier.Effects.Console qualified as Console
 import Atelier.Effects.Delay qualified as Delay
@@ -97,7 +97,7 @@ run =
         Stop -> stop
         (Status waitFlag jsonFlag verboseFlag) -> showStatus waitFlag jsonFlag verboseFlag
         (Log followFlag) -> showLog followFlag
-        Watch -> watch
+        UI -> ui
         (Source moduleNames) -> showSource moduleNames
 
 
@@ -260,7 +260,7 @@ showLog followFlag = do
                 loop h
 
 
-watch
+ui
     :: ( Brick :> es
        , BrickChan :> es
        , BuildStore :> es
@@ -286,14 +286,14 @@ watch
        , UnixSocket :> es
        )
     => Eff es ()
-watch = do
+ui = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
     running <- isDaemonRunning sockPath
     unless running $ do
         startDaemon
         waitForSocket sockPath
-    watchDisplay sockPath
+    viewUi sockPath
 
 
 showSource

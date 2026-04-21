@@ -1,4 +1,4 @@
-module Tricorder.Watch.View (view) where
+module Tricorder.UI.View (view) where
 
 import Brick
     ( AttrName
@@ -37,10 +37,10 @@ import Tricorder.BuildState
     , TestOutcome (..)
     , TestRun (..)
     )
-import Tricorder.Watch.Event (viewKeybindings)
-import Tricorder.Watch.State (Collapsible (..), Name (..), State (..))
+import Tricorder.UI.Event (viewKeybindings)
+import Tricorder.UI.State (Collapsible (..), Name (..), State (..))
 
-import Tricorder.Watch.Event qualified as Event
+import Tricorder.UI.Event qualified as Event
 
 
 view :: State -> [Widget Name]
@@ -48,7 +48,7 @@ view ws =
     [ case ws.buildState of
         Nothing -> str "Waiting for build..."
         Just bs ->
-            viewport Watcher Vertical
+            viewport UI Vertical
                 $ if ws.showHelp then
                     viewHelp
                 else
