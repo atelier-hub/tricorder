@@ -1,6 +1,18 @@
 # Tricorder
 
-A GHCi-based incremental build daemon. Watches source files, triggers reloads, and exposes build state over a Unix socket. See `tricorder/` for details.
+`tricorder` aims to empower users developing programs with Haskell and LLM coding agents. It does so by providing operations to surface the right information required at a given stage: documentation, build status, diagnostics, etc.
+
+Like similar tools (`ghcid`, `ghciwatch`), it builds the code continuously on every change, presents diagnostics, and runs the tests afterwards. However, `tricorder` offers other advantages:
+
+- **Designed for humans** - A `tricorder watch` interactive TUI mode that presents stats in real time for developers.
+- **Designed for agents** - A `SKILL` is provided to inform agentic usage via the `tricorder` CLI.
+- **Background builds** - Building in the background using a daemon allows different clients to query the build state simultaneously without triggering multiple rebuilds. For instance, we ship the `tricorder watch` TUI and the `tricorder status` CLI command that communicate witha single daemon via a socket.
+- **Sane defaults** - Running `tricorder start` should Just Work™ for most cabal-based Haskell projects.
+  - Daemon restarts automatically when cabal files change
+  - If customization is needed it can be provided at different levels via a `.tricorder.yaml` or CLI args.
+    - Optional config includes which cabal packages to watch, which exact command to use to enter a GHCi session, etc.
+- **Project context** - Tools like `tricorder source Some.Module` will attempt to find and provide the source code for a given dependency from disk, which allows exploring library APIs more easily.
+- **Machine-readable output** - Using `tricorder status --json` we can get build information in a format appropriate for programmatic usage.
 
 ## Using with Nix
 
