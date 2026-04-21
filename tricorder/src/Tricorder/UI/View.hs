@@ -163,20 +163,21 @@ viewWatchDir dir = hBox [txt "- ", txt $ toText displayDir]
 viewBuildPhase :: TimeZone -> BuildPhase -> Widget n
 viewBuildPhase tz = \case
     Building -> warn $ txt "Building..."
-    Testing -> warn $ txt "Testing..."
-    Done result
-        | null result.diagnostics ->
-            vBoxSpaced
-                1
-                [ hBoxSpaced
-                    1
-                    [ ok $ txt "All good."
-                    , viewBuildSummary result.moduleCount result.durationMs
-                    , viewTimestamp tz result.completedAt
-                    ]
-                , viewTestRuns result.testRuns
-                ]
-    Done result ->
+    Restarting -> warn $ txt "Restarting..."
+    Testing result -> vBoxSpaced 1 [viewBuildResult tz result, viewTestRuns result.testRuns]
+    Done result -> vBoxSpaced 1 [viewBuildResult tz result, viewTestRuns result.testRuns]
+
+
+viewBuildResult :: TimeZone -> BuildResult -> Widget n
+viewBuildResult tz result
+    | null result.diagnostics =
+        hBoxSpaced
+            1
+            [ ok $ txt "All good."
+            , viewBuildSummary result.moduleCount result.durationMs
+            , viewTimestamp tz result.completedAt
+            ]
+    | otherwise =
         let msgs = result.diagnostics
             errCount = length $ filter (\m -> m.severity == SError) msgs
             warnCount = length $ filter (\m -> m.severity == SWarning) msgs
@@ -194,7 +195,6 @@ viewBuildPhase tz = \case
                     , viewTimestamp tz result.completedAt
                     ]
                 , vBox $ viewDiagnostic <$> msgs
-                , viewTestRuns result.testRuns
                 ]
 
 
@@ -234,6 +234,7 @@ viewTestRun tr = hBox [txt tr.target, txt "  ", viewTestOutcome tr.outcome]
 
 
 viewTestOutcome :: TestOutcome -> Widget n
+viewTestOutcome TestsRunning = warn $ txt "running..."
 viewTestOutcome TestsPassed = ok $ txt "passed"
 viewTestOutcome TestsFailed = err $ txt "failed"
 viewTestOutcome (TestsError msg) = hBox [err $ txt "error:", txt msg]

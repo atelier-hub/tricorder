@@ -14,7 +14,7 @@ import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Log (Log)
 import Atelier.Time (Millisecond)
 import Tricorder.BuildState (BuildPhase (..), BuildState (..))
-import Tricorder.Effects.BuildStore (BuildStore, getState, waitForNext, waitUntilDone)
+import Tricorder.Effects.BuildStore (BuildStore, getState, waitForAnyChange, waitUntilDone)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.UnixSocket
     ( UnixSocket
@@ -156,7 +156,8 @@ respondWhenDone h = awaitResult >>= sendJson h
         s <- getState
         case s.phase of
             Building -> waitUntilDone
-            Testing -> waitUntilDone
+            Restarting -> waitUntilDone
+            Testing _ -> waitUntilDone
             Done _ -> awaitBuildStart (5 :: Int) s
 
     -- Poll up to n × 50ms for a build to start, then wait for it to finish.
@@ -166,21 +167,22 @@ respondWhenDone h = awaitResult >>= sendJson h
         s' <- getState
         case s'.phase of
             Building -> waitUntilDone
-            Testing -> waitUntilDone
+            Restarting -> waitUntilDone
+            Testing _ -> waitUntilDone
             Done _ -> awaitBuildStart (n - 1) s'
 
 
--- | Stream a JSON object after each completed build (loops until handle closes or error).
+-- | Stream a JSON object after each state change (loops until handle closes or error).
 watchStream :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()
 watchStream h = do
     state0 <- getState
     sendJson h state0
-    loop state0.buildId
+    loop state0
   where
-    loop bid = do
-        newState <- waitForNext bid
+    loop prev = do
+        newState <- waitForAnyChange prev
         sendJson h newState
-        loop newState.buildId
+        loop newState
 
 
 -- | Look up source for each requested module and send the results as a JSON array.

@@ -5,6 +5,7 @@ module Tricorder.Effects.BuildStore
     , putState
     , waitUntilDone
     , waitForNext
+    , waitForAnyChange
     , setPhase
     , markDirty
     , waitDirty
@@ -38,6 +39,8 @@ data BuildStore :: Effect where
     WaitUntilDone :: BuildStore m BuildState
     -- | Block until a completed build with a different 'BuildId' is available.
     WaitForNext :: BuildId -> BuildStore m BuildState
+    -- | Block until the build state changes from the given state (any field).
+    WaitForAnyChange :: BuildState -> BuildStore m BuildState
     -- | Update the build id and phase without touching other fields (e.g. daemonInfo).
     SetPhase :: BuildId -> BuildPhase -> BuildStore m ()
     -- | Signal that files have changed and a rebuild is needed.
@@ -66,6 +69,7 @@ runBuildStoreSTM eff = do
             PutState s -> atomically (writeTVar ref s)
             WaitUntilDone -> poll ref (not . isBuilding)
             WaitForNext bid -> poll ref \s -> not (isBuilding s) && s.buildId /= bid
+            WaitForAnyChange prev -> poll ref (/= prev)
             SetPhase bid phase -> atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase}
             MarkDirty ck -> atomically (modifyTVar dirtyRef (max (Just ck)))
             WaitDirty -> pollDirtyRef dirtyRef
@@ -82,7 +86,8 @@ runBuildStoreSTM eff = do
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
         Building -> True
-        Testing -> True
+        Restarting -> True
+        Testing _ -> True
         Done _ -> False
 
     emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing, metricsPort = Nothing}
@@ -98,6 +103,7 @@ runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef} =
             PutState s -> atomically (writeTVar ref s)
             WaitUntilDone -> pollRef ref (not . isBuilding)
             WaitForNext bid -> pollRef ref \s -> not (isBuilding s) && s.buildId /= bid
+            WaitForAnyChange prev -> pollRef ref (/= prev)
             SetPhase bid phase -> atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase}
             MarkDirty ck -> atomically (modifyTVar dirtyRef (max (Just ck)))
             WaitDirty -> pollDirtyRef dirtyRef
@@ -106,7 +112,8 @@ runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef} =
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
         Building -> True
-        Testing -> True
+        Restarting -> True
+        Testing _ -> True
         Done _ -> False
 
 
@@ -146,6 +153,7 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
     PutState s -> modify (s :)
     WaitUntilDone -> advance (not . isBuilding)
     WaitForNext bid -> advance \s -> not (isBuilding s) && s.buildId /= bid
+    WaitForAnyChange prev -> advance (/= prev)
     SetPhase bid phase ->
         get >>= \case
             [] -> pure ()
@@ -156,7 +164,8 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
         Building -> True
-        Testing -> True
+        Restarting -> True
+        Testing _ -> True
         Done _ -> False
 
     advance :: (BuildState -> Bool) -> Eff (State [BuildState] : es) BuildState

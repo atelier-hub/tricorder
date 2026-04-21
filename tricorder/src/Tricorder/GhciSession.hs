@@ -1,5 +1,11 @@
-module Tricorder.GhciSession (component, filterToWatchDirs, mergeDiagnostics, sessionListener) where
+module Tricorder.GhciSession
+    ( component
+    , filterToWatchDirs
+    , mergeDiagnostics
+    , sessionListener
+    ) where
 
+import Control.Monad (foldM)
 import Data.Time (diffUTCTime)
 import Effectful.Exception (throwIO, try)
 import Effectful.Reader.Static (Reader, ask)
@@ -14,7 +20,7 @@ import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
-import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..), Severity (..), TestRun)
+import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..), Severity (..), TestOutcome (..), TestRun (..))
 import Tricorder.Config (Config (..), resolveCommand, resolveTestTargets, resolveWatchDirs)
 import Tricorder.Effects.BuildStore (BuildStore, setPhase, waitDirty)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
@@ -113,6 +119,7 @@ sessionListener cmd projectRoot watchDirs testTargets = startSession (BuildId 1)
 
     startSession (BuildId n) = do
         Log.info $ "Starting GHCi session #" <> show n <> ": " <> cmd
+        setPhase (BuildId n) Building
         t0 <- Clock.currentTime
         result <- try @SomeException $ GhciSession.startGhci cmd projectRoot
         Log.debug $ "GhciSession.startGhci returned (session #" <> show n <> ")"
@@ -129,9 +136,9 @@ sessionListener cmd projectRoot watchDirs testTargets = startSession (BuildId 1)
                 Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length filteredMsgs) <> " diagnostics"
                 let durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
                     accumulated = Map.fromListWith (++) [(d.file, [d]) | d <- filteredMsgs]
-                testRuns <- runTestsIfClean (BuildId n) filteredMsgs
-                let buildResult = BuildResult {completedAt = t1, durationMs, moduleCount, diagnostics = filteredMsgs, testRuns}
-                setPhase (BuildId n) (Done buildResult)
+                    partialResult = BuildResult {completedAt = t1, durationMs, moduleCount, diagnostics = filteredMsgs, testRuns = []}
+                testRuns <- runTestsIfClean (BuildId n) partialResult
+                setPhase (BuildId n) (Done partialResult {testRuns})
                 Log.debug $ "Build state updated to Done (session #" <> show n <> ")"
                 listenLoop (BuildId (n + 1)) accumulated
 
@@ -142,6 +149,7 @@ sessionListener cmd projectRoot watchDirs testTargets = startSession (BuildId 1)
         case changeKind of
             CabalChange -> do
                 Log.info "Cabal file changed; restarting GHCi session"
+                setPhase (BuildId n) Restarting
                 void $ try @SomeException GhciSession.stopGhci
                 startSession nextId
             SourceChange -> do
@@ -166,24 +174,30 @@ sessionListener cmd projectRoot watchDirs testTargets = startSession (BuildId 1)
                             durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
                             newAccumulated = mergeDiagnostics accumulated filteredResult
                             allMsgs = concat (Map.elems newAccumulated)
-                        testRuns <- runTestsIfClean (BuildId n) allMsgs
-                        let buildResult = BuildResult {completedAt = t1, durationMs, moduleCount = loadResult.moduleCount, diagnostics = allMsgs, testRuns}
-                        setPhase (BuildId n) (Done buildResult)
+                        let partialResult = BuildResult {completedAt = t1, durationMs, moduleCount = loadResult.moduleCount, diagnostics = allMsgs, testRuns = []}
+                        testRuns <- runTestsIfClean (BuildId n) partialResult
+                        setPhase (BuildId n) (Done partialResult {testRuns})
                         listenLoop nextId newAccumulated
 
     -- Run all configured test suites if the build has no errors.
     -- Transitions to 'Testing' phase while suites are running.
     runTestsIfClean
         :: (BuildStore :> es, Log :> es, TestRunner :> es)
-        => BuildId -> [Diagnostic] -> Eff es [TestRun]
-    runTestsIfClean bid diags
-        | not (null testTargets) && not (any (\d -> d.severity == SError) diags) = do
-            setPhase bid Testing
+        => BuildId -> BuildResult -> Eff es [TestRun]
+    runTestsIfClean bid partialResult
+        | not (null testTargets) && not (any (\d -> d.severity == SError) partialResult.diagnostics) = do
+            let pendingRun t = TestRun {target = t, outcome = TestsRunning, output = ""}
+            setPhase bid (Testing partialResult {testRuns = map pendingRun testTargets})
             Log.info $ "Running " <> show (length testTargets) <> " test suite(s)"
-            mapM
-                ( \target -> do
+            foldM
+                ( \done target -> do
                     Log.info $ "Running tests: " <> target
-                    TestRunner.runTestSuite target
+                    result <- TestRunner.runTestSuite target
+                    let remaining = drop (length done + 1) testTargets
+                        runs = done ++ [result] ++ map pendingRun remaining
+                    setPhase bid (Testing partialResult {testRuns = runs})
+                    pure (done ++ [result])
                 )
+                []
                 testTargets
         | otherwise = pure []

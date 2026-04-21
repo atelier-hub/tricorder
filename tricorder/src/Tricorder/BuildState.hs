@@ -70,7 +70,7 @@ runDaemonInfo act = do
     runReader daemonInfo act
 
 
-data TestOutcome = TestsPassed | TestsFailed | TestsError Text
+data TestOutcome = TestsRunning | TestsPassed | TestsFailed | TestsError Text
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
 
@@ -97,7 +97,8 @@ data BuildResult = BuildResult
 
 data BuildPhase
     = Building
-    | Testing
+    | Restarting
+    | Testing BuildResult
     | Done BuildResult
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
@@ -144,7 +145,8 @@ instance ToJSON Severity where
 
 stateLabel :: BuildPhase -> Text
 stateLabel Building = "building"
-stateLabel Testing = "testing"
+stateLabel Restarting = "restarting"
+stateLabel (Testing _) = "testing"
 stateLabel (Done result)
     | any (\m -> m.severity == SError) result.diagnostics = "error"
     | any (\m -> m.severity == SWarning) result.diagnostics = "warning"
