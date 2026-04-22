@@ -15,7 +15,7 @@ import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.FileWatcher (runFileWatcherIO)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
-import Atelier.Effects.Posix.Process (runProcess)
+import Atelier.Effects.Posix.Daemons (runDaemons)
 import Tricorder.Arguments (runArguments)
 import Tricorder.BuildState (runDaemonInfo)
 import Tricorder.Config (runConfig)
@@ -27,8 +27,7 @@ import Tricorder.Effects.GhciSession (runGhciSessionIO)
 import Tricorder.Effects.Logging (runLogging)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
-import Tricorder.Project (runProjectRoot)
-import Tricorder.Socket.SocketPath (runSocketPath)
+import Tricorder.Runtime (runPidFile, runProjectRoot, runRuntimeDir, runSocketPath)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
 import Tricorder.GhcPkg.Types qualified as GhcPkg
@@ -43,18 +42,20 @@ main =
         . runBrickChan
         . runBrick
         . runConsole
-        . runProcess
         . runClock
         . runTracingNoOp
         . runDelay
         . runFile
         . runFileSystemIO
         . runProjectRoot
+        . runRuntimeDir
+        . runPidFile
         . runSocketPath
         . runConfig
         . runReader @CacheConfig.Config def
         . runDaemonInfo
         . runLogging
+        . runDaemons
         . runTestRunnerIO
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.ModuleName) @Text

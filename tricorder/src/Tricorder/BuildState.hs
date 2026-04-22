@@ -23,8 +23,7 @@ import System.FilePath (makeRelative)
 
 import Atelier.Effects.FileSystem (FileSystem)
 import Tricorder.Config (Config (..), resolveWatchDirs)
-import Tricorder.Project (ProjectRoot (..))
-import Tricorder.Socket.SocketPath (SocketPath (..))
+import Tricorder.Runtime (ProjectRoot (..), SocketPath (..))
 
 import Tricorder.Observability qualified as Observability
 

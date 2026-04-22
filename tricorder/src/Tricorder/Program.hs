@@ -15,15 +15,11 @@ import Atelier.Effects.Console (Console)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.File (File)
-import Atelier.Effects.FileSystem
-    ( FileSystem
-    , doesFileExist
-    , getCurrentDirectory
-    , readFileLbs
-    )
+import Atelier.Effects.FileSystem (FileSystem, doesFileExist, readFileLbs)
 import Atelier.Effects.FileWatcher (FileWatcher)
+import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
-import Atelier.Effects.Posix.Process (Process)
+import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Time (Millisecond)
 import Tricorder.Arguments (Command (..))
 import Tricorder.BuildState
@@ -47,19 +43,19 @@ import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Render (diagnosticLineIndexed, formatDuration, renderSourceResults)
+import Tricorder.Runtime (PidFile (..), SocketPath (..))
 import Tricorder.Socket.Client
     ( isDaemonRunning
     , querySource
     , queryStatus
     , queryStatusWait
     )
-import Tricorder.Socket.SocketPath (SocketPath, socketPath)
 import Tricorder.UI (viewUi)
 
 import Atelier.Effects.Console qualified as Console
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.File qualified as File
-import Atelier.Effects.Log qualified as Log
+import Atelier.Effects.FileSystem qualified as FileSystem
 import Tricorder.Observability qualified as Observability
 
 
@@ -72,6 +68,7 @@ run
        , Clock :> es
        , Conc :> es
        , Console :> es
+       , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
        , File :> es
@@ -80,11 +77,11 @@ run
        , GhcPkg :> es
        , GhciSession :> es
        , IOE :> es
-       , Log.Log :> es
-       , Process :> es
+       , Log :> es
        , Reader Command :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
+       , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -108,6 +105,7 @@ start
        , Clock :> es
        , Conc :> es
        , Console :> es
+       , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
@@ -115,10 +113,10 @@ start
        , GhcPkg :> es
        , GhciSession :> es
        , IOE :> es
-       , Log.Log :> es
-       , Process :> es
+       , Log :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
+       , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -126,9 +124,7 @@ start
        )
     => Eff es ()
 start = do
-    projectRoot <- getCurrentDirectory
-    sp <- socketPath projectRoot
-    running <- isDaemonRunning sp
+    running <- isDaemonRunning
     if running then
         Console.putStrLn "Daemon already running."
     else do
@@ -136,27 +132,37 @@ start = do
         Console.putStrLn "Daemon started."
 
 
-stop :: (Console :> es, FileSystem :> es, Reader SocketPath :> es) => Eff es ()
+stop
+    :: ( Console :> es
+       , Daemons :> es
+       , FileSystem :> es
+       , Reader PidFile :> es
+       , Reader SocketPath :> es
+       )
+    => Eff es ()
 stop = do
     stopDaemon
     Console.putStrLn "Daemon stopped."
+    FileSystem.removeFile =<< asks getSocketPath
+    FileSystem.removeFile =<< asks getPidFile
 
 
 showStatus
     :: ( Console :> es
+       , Daemons :> es
        , File :> es
-       , FileSystem :> es
        , IOE :> es
+       , Reader PidFile :> es
+       , Reader SocketPath :> es
        , UnixSocket :> es
        )
     => Bool -> Bool -> Bool -> Maybe Int -> Eff es ()
 showStatus waitFlag jsonFlag verboseFlag expandFlag = do
-    projectRoot <- getCurrentDirectory
-    sockPath <- socketPath projectRoot
-    running <- isDaemonRunning sockPath
+    running <- isDaemonRunning
     if not running then
         Console.putStrLn "Stopped."
     else do
+        SocketPath sockPath <- ask
         when (waitFlag && not jsonFlag) $ do
             current <- queryStatus sockPath
             case current of
@@ -239,19 +245,21 @@ showStatus waitFlag jsonFlag verboseFlag expandFlag = do
 
 showLog
     :: ( Console :> es
+       , Daemons :> es
        , Delay :> es
        , File :> es
        , FileSystem :> es
        , Reader Observability.Config :> es
+       , Reader PidFile :> es
+       , Reader SocketPath :> es
        , UnixSocket :> es
        )
     => Bool -> Eff es ()
 showLog followFlag = do
-    projectRoot <- getCurrentDirectory
-    sp <- socketPath projectRoot
-    running <- isDaemonRunning sp
+    running <- isDaemonRunning
     mLogFile <-
         if running then do
+            SocketPath sp <- ask
             result <- queryStatus sp
             pure $ case result of
                 Right state -> state.daemonInfo.logFile
@@ -290,6 +298,7 @@ ui
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
+       , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
        , File :> es
@@ -298,10 +307,10 @@ ui
        , GhcPkg :> es
        , GhciSession :> es
        , IOE :> es
-       , Log.Log :> es
-       , Process :> es
+       , Log :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
+       , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -309,13 +318,11 @@ ui
        )
     => Eff es ()
 ui = do
-    projectRoot <- getCurrentDirectory
-    sockPath <- socketPath projectRoot
-    running <- isDaemonRunning sockPath
-    unless running $ do
+    running <- isDaemonRunning
+    unless running do
         startDaemon
-        waitForSocket sockPath
-    viewUi sockPath
+        waitForDaemon
+    viewUi
 
 
 showSource
@@ -325,6 +332,7 @@ showSource
        , Clock :> es
        , Conc :> es
        , Console :> es
+       , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
        , File :> es
@@ -333,10 +341,10 @@ showSource
        , GhcPkg :> es
        , GhciSession :> es
        , IOE :> es
-       , Log.Log :> es
-       , Process :> es
+       , Log :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
+       , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -345,12 +353,11 @@ showSource
     => [ModuleName]
     -> Eff es ()
 showSource moduleNames = do
-    projectRoot <- getCurrentDirectory
-    sockPath <- socketPath projectRoot
-    running <- isDaemonRunning sockPath
+    running <- isDaemonRunning
     unless running $ do
         startDaemon
-        waitForSocket sockPath
+        waitForDaemon
+    SocketPath sockPath <- ask
     result <- querySource sockPath moduleNames
     case result of
         Left err -> Console.putTextLn $ "Error: " <> err
@@ -358,8 +365,8 @@ showSource moduleNames = do
 
 
 -- | Poll until the daemon socket becomes connectable.
-waitForSocket :: (Delay :> es, UnixSocket :> es) => FilePath -> Eff es ()
-waitForSocket sockPath = do
+waitForDaemon :: (Daemons :> es, Delay :> es, Reader PidFile :> es, UnixSocket :> es) => Eff es ()
+waitForDaemon = do
     Delay.wait (200 :: Millisecond)
-    running <- isDaemonRunning sockPath
-    unless running $ waitForSocket sockPath
+    running <- isDaemonRunning
+    unless running waitForDaemon

@@ -32,12 +32,11 @@ library
       Tricorder.GhcPkg.Types
       Tricorder.Observability
       Tricorder.Program
-      Tricorder.Project
       Tricorder.Render
+      Tricorder.Runtime
       Tricorder.Socket.Client
       Tricorder.Socket.Protocol
       Tricorder.Socket.Server
-      Tricorder.Socket.SocketPath
       Tricorder.SourceLookup
       Tricorder.UI
       Tricorder.UI.Event
@@ -130,7 +129,7 @@ library atelier
       Atelier.Effects.Monitoring.Metrics.Server
       Atelier.Effects.Monitoring.Tracing
       Atelier.Effects.Monitoring.Tracing.Provider
-      Atelier.Effects.Posix.Process
+      Atelier.Effects.Posix.Daemons
       Atelier.Effects.Publishing
       Atelier.Effects.Tally
       Atelier.Effects.UUID
@@ -173,6 +172,7 @@ library atelier
     , casing
     , containers
     , contra-tracer
+    , daemons
     , data-default
     , directory
     , effectful

@@ -17,6 +17,7 @@
         string-interpolate.flags.extended-benchmarks = false;
         primitive-extras.revision = import ./cabal-files/primitive-extras.nix;
         binary-parser.revision = import ./cabal-files/binary-parser.nix;
+        daemons.revision = import ./cabal-files/daemons.nix;
         erf.revision = import ./cabal-files/erf.nix;
         prometheus-client.revision = import ./cabal-files/prometheus-client.nix;
         integer-gmp.revision = hackage.integer-gmp."1.1".revisions.default;
@@ -54,6 +55,7 @@
         case-insensitive.revision = import ./cabal-files/case-insensitive.nix;
         logict.revision = import ./cabal-files/logict.nix;
         opaleye.revision = import ./cabal-files/opaleye.nix;
+        pipes.revision = import ./cabal-files/pipes.nix;
         transformers-base.revision = import ./cabal-files/transformers-base.nix;
         transformers-base.flags.orphaninstances = true;
         OneTuple.revision = import ./cabal-files/OneTuple.nix;
@@ -568,6 +570,7 @@
           "semaphore-compat".components.library.planned = lib.mkOverride 900 true;
           "base64-bytestring".components.library.planned = lib.mkOverride 900 true;
           "data-sketches-core".components.library.planned = lib.mkOverride 900 true;
+          "daemons".components.exes."queue".planned = lib.mkOverride 900 true;
           "attoparsec".components.sublibs."attoparsec-internal".planned = lib.mkOverride 900 true;
           "resourcet".components.library.planned = lib.mkOverride 900 true;
           "tricorder".components.sublibs."atelier".planned = lib.mkOverride 900 true;
@@ -626,6 +629,7 @@
           "call-stack".components.library.planned = lib.mkOverride 900 true;
           "exceptions".components.library.planned = lib.mkOverride 900 true;
           "uri-bytestring".components.library.planned = lib.mkOverride 900 true;
+          "daemons".components.exes."name".planned = lib.mkOverride 900 true;
           "data-clist".components.library.planned = lib.mkOverride 900 true;
           "unliftio".components.library.planned = lib.mkOverride 900 true;
           "network-bsd".components.library.planned = lib.mkOverride 900 true;
@@ -735,6 +739,7 @@
           "ghcid".components.library.planned = lib.mkOverride 900 true;
           "bytestring".components.library.planned = lib.mkOverride 900 true;
           "postgresql-libpq-configure".components.library.planned = lib.mkOverride 900 true;
+          "pipes".components.library.planned = lib.mkOverride 900 true;
           "bitvec".components.library.planned = lib.mkOverride 900 true;
           "tricorder".components.sublibs."atelier-testing".planned = lib.mkOverride 900 true;
           "streaming-commons".components.library.planned = lib.mkOverride 900 true;
@@ -767,6 +772,7 @@
           "tricorder".components.tests."atelier-test".planned = lib.mkOverride 900 true;
           "filepath".components.library.planned = lib.mkOverride 900 true;
           "assoc".components.library.planned = lib.mkOverride 900 true;
+          "daemons".components.exes."memo".planned = lib.mkOverride 900 true;
           "OneTuple".components.library.planned = lib.mkOverride 900 true;
           "regex-base".components.library.planned = lib.mkOverride 900 true;
           "witherable".components.library.planned = lib.mkOverride 900 true;
@@ -808,6 +814,7 @@
           "casing".components.library.planned = lib.mkOverride 900 true;
           "ghc-heap".components.library.planned = lib.mkOverride 900 true;
           "cborg".components.library.planned = lib.mkOverride 900 true;
+          "daemons".components.library.planned = lib.mkOverride 900 true;
           "bytestring-strict-builder".components.library.planned = lib.mkOverride 900 true;
           "appar".components.library.planned = lib.mkOverride 900 true;
           "safe".components.library.planned = lib.mkOverride 900 true;
@@ -816,6 +823,7 @@
           "th-lift".components.library.planned = lib.mkOverride 900 true;
           "mtl".components.library.planned = lib.mkOverride 900 true;
           "logict".components.library.planned = lib.mkOverride 900 true;
+          "daemons".components.exes."addone".planned = lib.mkOverride 900 true;
           "bifunctors".components.library.planned = lib.mkOverride 900 true;
           "uuid-types".components.library.planned = lib.mkOverride 900 true;
           "hs-opentelemetry-propagator-w3c".components.library.planned = lib.mkOverride 900 true;

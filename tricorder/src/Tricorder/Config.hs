@@ -43,7 +43,7 @@ import Data.Yaml qualified as Yaml
 import Atelier.Config (LoadedConfig (..), extractConfig)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, listDirectory, readFileBs)
 import Atelier.Types.QuietSnake (QuietSnake (..))
-import Tricorder.Project (ProjectRoot (..))
+import Tricorder.Runtime (ProjectRoot (..))
 
 import Tricorder.Observability qualified as Observability
 

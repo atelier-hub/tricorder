@@ -1,7 +1,7 @@
-module Tricorder.Socket.Server (component, socketMonitorTrigger, SocketRemoved (..)) where
+module Tricorder.Socket.Server (component, SocketRemoved (..)) where
 
 import Data.Aeson (ToJSON, decode, encode)
-import Effectful.Exception (finally, throwIO)
+import Effectful.Exception (finally)
 import Effectful.Reader.Static (Reader, ask)
 
 import Data.ByteString.Lazy qualified as BSL
@@ -24,10 +24,9 @@ import Tricorder.Effects.UnixSocket
     , readLine
     , removeSocketFile
     , sendLine
-    , socketFileExists
     )
+import Tricorder.Runtime (SocketPath (..))
 import Tricorder.Socket.Protocol (DiagnosticQuery (..), ErrorResponse (..), Query (..), StatusQuery (..))
-import Tricorder.Socket.SocketPath (SocketPath (..))
 import Tricorder.SourceLookup (ModuleName, PackageId, lookupModuleSource)
 
 import Atelier.Effects.Conc qualified as Conc
@@ -59,7 +58,7 @@ component =
         , setup = do
             SocketPath sockPath <- ask
             removeSocketFile sockPath
-        , triggers = pure [acceptTrigger, socketMonitorTrigger]
+        , triggers = pure [acceptTrigger]
         }
 
 
@@ -82,22 +81,6 @@ acceptTrigger = do
     forever do
         h <- acceptHandle sock
         void $ Conc.forkTry @SomeException $ handleConnection h `finally` closeHandle h
-
-
--- | Poll for the socket file's existence every 500ms.
--- Throws 'SocketRemoved' when the file is gone, causing the component system to shut down.
-socketMonitorTrigger
-    :: ( Delay :> es
-       , Reader SocketPath :> es
-       , UnixSocket :> es
-       )
-    => Trigger es
-socketMonitorTrigger = do
-    SocketPath sockPath <- ask
-    forever do
-        wait (500 :: Millisecond)
-        exists <- socketFileExists sockPath
-        unless exists $ throwIO SocketRemoved
 
 
 handleConnection
