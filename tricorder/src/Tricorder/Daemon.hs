@@ -5,7 +5,6 @@ module Tricorder.Daemon
     ) where
 
 import Effectful (IOE)
-import Effectful.Exception (try)
 import Effectful.Reader.Static (Reader, ask)
 
 import Atelier.Component (runSystem)
@@ -14,11 +13,11 @@ import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
-import Atelier.Effects.FileSystem (FileSystem, removeFile)
+import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
-import Atelier.Effects.Posix.Process (Process, createSession, forkProcess)
+import Atelier.Effects.Posix.Daemons (Daemons)
 import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhcPkg (GhcPkg)
@@ -26,9 +25,10 @@ import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
-import Tricorder.Socket.SocketPath (SocketPath (..))
+import Tricorder.Runtime (PidFile, SocketPath (..))
 
 import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
 import Tricorder.Socket.Server qualified as SocketServer
@@ -59,7 +59,7 @@ runDaemon
        , UnixSocket :> es
        )
     => Eff es ()
-runDaemon = do
+runDaemon = Conc.scoped do
     runSystem
         [ Observability.component
         , Watcher.component
@@ -77,6 +77,7 @@ startDaemon
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
+       , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
@@ -85,9 +86,9 @@ startDaemon
        , GhciSession :> es
        , IOE :> es
        , Log :> es
-       , Process :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
+       , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -95,14 +96,11 @@ startDaemon
        )
     => Eff es ()
 startDaemon = do
-    void $ forkProcess do
-        void createSession -- detach from terminal
-        runDaemon
+    pidFile <- ask
+    Daemons.daemonize pidFile runDaemon
 
 
--- | Remove the daemon's socket file, which causes the socket server to stop.
--- The daemon process itself will exit once its scope closes.
-stopDaemon :: (FileSystem :> es, Reader SocketPath :> es) => Eff es ()
+stopDaemon :: (Daemons :> es, Reader PidFile :> es) => Eff es ()
 stopDaemon = do
-    SocketPath sockPath <- ask
-    void $ try @SomeException $ removeFile sockPath
+    pidFile <- ask
+    Daemons.killAndWait pidFile

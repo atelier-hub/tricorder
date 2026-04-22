@@ -25,7 +25,7 @@ import Data.List qualified as List
 import Data.Text qualified as T
 
 import Tricorder.BuildState (TestOutcome (..), TestRun (..))
-import Tricorder.Project (ProjectRoot (..))
+import Tricorder.Runtime (ProjectRoot (..))
 
 
 data TestRunner :: Effect where

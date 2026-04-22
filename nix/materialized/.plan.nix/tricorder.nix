@@ -78,6 +78,7 @@
             (hsPkgs."casing" or (errorHandler.buildDepError "casing"))
             (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
             (hsPkgs."contra-tracer" or (errorHandler.buildDepError "contra-tracer"))
+            (hsPkgs."daemons" or (errorHandler.buildDepError "daemons"))
             (hsPkgs."data-default" or (errorHandler.buildDepError "data-default"))
             (hsPkgs."directory" or (errorHandler.buildDepError "directory"))
             (hsPkgs."effectful" or (errorHandler.buildDepError "effectful"))

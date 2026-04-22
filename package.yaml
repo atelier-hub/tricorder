@@ -111,6 +111,7 @@ internal-libraries:
     - casing
     - containers
     - contra-tracer
+    - daemons
     - data-default
     - directory
     - effectful

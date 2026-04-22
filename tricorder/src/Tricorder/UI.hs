@@ -8,6 +8,7 @@ import Brick
     , attrName
     , neverShowCursor
     )
+import Effectful.Reader.Static (Reader, ask)
 
 import Graphics.Vty.Attributes qualified as Attr
 import Graphics.Vty.Attributes.Color qualified as Color
@@ -18,6 +19,7 @@ import Atelier.Effects.File (File)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.UnixSocket (UnixSocket)
+import Tricorder.Runtime (SocketPath (..))
 import Tricorder.Socket.Client (queryWatch)
 import Tricorder.UI.Event (Event (..), handleEvent)
 import Tricorder.UI.State (State (..), Viewports (..))
@@ -37,10 +39,12 @@ viewUi
        , Clock :> es
        , Conc :> es
        , File :> es
+       , Reader SocketPath :> es
        , UnixSocket :> es
        )
-    => FilePath -> Eff es ()
-viewUi sockPath = do
+    => Eff es ()
+viewUi = do
+    SocketPath sockPath <- ask
     chan <- BrickChan.newBChan 10
     initialState <- Model.init
     Conc.scoped do

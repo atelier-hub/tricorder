@@ -1,11 +1,9 @@
 module Unit.Tricorder.SocketSpec (spec_Socket) where
 
 import Effectful (IOE, runEff)
-import Effectful.Exception (try)
 import System.IO (hClose, hGetLine, openFile)
 import Test.Hspec
 
-import Atelier.Effects.Delay (Delay, runDelayNoOp)
 import Tricorder.Effects.UnixSocket
     ( SocketScript (..)
     , UnixSocket
@@ -15,14 +13,11 @@ import Tricorder.Effects.UnixSocket
     , runUnixSocketScripted
     , socketFileExists
     )
-import Tricorder.Socket.Server (SocketRemoved (..), socketMonitorTrigger)
-import Tricorder.Socket.SocketPath (runSocketPathConst)
 
 
 spec_Socket :: Spec
 spec_Socket = do
     describe "runUnixSocketScripted" testScripted
-    describe "socketMonitorTrigger" testMonitor
 
 
 --------------------------------------------------------------------------------
@@ -59,51 +54,9 @@ testScripted = do
 
 
 --------------------------------------------------------------------------------
--- socketMonitorTrigger tests
---------------------------------------------------------------------------------
-
-testMonitor :: Spec
-testMonitor = do
-    it "throws when socket file does not exist" do
-        result <-
-            runMonitor [NextFileCheck False]
-                $ try @SocketRemoved
-                $ runSocketPathConst "/sock"
-                $ socketMonitorTrigger
-        result `shouldBe` Left SocketRemoved
-
-    it "checks again after each delay cycle" do
-        -- Two True checks followed by False: monitor survives two cycles then throws.
-        result <-
-            runMonitor [NextFileCheck True, NextFileCheck True, NextFileCheck False]
-                $ try @SocketRemoved
-                $ runSocketPathConst "/sock"
-                $ socketMonitorTrigger
-        result `shouldBe` Left SocketRemoved
-
-    it "does not throw while file exists" do
-        -- Single True check; we catch the userError thrown by try after the False.
-        -- Here we confirm the first check (True) does NOT throw.
-        result <-
-            runMonitor [NextFileCheck True, NextFileCheck False]
-                $ try @SocketRemoved
-                $ runSocketPathConst "/sock"
-                $ socketMonitorTrigger
-        result `shouldBe` Left SocketRemoved -- eventually throws on the False
-
-
---------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
 
 -- | Run scripted socket operations (no Delay needed).
 runScripted :: [SocketScript] -> Eff '[UnixSocket, IOE] a -> IO a
 runScripted script = runEff . runUnixSocketScripted script
-
-
--- | Run monitor tests with a no-op Delay so waits are instant.
-runMonitor :: [SocketScript] -> Eff '[UnixSocket, Delay, IOE] a -> IO a
-runMonitor script = runEff . runDelayNoOp . runUnixSocketScripted script
-
--- Note: IOE is in the stack because runUnixSocketScripted requires it
--- (it creates a real socket for BindSocket). The monitor itself doesn't need it.
