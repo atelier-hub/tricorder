@@ -46,20 +46,20 @@ import Data.Text qualified as T
 import Graphics.Vty qualified as Vty
 
 import Tricorder.BuildState (BuildState (..))
-import Tricorder.UI.State (Name (..), State (..), invertCollapsible)
+import Tricorder.UI.State (State (..), Viewports (..), invertCollapsible)
 
 
 data Event
     = NewBuildState BuildState
 
 
-handleEvent :: BrickEvent Name Event -> EventM Name State ()
+handleEvent :: BrickEvent Viewports Event -> EventM Viewports State ()
 handleEvent (AppEvent ev) = handleAppEvent ev
 handleEvent (VtyEvent (Vty.EvKey key modifiers)) = void $ handleKey dispatcher key modifiers
 handleEvent _ = pure ()
 
 
-handleAppEvent :: Event -> EventM Name State ()
+handleAppEvent :: Event -> EventM Viewports State ()
 handleAppEvent = \case
     NewBuildState bs ->
         modify \s -> s {buildState = Just bs}
@@ -100,7 +100,7 @@ keyConfig =
     newKeyConfig keys bindings []
 
 
-dispatcher :: KeyDispatcher KeyEvent (EventM Name State)
+dispatcher :: KeyDispatcher KeyEvent (EventM Viewports State)
 dispatcher =
     -- TODO: Handle this error more gracefully.
     either (error . ("Invalid key dispatcher config: " <>) . stringify) id
@@ -110,10 +110,10 @@ dispatcher =
                 modify \s -> s {daemonInfoView = invertCollapsible s.daemonInfoView}
             , onEvent Quit "Exit" do
                 halt
-            , onEvent ScrollUp "Scrolling upwards" do
-                vScrollBy (viewportScroll UI) (-1)
-            , onEvent ScrollDown "Scrolling downwards" do
-                vScrollBy (viewportScroll UI) 1
+            , onEvent ScrollUp "Scroll diagnostic upwards" do
+                vScrollBy (viewportScroll DiagnosticViewport) (-1)
+            , onEvent ScrollDown "Scroll diagnostic downwards" do
+                vScrollBy (viewportScroll DiagnosticViewport) 1
             , onEvent ToggleHelp "Toggle help" do
                 modify \s -> s {showHelp = not s.showHelp}
             ]

@@ -1,5 +1,5 @@
 module Tricorder.UI.State
-    ( Name (..)
+    ( Viewports (..)
     , State (..)
     , init
     , Collapsible (..)
@@ -13,7 +13,9 @@ import Prelude hiding (init)
 import Atelier.Effects.Clock qualified as Clock
 
 
-data Name = UI
+data Viewports
+    = MainViewport
+    | DiagnosticViewport
     deriving stock (Eq, Ord, Show)
 
 
