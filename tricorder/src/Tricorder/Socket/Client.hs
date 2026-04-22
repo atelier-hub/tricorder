@@ -3,6 +3,7 @@ module Tricorder.Socket.Client
     , queryStatusWait
     , queryWatch
     , querySource
+    , queryDiagnostic
     , isDaemonRunning
     ) where
 
@@ -12,10 +13,10 @@ import Effectful.Exception (try)
 import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Effects.File (File)
-import Tricorder.BuildState (BuildState)
+import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.Effects.UnixSocket (UnixSocket, withConnection)
 import Tricorder.GhcPkg.Types (ModuleName)
-import Tricorder.Socket.Protocol (Query (..), StatusQuery (..))
+import Tricorder.Socket.Protocol (DiagnosticQuery (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleSourceResult)
 
 import Atelier.Effects.File qualified as File
@@ -70,6 +71,20 @@ querySource sockPath moduleNames = withConnection sockPath \h -> do
     case eitherDecode (BSL.fromStrict (encodeUtf8 (toText line))) of
         Left err -> pure $ Left (toText err)
         Right results -> pure $ Right results
+
+
+-- | Fetch the full body of a single diagnostic by 1-based index.
+queryDiagnostic
+    :: (File :> es, UnixSocket :> es)
+    => FilePath
+    -> Int
+    -> Eff es (Either Text Diagnostic)
+queryDiagnostic sockPath idx = withConnection sockPath \h -> do
+    sendQuery h (DiagnosticAt (DiagnosticQuery {index = idx}))
+    line <- File.hGetLine h
+    case eitherDecode (BSL.fromStrict (encodeUtf8 (toText line))) of
+        Left err -> pure $ Left (toText err)
+        Right d -> pure $ Right d
 
 
 -- | Check whether the daemon is running by attempting a socket connection.

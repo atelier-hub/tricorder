@@ -10,6 +10,7 @@ import Options.Applicative
     ( Parser
     , ParserInfo
     , argument
+    , auto
     , command
     , execParser
     , fullDesc
@@ -20,6 +21,7 @@ import Options.Applicative
     , info
     , long
     , metavar
+    , option
     , progDesc
     , short
     , str
@@ -32,7 +34,7 @@ import Tricorder.GhcPkg.Types (ModuleName (..))
 data Command
     = Start
     | Stop
-    | Status Bool Bool Bool
+    | Status Bool Bool Bool (Maybe Int)
     | UI
     | Log Bool
     | Source [ModuleName]
@@ -93,6 +95,14 @@ statusParser =
             ( long "verbose"
                 <> short 'v'
                 <> help "Print full GHC message body under each diagnostic"
+            )
+        <*> optional
+            ( option
+                auto
+                ( long "expand"
+                    <> metavar "N"
+                    <> help "Print full GHC message body for diagnostic #N"
+                )
             )
 
 

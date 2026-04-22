@@ -18,8 +18,9 @@ tricorder is a daemon-based GHCi build monitor. It exposes build state over a Un
 - `tricorder status --json` — output full build state as JSON
 - `tricorder status --wait --json` — wait then output JSON
 - `tricorder status --verbose` / `-v` — print full GHC message body under each diagnostic
+- `tricorder status --expand <N>` — print the summary line and full GHC message body for diagnostic #N
 - `tricorder source MODULE...` — print Haskell source for one or more installed modules (e.g. `tricorder source Data.Map.Strict`)
-- `tricorder watch` — auto-refreshing terminal display (for humans)
+- `tricorder ui` — auto-refreshing terminal display (for humans)
 
 ## Checking Build Status
 
@@ -29,15 +30,15 @@ If `tricorder status` returns `Stopped.`, start the daemon with `tricorder start
 
 ### Text output (default)
 
-One line per diagnostic, followed by a summary:
+One line per diagnostic (prefixed with a 1-based index), followed by a summary:
 
 ```
-E src/Foo/Bar.hs:42 `something` not in scope
-W src/Foo/Bar.hs:10 redundant import
+[1] E src/Foo/Bar.hs:42 `something` not in scope
+[2] W src/Foo/Bar.hs:10 redundant import
 2 error(s), 1 warning(s) (71 modules, 1.2s)
 ```
 
-Format: `<E|W> <file>:<line> <title>`
+Format: `[N] <E|W> <file>:<line> <title>`
 
 A clean build prints:
 
@@ -58,10 +59,18 @@ With `--wait`, if a build is in progress `Building...` is printed immediately be
 With `--verbose`, the full GHC message body is printed under each diagnostic:
 
 ```
-E src/Foo/Bar.hs:42 `something` not in scope
+[1] E src/Foo/Bar.hs:42 `something` not in scope
 Variable not in scope: something
     suggested fix: ...
 1 error(s), 0 warning(s) (71 modules, 1.2s)
+```
+
+With `--expand <N>`, only diagnostic #N is expanded (summary line + full body):
+
+```
+[1] E src/Foo/Bar.hs:42 `something` not in scope
+Variable not in scope: something
+    suggested fix: ...
 ```
 
 **Exit code**: 1 when any errors are present or any test suite fails, 0 otherwise (warnings alone → 0).

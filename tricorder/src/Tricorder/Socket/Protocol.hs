@@ -1,6 +1,7 @@
 module Tricorder.Socket.Protocol
     ( Query (..)
     , StatusQuery (..)
+    , DiagnosticQuery (..)
     , ErrorResponse (..)
     ) where
 
@@ -14,10 +15,16 @@ data StatusQuery = StatusQuery {awaitDone :: Bool}
     deriving anyclass (FromJSON, ToJSON)
 
 
+newtype DiagnosticQuery = DiagnosticQuery {index :: Int}
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass (FromJSON, ToJSON)
+
+
 data Query
     = Status StatusQuery
     | Watch
     | Source [ModuleName]
+    | DiagnosticAt DiagnosticQuery
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
 
