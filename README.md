@@ -28,7 +28,7 @@ Like similar tools (`ghcid`, `ghciwatch`), it builds the code continuously on ev
 ### Try it out
 
 ```bash
-nix run --accept-flake-config github:cgeorgii/tricorder#tricorder
+nix run --accept-flake-config github:atelier-hub/tricorder -- ui
 ```
 
 `--accept-flake-config` tells Nix to use the binary caches declared in this flake. Without it, Nix will build the entire Haskell toolchain from source.
@@ -38,7 +38,7 @@ nix run --accept-flake-config github:cgeorgii/tricorder#tricorder
 To make `tricorder` available in a project's dev shell without installing it system-wide:
 
 ```nix
-inputs.tricorder.url = "github:cgeorgii/tricorder";
+inputs.tricorder.url = "github:atelier-hub/tricorder";
 
 devShells.default = pkgs.mkShell {
   packages = [ inputs.tricorder.packages.${system}.tricorder ];
@@ -50,7 +50,7 @@ devShells.default = pkgs.mkShell {
 Add the flake input and apply the overlay:
 
 ```nix
-inputs.tricorder.url = "github:cgeorgii/tricorder";
+inputs.tricorder.url = "github:atelier-hub/tricorder";
 
 nixpkgs.overlays = [ inputs.tricorder.overlays.default ];
 ```
@@ -71,23 +71,9 @@ programs.tricorder.enable = true;
 
 ## Development
 
-Enter the dev shell:
-
 ```bash
 nix develop
-```
-
-Build and run tests:
-
-```bash
-cabal build all
-cabal test all
-```
-
-Run the tricorder daemon:
-
-```bash
-cabal run tricorder-exe -- start
+tricorder ui
 ```
 
 ## Libraries
