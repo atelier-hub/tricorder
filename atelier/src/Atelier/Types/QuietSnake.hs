@@ -6,12 +6,17 @@ module Atelier.Types.QuietSnake
 
 import Data.Aeson (FromJSON (..), GFromJSON, GToJSON, Options, ToJSON (..), Zero, genericParseJSON, genericToJSON)
 import Data.Aeson.Types (defaultOptions, fieldLabelModifier)
+import Data.Default (Default (..))
 import GHC.Generics (Rep)
 import Text.Casing (quietSnake)
 
 
 -- | Newtype wrapper for deriving FromJSON with quiet_snake_case field names
 newtype QuietSnake a = QuietSnake {getQuietSnake :: a}
+
+
+instance (Default a) => Default (QuietSnake a) where
+    def = QuietSnake def
 
 
 instance (GFromJSON Zero (Rep a), Generic a) => FromJSON (QuietSnake a) where

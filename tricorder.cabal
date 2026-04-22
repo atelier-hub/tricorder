@@ -139,6 +139,7 @@ library atelier
       Atelier.Types.HttpApiDataReadShow
       Atelier.Types.JsonReadShow
       Atelier.Types.QuietSnake
+      Atelier.Types.WithDefaults
   other-modules:
       Paths_tricorder
   autogen-modules:
@@ -344,6 +345,7 @@ test-suite atelier-test
       Unit.Atelier.Effects.LogSpec
       Unit.Atelier.Effects.PublishingSpec
       Unit.Atelier.Effects.TallySpec
+      Unit.Atelier.Types.WithDefaultsSpec
       Paths_tricorder
   autogen-modules:
       Paths_tricorder
@@ -370,11 +372,14 @@ test-suite atelier-test
   build-tool-depends:
       tasty-discover:tasty-discover
   build-depends:
-      async
+      aeson
+    , async
     , atelier
     , atelier-prelude
     , base
+    , bytestring
     , containers
+    , data-default
     , effectful
     , effectful-core
     , effectful-plugin

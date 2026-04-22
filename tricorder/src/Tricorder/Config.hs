@@ -43,6 +43,7 @@ import Data.Yaml qualified as Yaml
 import Atelier.Config (LoadedConfig (..), extractConfig)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, listDirectory, readFileBs)
 import Atelier.Types.QuietSnake (QuietSnake (..))
+import Atelier.Types.WithDefaults (WithDefaults (..))
 import Tricorder.Runtime (ProjectRoot (..))
 
 import Tricorder.Observability qualified as Observability
@@ -56,7 +57,7 @@ data Config = Config
     , outputFile :: Maybe FilePath
     }
     deriving stock (Eq, Generic, Show)
-    deriving (FromJSON) via QuietSnake Config
+    deriving (FromJSON) via WithDefaults (QuietSnake Config)
 
 
 instance Default Config where
