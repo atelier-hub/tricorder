@@ -69,6 +69,7 @@ watchApp =
                     , (attrName "warning", Attr.withForeColor Attr.defAttr Color.yellow)
                     , (attrName "error", Attr.withForeColor Attr.defAttr Color.red)
                     , (attrName "emphasis", Attr.withStyle Attr.defAttr Attr.bold)
+                    , (attrName "subtle", Attr.withForeColor Attr.defAttr $ Color.rgbColor @Int 148 148 148)
                     ]
                 )
         , appChooseCursor = neverShowCursor
