@@ -13,7 +13,7 @@ import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Log (Log)
 import Atelier.Time (Millisecond)
-import Tricorder.BuildState (BuildPhase (..), BuildState (..))
+import Tricorder.BuildState (BuildPhase (..), BuildResult (..), BuildState (..), Diagnostic)
 import Tricorder.Effects.BuildStore (BuildStore, getState, waitForAnyChange, waitUntilDone)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.UnixSocket
@@ -26,7 +26,7 @@ import Tricorder.Effects.UnixSocket
     , sendLine
     , socketFileExists
     )
-import Tricorder.Socket.Protocol (ErrorResponse (..), Query (..), StatusQuery (..))
+import Tricorder.Socket.Protocol (DiagnosticQuery (..), ErrorResponse (..), Query (..), StatusQuery (..))
 import Tricorder.Socket.SocketPath (SocketPath (..))
 import Tricorder.SourceLookup (ModuleName, PackageId, lookupModuleSource)
 
@@ -137,6 +137,7 @@ dispatch query h = case query of
     Status (StatusQuery True) -> respondWhenDone h
     Watch -> watchStream h
     Source moduleNames -> respondSource moduleNames h
+    DiagnosticAt dq -> respondDiagnostic dq.index h
 
 
 respondOnce :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()
@@ -183,6 +184,23 @@ watchStream h = do
         newState <- waitForAnyChange prev
         sendJson h newState
         loop newState
+
+
+respondDiagnostic :: (BuildStore :> es, UnixSocket :> es) => Int -> Handle -> Eff es ()
+respondDiagnostic idx h = do
+    state <- getState
+    case state.phase of
+        Done r -> case r.diagnostics !!? (idx - 1) of
+            Nothing ->
+                sendJson h
+                    $ ErrorResponse
+                    $ "No diagnostic #"
+                        <> show idx
+                        <> " (current build has "
+                        <> show (length r.diagnostics)
+                        <> ")"
+            Just d -> sendJson h (d :: Diagnostic)
+        _ -> sendJson h $ ErrorResponse "Build in progress"
 
 
 -- | Look up source for each requested module and send the results as a JSON array.

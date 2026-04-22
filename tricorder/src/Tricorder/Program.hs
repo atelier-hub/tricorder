@@ -46,7 +46,7 @@ import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
-import Tricorder.Render (diagnosticBlock, diagnosticLine, formatDuration, renderSourceResults)
+import Tricorder.Render (diagnosticLineIndexed, formatDuration, renderSourceResults)
 import Tricorder.Socket.Client
     ( isDaemonRunning
     , querySource
@@ -95,7 +95,7 @@ run =
     ask >>= \case
         Start -> start
         Stop -> stop
-        (Status waitFlag jsonFlag verboseFlag) -> showStatus waitFlag jsonFlag verboseFlag
+        (Status waitFlag jsonFlag verboseFlag expandFlag) -> showStatus waitFlag jsonFlag verboseFlag expandFlag
         (Log followFlag) -> showLog followFlag
         UI -> ui
         (Source moduleNames) -> showSource moduleNames
@@ -149,8 +149,8 @@ showStatus
        , IOE :> es
        , UnixSocket :> es
        )
-    => Bool -> Bool -> Bool -> Eff es ()
-showStatus waitFlag jsonFlag verboseFlag = do
+    => Bool -> Bool -> Bool -> Maybe Int -> Eff es ()
+showStatus waitFlag jsonFlag verboseFlag expandFlag = do
     projectRoot <- getCurrentDirectory
     sockPath <- socketPath projectRoot
     running <- isDaemonRunning sockPath
@@ -176,23 +176,38 @@ showStatus waitFlag jsonFlag verboseFlag = do
                     Console.putStr $ BSL.toStrict $ encode state
                     Console.putStrLn ""
                 else
-                    renderText verboseFlag state
+                    renderText verboseFlag expandFlag state
   where
-    renderText verbose state = case state.phase of
+    renderText verbose expand state = case state.phase of
         Building -> Console.putStrLn "Building..."
         Restarting -> Console.putStrLn "Restarting..."
         Testing _ -> Console.putStrLn "Testing..."
         Done r -> do
             tz <- liftIO getCurrentTimeZone
-            let printDiag =
-                    if verbose then
-                        Console.putText . diagnosticBlock
-                    else
-                        Console.putTextLn . diagnosticLine
-            mapM_ printDiag r.diagnostics
-            Console.putTextLn $ buildSummary tz r
-            mapM_ (printTestRun verbose) r.testRuns
-            when (buildHasErrors r || testsFailed r) $ liftIO exitFailure
+            case expand of
+                Just n ->
+                    case r.diagnostics !!? (n - 1) of
+                        Nothing ->
+                            Console.putTextLn
+                                $ "No diagnostic #"
+                                    <> show n
+                                    <> " (current build has "
+                                    <> show (length r.diagnostics)
+                                    <> ")"
+                        Just d -> do
+                            Console.putTextLn $ diagnosticLineIndexed n d
+                            Console.putText d.text
+                Nothing -> do
+                    let printDiag (i, d) =
+                            if verbose then do
+                                Console.putTextLn $ diagnosticLineIndexed i d
+                                Console.putText d.text
+                            else
+                                Console.putTextLn $ diagnosticLineIndexed i d
+                    mapM_ printDiag (zip [1 ..] r.diagnostics)
+                    Console.putTextLn $ buildSummary tz r
+                    mapM_ (printTestRun verbose) r.testRuns
+                    when (buildHasErrors r || testsFailed r) $ liftIO exitFailure
 
     printTestRun verbose tr = do
         Console.putTextLn $ testRunSummary tr.target tr.outcome

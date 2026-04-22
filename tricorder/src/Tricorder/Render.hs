@@ -1,6 +1,7 @@
 module Tricorder.Render
     ( -- * Plain-text formatting
       diagnosticLine
+    , diagnosticLineIndexed
     , diagnosticBlock
     , formatDuration
     , renderSourceResults
@@ -34,6 +35,13 @@ diagnosticLine d =
   where
     prefix SError = "E"
     prefix SWarning = "W"
+
+
+-- | Like 'diagnosticLine' but prefixed with a 1-based index.
+--
+-- Format: @[N] E src\/Foo\/Bar.hs:42 \`something\` not in scope@
+diagnosticLineIndexed :: Int -> Diagnostic -> Text
+diagnosticLineIndexed n d = "[" <> show n <> "] " <> diagnosticLine d
 
 
 -- | One-liner followed by the full GHC message body (verbose mode).
