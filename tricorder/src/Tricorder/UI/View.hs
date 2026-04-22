@@ -17,7 +17,6 @@ import Brick.Widgets.Core
     , hBox
     , padBottom
     , padLeft
-    , padTop
     , txt
     , txtWrap
     , withClickableVScrollBars
@@ -42,6 +41,7 @@ import Tricorder.BuildState
     , TestRun (..)
     )
 import Tricorder.UI.Event (viewKeybindings)
+import Tricorder.UI.Misc (emphasis, err, hBoxSpaced, ok, subtle, vBoxSpaced, warn)
 import Tricorder.UI.State (Collapsible (..), State (..), Viewports (..))
 
 import Tricorder.UI.Event qualified as Event
@@ -63,9 +63,9 @@ viewHelp :: Widget n
 viewHelp =
     vBoxSpaced
         1
-        [ txt "Keymap:"
+        [ ok $ txt "Keymap:"
         , viewKeybindings Event.keyConfig handlers
-        , txt "Press h to go back"
+        , subtle $ txt "Press 'h' to go back"
         ]
   where
     handlers = (.khHandler) . snd <$> keyDispatcherToList Event.dispatcher
@@ -91,8 +91,10 @@ viewDaemonInfo state di =
                 emptyWidget
         , viewHint
         ]
+
+
 viewHint :: Widget n
-viewHint = txt "Press 'h' for help"
+viewHint = subtle $ txt "Press 'h' for help"
 
 
 viewExpandedDaemonInfo :: DaemonInfo -> Widget n
@@ -257,35 +259,9 @@ viewBuildSummary moduleCount durationMs =
     txt $ "(" <> show moduleCount <> " modules, " <> formatDuration durationMs <> ")"
 
 
-err :: Widget n -> Widget n
-err = withDefAttr $ attrName "error"
-
-
-warn :: Widget n -> Widget n
-warn = withDefAttr $ attrName "warning"
-
-
-ok :: Widget n -> Widget n
-ok = withDefAttr $ attrName "ok"
-
-
-emphasis :: Widget n -> Widget n
-emphasis = withDefAttr $ attrName "emphasis"
-
-
 formatDuration :: Int -> Text
 formatDuration ms =
     if ms < 1000 then
         show ms <> "ms"
     else
         show (ms `div` 1000) <> "." <> show ((ms `mod` 1000) `div` 100) <> "s"
-
-
-hBoxSpaced :: Int -> [Widget n] -> Widget n
-hBoxSpaced _ [] = hBox []
-hBoxSpaced pad (x : xs) = hBox $ x : (padLeft (Pad pad) <$> xs)
-
-
-vBoxSpaced :: Int -> [Widget n] -> Widget n
-vBoxSpaced _ [] = vBox []
-vBoxSpaced pad (x : xs) = vBox $ x : (padTop (Pad pad) <$> xs)

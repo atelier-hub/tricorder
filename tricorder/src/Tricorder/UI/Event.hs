@@ -37,7 +37,8 @@ import Brick.Keybindings
     , onEvent
     )
 import Brick.Keybindings.Pretty (ppBinding)
-import Control.Monad.State (modify)
+import Brick.Widgets.Core (hBox)
+import Control.Monad.State (gets, modify)
 import Graphics.Vty (Key (..))
 
 import Data.Map.Strict qualified as Map
@@ -46,6 +47,7 @@ import Data.Text qualified as T
 import Graphics.Vty qualified as Vty
 
 import Tricorder.BuildState (BuildState (..))
+import Tricorder.UI.Misc (warn)
 import Tricorder.UI.State (State (..), Viewports (..), invertCollapsible)
 
 
@@ -111,9 +113,13 @@ dispatcher =
             , onEvent Quit "Exit" do
                 halt
             , onEvent ScrollUp "Scroll diagnostic upwards" do
-                vScrollBy (viewportScroll DiagnosticViewport) (-1)
+                showingHelp <- gets (.showHelp)
+                unless showingHelp
+                    $ vScrollBy (viewportScroll DiagnosticViewport) (-1)
             , onEvent ScrollDown "Scroll diagnostic downwards" do
-                vScrollBy (viewportScroll DiagnosticViewport) 1
+                showingHelp <- gets (.showHelp)
+                unless showingHelp
+                    $ vScrollBy (viewportScroll DiagnosticViewport) 1
             , onEvent ToggleHelp "Toggle help" do
                 modify \s -> s {showHelp = not s.showHelp}
             ]
@@ -134,7 +140,10 @@ viewKeybindings kc =
 
 viewEventAndTriggers :: (Ord k, Show k) => KeyConfig k -> Text -> [EventTrigger k] -> Widget n
 viewEventAndTriggers kc eventName trigger =
-    txt $ eventName <> ": " <> (showBindings $ mconcat $ getBindings <$> trigger)
+    hBox
+        [ warn $ txt $ eventName <> ": "
+        , txt $ showBindings $ mconcat $ getBindings <$> trigger
+        ]
   where
     showBindings = T.intercalate ", " . fmap ppBinding . sort . toList
     getBindings = \case
