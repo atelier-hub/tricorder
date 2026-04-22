@@ -202,8 +202,11 @@ tests:
         - hiding (Prelude)
     - atelier-prelude
     - atelier
+    - aeson
     - async
+    - bytestring
     - containers
+    - data-default
     - effectful
     - hs-opentelemetry-api
     - hedgehog
