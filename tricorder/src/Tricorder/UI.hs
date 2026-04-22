@@ -20,7 +20,7 @@ import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.Socket.Client (queryWatch)
 import Tricorder.UI.Event (Event (..), handleEvent)
-import Tricorder.UI.State (Name (..), State (..))
+import Tricorder.UI.State (State (..), Viewports (..))
 import Tricorder.UI.View (view)
 
 import Atelier.Effects.Conc qualified as Conc
@@ -55,7 +55,7 @@ viewUi sockPath = do
                 initialState
 
 
-watchApp :: App State Event Name
+watchApp :: App State Event Viewports
 watchApp =
     App
         { appDraw = view

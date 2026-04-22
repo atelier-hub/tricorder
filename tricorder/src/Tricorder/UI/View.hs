@@ -2,6 +2,7 @@ module Tricorder.UI.View (view) where
 
 import Brick
     ( AttrName
+    , VScrollBarOrientation (..)
     , ViewportType (..)
     , Widget
     , attrName
@@ -19,7 +20,10 @@ import Brick.Widgets.Core
     , padTop
     , txt
     , txtWrap
+    , withClickableVScrollBars
     , withDefAttr
+    , withVScrollBarHandles
+    , withVScrollBars
     )
 import Data.Time (UTCTime, defaultTimeLocale, formatTime, utcToLocalTime)
 import System.FilePath (isAbsolute)
@@ -38,21 +42,20 @@ import Tricorder.BuildState
     , TestRun (..)
     )
 import Tricorder.UI.Event (viewKeybindings)
-import Tricorder.UI.State (Collapsible (..), Name (..), State (..))
+import Tricorder.UI.State (Collapsible (..), State (..), Viewports (..))
 
 import Tricorder.UI.Event qualified as Event
 
 
-view :: State -> [Widget Name]
+view :: State -> [Widget Viewports]
 view ws =
     [ case ws.buildState of
         Nothing -> str "Waiting for build..."
         Just bs ->
-            viewport UI Vertical
-                $ if ws.showHelp then
-                    viewHelp
-                else
-                    viewBuildState ws bs
+            if ws.showHelp then
+                viewHelp
+            else
+                viewBuildState ws bs
     ]
 
 
@@ -68,7 +71,7 @@ viewHelp =
     handlers = (.khHandler) . snd <$> keyDispatcherToList Event.dispatcher
 
 
-viewBuildState :: State -> BuildState -> Widget n
+viewBuildState :: State -> BuildState -> Widget Viewports
 viewBuildState state bs =
     vBoxSpaced
         1
@@ -160,7 +163,7 @@ viewWatchDir dir = hBox [txt "- ", txt $ toText displayDir]
         | otherwise = "./" <> dir
 
 
-viewBuildPhase :: TimeZone -> BuildPhase -> Widget n
+viewBuildPhase :: TimeZone -> BuildPhase -> Widget Viewports
 viewBuildPhase tz = \case
     Building -> warn $ txt "Building..."
     Restarting -> warn $ txt "Restarting..."
@@ -168,7 +171,7 @@ viewBuildPhase tz = \case
     Done result -> vBoxSpaced 1 [viewBuildResult tz result, viewTestRuns result.testRuns]
 
 
-viewBuildResult :: TimeZone -> BuildResult -> Widget n
+viewBuildResult :: TimeZone -> BuildResult -> Widget Viewports
 viewBuildResult tz result
     | null result.diagnostics =
         hBoxSpaced
@@ -194,7 +197,12 @@ viewBuildResult tz result
                     , viewDuration result.durationMs
                     , viewTimestamp tz result.completedAt
                     ]
-                , vBox $ viewDiagnostic <$> msgs
+                , withClickableVScrollBars (\_ _ -> DiagnosticViewport)
+                    $ withVScrollBarHandles
+                    $ withVScrollBars OnRight
+                    $ viewport DiagnosticViewport Vertical
+                    $ vBox
+                    $ viewDiagnostic <$> msgs
                 ]
 
 
@@ -206,7 +214,7 @@ viewDiagnostic m =
             [ severityLabel
             , txt $ toText loc
             ]
-        , txt m.text
+        , txtWrap m.text
         ]
   where
     loc = m.file <> ":" <> show m.line <> ":" <> show m.col
