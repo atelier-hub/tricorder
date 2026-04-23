@@ -33,7 +33,7 @@ import Tricorder.BuildState
     , TestRun (..)
     )
 import Tricorder.Config (Config)
-import Tricorder.Daemon (startDaemon, stopDaemon)
+import Tricorder.Daemon (startDaemon)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.BuildStore (BuildStore)
@@ -68,7 +68,7 @@ run
        , Clock :> es
        , Conc :> es
        , Console :> es
-       , Daemon :> es
+       , Daemon tag :> es
        , Debounce FilePath :> es
        , Delay :> es
        , File :> es
@@ -105,7 +105,7 @@ start
        , Clock :> es
        , Conc :> es
        , Console :> es
-       , Daemon :> es
+       , Daemon tag :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
@@ -133,14 +133,14 @@ start = do
 
 stop
     :: ( Console :> es
-       , Daemon :> es
+       , Daemon tag :> es
        , FileSystem :> es
        , Reader PidFile :> es
        , Reader SocketPath :> es
        )
     => Eff es ()
 stop = do
-    stopDaemon
+    Daemon.killAndWait
     Console.putStrLn "Daemon stopped."
     FileSystem.removeFile =<< asks getSocketPath
     FileSystem.removeFile =<< asks getPidFile
@@ -148,7 +148,7 @@ stop = do
 
 showStatus
     :: ( Console :> es
-       , Daemon :> es
+       , Daemon tag :> es
        , File :> es
        , IOE :> es
        , Reader SocketPath :> es
@@ -243,7 +243,7 @@ showStatus waitFlag jsonFlag verboseFlag expandFlag = do
 
 showLog
     :: ( Console :> es
-       , Daemon :> es
+       , Daemon tag :> es
        , Delay :> es
        , File :> es
        , FileSystem :> es
@@ -295,7 +295,7 @@ ui
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
-       , Daemon :> es
+       , Daemon tag :> es
        , Debounce FilePath :> es
        , Delay :> es
        , File :> es
@@ -328,7 +328,7 @@ showSource
        , Clock :> es
        , Conc :> es
        , Console :> es
-       , Daemon :> es
+       , Daemon tag :> es
        , Debounce FilePath :> es
        , Delay :> es
        , File :> es
@@ -360,7 +360,7 @@ showSource moduleNames = do
 
 
 -- | Poll until the daemon socket becomes connectable.
-waitForDaemon :: (Daemon :> es, Delay :> es) => Eff es ()
+waitForDaemon :: (Daemon tag :> es, Delay :> es) => Eff es ()
 waitForDaemon = do
     Delay.wait (200 :: Millisecond)
     running <- Daemon.isRunning

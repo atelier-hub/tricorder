@@ -3,7 +3,7 @@ module Main (main) where
 import Data.Default (def)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
-import Effectful.Reader.Static (runReader)
+import Effectful.Reader.Static (ask, runReader)
 
 import Atelier.Effects.Cache (runCacheTtl)
 import Atelier.Effects.Clock (runClock)
@@ -55,7 +55,7 @@ main =
         . runReader @CacheConfig.Config def
         . runDaemonInfo
         . runLogging
-        . runDaemon
+        . (\eff -> ask >>= \pidFile -> runDaemon pidFile eff)
         . runTestRunnerIO
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.ModuleName) @Text

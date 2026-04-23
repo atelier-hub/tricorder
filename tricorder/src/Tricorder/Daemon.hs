@@ -1,6 +1,5 @@
 module Tricorder.Daemon
     ( startDaemon
-    , stopDaemon
     ) where
 
 import Effectful (IOE)
@@ -26,7 +25,6 @@ import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Runtime (SocketPath (..))
 
-import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Posix.Daemon qualified as Daemon
 import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
@@ -42,7 +40,7 @@ startDaemon
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
-       , Daemon :> es
+       , Daemon tag :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
@@ -67,7 +65,3 @@ startDaemon =
             , GhciSession.component
             , SocketServer.component
             ]
-
-
-stopDaemon :: (Daemon :> es) => Eff es ()
-stopDaemon = Daemon.killAndWait

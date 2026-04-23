@@ -8,35 +8,39 @@ module Atelier.Effects.Posix.Daemon
     ) where
 
 import Data.Default (def)
-import Effectful (Effect, IOE, Limit (..), Persistence (..), UnliftStrategy (..))
-import Effectful.Dispatch.Dynamic (interpretWith, localUnliftIO)
+import Effectful (Dispatch (..), DispatchOf, Effect, IOE, Limit (..), Persistence (..), UnliftStrategy (..))
+import Effectful.Dispatch.Dynamic (interpretWith, localUnliftIO, send)
 import Effectful.Exception (IOException, try)
-import Effectful.Reader.Static (Reader, ask)
-import Effectful.TH (makeEffect)
 
 import System.Posix.Daemon qualified as Posix
 
 
-data Daemon :: Effect where
-    -- | Daemonize the given program, ensuring it is cleanly separated from the
-    -- spawning process.
-    Daemonize :: m () -> Daemon m ()
-    -- | Check whether a daemon is running for the provided PID file.
-    IsRunning :: Daemon m Bool
-    -- | Kill the daemon associated with the provided PID file, waiting for it
-    -- to shut down.
-    KillAndWait :: Daemon m ()
+data Daemon (tag :: k) :: Effect where
+    Daemonize :: m () -> Daemon tag m ()
+    IsRunning :: Daemon tag m Bool
+    KillAndWait :: Daemon tag m ()
+
+
+type instance DispatchOf (Daemon _) = 'Dynamic
 
 
 newtype PidFile = PidFile {getPidFile :: FilePath}
 
 
-makeEffect ''Daemon
+daemonize :: forall tag es. (Daemon tag :> es) => Eff es () -> Eff es ()
+daemonize program = send (Daemonize program :: Daemon tag (Eff es) ())
 
 
-runDaemon :: (IOE :> es, Reader PidFile :> es) => Eff (Daemon : es) a -> Eff es a
-runDaemon act = do
-    PidFile pidFile <- ask
+isRunning :: forall tag es. (Daemon tag :> es) => Eff es Bool
+isRunning = send (IsRunning :: Daemon tag (Eff es) Bool)
+
+
+killAndWait :: forall tag es. (Daemon tag :> es) => Eff es ()
+killAndWait = send (KillAndWait :: Daemon tag (Eff es) ())
+
+
+runDaemon :: (IOE :> es) => PidFile -> Eff (Daemon tag : es) a -> Eff es a
+runDaemon (PidFile pidFile) act =
     interpretWith act \env -> \case
         Daemonize program ->
             localUnliftIO env (ConcUnlift Persistent Unlimited) \unlift ->
