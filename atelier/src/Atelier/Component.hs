@@ -74,7 +74,7 @@ runSystem
      . (Conc :> es, Log :> es, Tracing :> es)
     => [Component es]
     -> Eff es ()
-runSystem components = do
+runSystem components = Conc.scoped do
     -- Phase 1: Setup all components
     traverse_ setupComponent components
 
@@ -83,6 +83,8 @@ runSystem components = do
 
     -- Phase 3: Fork post-start actions
     traverse_ postStartComponent components
+
+    Conc.awaitAll
   where
     setupComponent :: Component es -> Eff es ()
     setupComponent c = do
