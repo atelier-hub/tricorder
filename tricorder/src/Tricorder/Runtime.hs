@@ -21,7 +21,7 @@ import Atelier.Effects.FileSystem
     , getCurrentDirectory
     , getXdgRuntimeDir
     )
-import Atelier.Effects.Posix.Daemons (PidFile (..))
+import Atelier.Effects.Posix.Daemon (PidFile (..))
 
 
 newtype SocketPath = SocketPath {getSocketPath :: FilePath}

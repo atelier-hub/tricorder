@@ -1,10 +1,10 @@
-module Atelier.Effects.Posix.Daemons
-    ( Daemons
+module Atelier.Effects.Posix.Daemon
+    ( Daemon
     , PidFile (..)
     , daemonize
     , isRunning
     , killAndWait
-    , runDaemons
+    , runDaemon
     ) where
 
 import Data.Default (def)
@@ -14,34 +14,34 @@ import Effectful.Exception (IOException, try)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.TH (makeEffect)
 
-import System.Posix.Daemon qualified as Daemons
+import System.Posix.Daemon qualified as Posix
 
 
-data Daemons :: Effect where
+data Daemon :: Effect where
     -- | Daemonize the given program, ensuring it is cleanly separated from the
     -- spawning process.
-    Daemonize :: m () -> Daemons m ()
+    Daemonize :: m () -> Daemon m ()
     -- | Check whether a daemon is running for the provided PID file.
-    IsRunning :: Daemons m Bool
+    IsRunning :: Daemon m Bool
     -- | Kill the daemon associated with the provided PID file, waiting for it
     -- to shut down.
-    KillAndWait :: Daemons m ()
+    KillAndWait :: Daemon m ()
 
 
 newtype PidFile = PidFile {getPidFile :: FilePath}
 
 
-makeEffect ''Daemons
+makeEffect ''Daemon
 
 
-runDaemons :: (IOE :> es, Reader PidFile :> es) => Eff (Daemons : es) a -> Eff es a
-runDaemons act = do
+runDaemon :: (IOE :> es, Reader PidFile :> es) => Eff (Daemon : es) a -> Eff es a
+runDaemon act = do
     PidFile pidFile <- ask
     interpretWith act \env -> \case
         Daemonize program ->
             localUnliftIO env (ConcUnlift Persistent Unlimited) \unlift ->
-                Daemons.runDetached (Just pidFile) def $ unlift program
+                Posix.runDetached (Just pidFile) def $ unlift program
         IsRunning ->
-            liftIO $ Daemons.isRunning pidFile
+            liftIO $ Posix.isRunning pidFile
         KillAndWait ->
-            void $ try @IOException $ liftIO $ Daemons.killAndWait pidFile
+            void $ try @IOException $ liftIO $ Posix.killAndWait pidFile

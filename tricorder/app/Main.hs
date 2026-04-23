@@ -15,7 +15,7 @@ import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.FileWatcher (runFileWatcherIO)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
-import Atelier.Effects.Posix.Daemons (runDaemons)
+import Atelier.Effects.Posix.Daemon (runDaemon)
 import Tricorder.Arguments (runArguments)
 import Tricorder.BuildState (runDaemonInfo)
 import Tricorder.Config (runConfig)
@@ -55,7 +55,7 @@ main =
         . runReader @CacheConfig.Config def
         . runDaemonInfo
         . runLogging
-        . runDaemons
+        . runDaemon
         . runTestRunnerIO
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.ModuleName) @Text

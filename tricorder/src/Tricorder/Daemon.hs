@@ -16,7 +16,7 @@ import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
-import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Effects.Posix.Daemon (Daemon)
 import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhcPkg (GhcPkg)
@@ -26,7 +26,8 @@ import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Runtime (SocketPath (..))
 
-import Atelier.Effects.Posix.Daemons qualified as Daemons
+import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.Posix.Daemon qualified as Daemon
 import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
 import Tricorder.Socket.Server qualified as SocketServer
@@ -41,7 +42,7 @@ startDaemon
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
-       , Daemons :> es
+       , Daemon :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
@@ -59,7 +60,7 @@ startDaemon
        )
     => Eff es ()
 startDaemon =
-    Daemons.daemonize
+    Daemon.daemonize
         $ runSystem
             [ Observability.component
             , Watcher.component
@@ -68,5 +69,5 @@ startDaemon =
             ]
 
 
-stopDaemon :: (Daemons :> es) => Eff es ()
-stopDaemon = Daemons.killAndWait
+stopDaemon :: (Daemon :> es) => Eff es ()
+stopDaemon = Daemon.killAndWait
