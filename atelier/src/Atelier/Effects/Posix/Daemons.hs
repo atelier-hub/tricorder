@@ -11,6 +11,7 @@ import Data.Default (def)
 import Effectful (Effect, IOE, Limit (..), Persistence (..), UnliftStrategy (..))
 import Effectful.Dispatch.Dynamic (interpretWith, localUnliftIO)
 import Effectful.Exception (IOException, try)
+import Effectful.Reader.Static (Reader, ask)
 import Effectful.TH (makeEffect)
 
 import System.Posix.Daemon qualified as Daemons
@@ -19,12 +20,12 @@ import System.Posix.Daemon qualified as Daemons
 data Daemons :: Effect where
     -- | Daemonize the given program, ensuring it is cleanly separated from the
     -- spawning process.
-    Daemonize :: PidFile -> m () -> Daemons m ()
+    Daemonize :: m () -> Daemons m ()
     -- | Check whether a daemon is running for the provided PID file.
-    IsRunning :: PidFile -> Daemons m Bool
+    IsRunning :: Daemons m Bool
     -- | Kill the daemon associated with the provided PID file, waiting for it
     -- to shut down.
-    KillAndWait :: PidFile -> Daemons m ()
+    KillAndWait :: Daemons m ()
 
 
 newtype PidFile = PidFile {getPidFile :: FilePath}
@@ -33,14 +34,14 @@ newtype PidFile = PidFile {getPidFile :: FilePath}
 makeEffect ''Daemons
 
 
-runDaemons :: (IOE :> es) => Eff (Daemons : es) a -> Eff es a
+runDaemons :: (IOE :> es, Reader PidFile :> es) => Eff (Daemons : es) a -> Eff es a
 runDaemons act = do
+    PidFile pidFile <- ask
     interpretWith act \env -> \case
-        Daemonize (PidFile pidFile) program ->
-            localUnliftIO env (ConcUnlift Persistent Unlimited) \unlift -> do
-                Daemons.runDetached (Just pidFile) def
-                    $ unlift program
-        IsRunning (PidFile pidFile) ->
+        Daemonize program ->
+            localUnliftIO env (ConcUnlift Persistent Unlimited) \unlift ->
+                Daemons.runDetached (Just pidFile) def $ unlift program
+        IsRunning ->
             liftIO $ Daemons.isRunning pidFile
-        KillAndWait (PidFile pidFile) ->
+        KillAndWait ->
             void $ try @IOException $ liftIO $ Daemons.killAndWait pidFile

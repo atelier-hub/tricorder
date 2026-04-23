@@ -4,25 +4,20 @@ module Tricorder.Socket.Client
     , queryWatch
     , querySource
     , queryDiagnostic
-    , isDaemonRunning
     ) where
 
 import Data.Aeson (decode, eitherDecode, encode)
-import Effectful.Reader.Static (Reader, ask)
 
 import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Effects.File (File)
-import Atelier.Effects.Posix.Daemons (Daemons)
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.Effects.UnixSocket (UnixSocket, withConnection)
 import Tricorder.GhcPkg.Types (ModuleName)
-import Tricorder.Runtime (PidFile)
 import Tricorder.Socket.Protocol (DiagnosticQuery (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleSourceResult)
 
 import Atelier.Effects.File qualified as File
-import Atelier.Effects.Posix.Daemons qualified as Daemons
 
 
 -- | Query the current build status (non-blocking).
@@ -88,12 +83,6 @@ queryDiagnostic sockPath idx = withConnection sockPath \h -> do
     case eitherDecode (BSL.fromStrict (encodeUtf8 (toText line))) of
         Left err -> pure $ Left (toText err)
         Right d -> pure $ Right d
-
-
-isDaemonRunning :: (Daemons :> es, Reader PidFile :> es) => Eff es Bool
-isDaemonRunning = do
-    pidFile <- ask
-    Daemons.isRunning pidFile
 
 
 -- internals

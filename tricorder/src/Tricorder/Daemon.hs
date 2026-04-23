@@ -1,11 +1,10 @@
 module Tricorder.Daemon
-    ( runDaemon
-    , startDaemon
+    ( startDaemon
     , stopDaemon
     ) where
 
 import Effectful (IOE)
-import Effectful.Reader.Static (Reader, ask)
+import Effectful.Reader.Static (Reader)
 
 import Atelier.Component (runSystem)
 import Atelier.Effects.Cache (Cache)
@@ -25,46 +24,13 @@ import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
-import Tricorder.Runtime (PidFile, SocketPath (..))
+import Tricorder.Runtime (SocketPath (..))
 
 import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
 import Tricorder.Socket.Server qualified as SocketServer
 import Tricorder.Watcher qualified as Watcher
-
-
--- | Run the daemon for the given project root.
--- Blocks forever; all work happens inside the component system.
-runDaemon
-    :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
-       , Clock :> es
-       , Conc :> es
-       , Debounce FilePath :> es
-       , Delay :> es
-       , FileSystem :> es
-       , FileWatcher :> es
-       , GhcPkg :> es
-       , GhciSession :> es
-       , IOE :> es
-       , Log :> es
-       , Reader Config :> es
-       , Reader Observability.Config :> es
-       , Reader SocketPath :> es
-       , TestRunner :> es
-       , Tracing :> es
-       , UnixSocket :> es
-       )
-    => Eff es ()
-runDaemon =
-    runSystem
-        [ Observability.component
-        , Watcher.component
-        , GhciSession.component
-        , SocketServer.component
-        ]
 
 
 -- | Fork the daemon as a background process and return immediately.
@@ -86,19 +52,21 @@ startDaemon
        , Log :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
-       , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
        , UnixSocket :> es
        )
     => Eff es ()
-startDaemon = do
-    pidFile <- ask
-    Daemons.daemonize pidFile runDaemon
+startDaemon =
+    Daemons.daemonize
+        $ runSystem
+            [ Observability.component
+            , Watcher.component
+            , GhciSession.component
+            , SocketServer.component
+            ]
 
 
-stopDaemon :: (Daemons :> es, Reader PidFile :> es) => Eff es ()
-stopDaemon = do
-    pidFile <- ask
-    Daemons.killAndWait pidFile
+stopDaemon :: (Daemons :> es) => Eff es ()
+stopDaemon = Daemons.killAndWait
