@@ -27,7 +27,6 @@ import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Runtime (PidFile, SocketPath (..))
 
-import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
@@ -59,14 +58,13 @@ runDaemon
        , UnixSocket :> es
        )
     => Eff es ()
-runDaemon = Conc.scoped do
+runDaemon =
     runSystem
         [ Observability.component
         , Watcher.component
         , GhciSession.component
         , SocketServer.component
         ]
-    Conc.awaitAll
 
 
 -- | Fork the daemon as a background process and return immediately.
