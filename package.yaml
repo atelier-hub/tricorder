@@ -72,6 +72,7 @@ library:
       - hiding (Prelude)
   - atelier-prelude
   - atelier
+  - Cabal-syntax
   - aeson
   - ansi-terminal
   - brick
@@ -83,18 +84,17 @@ library:
   - effectful-th
   - filepath
   - ghcid
+  - hashable
   - mtl
   - network
-  - hashable
   - optparse-applicative
-  - typed-process
   - stm
   - text
   - time
   - time-units
+  - typed-process
   - vty
   - vty-crossplatform
-  - Cabal-syntax
   - yaml
 
 internal-libraries:
@@ -118,8 +118,6 @@ internal-libraries:
     - effectful-th
     - filepath
     - fsnotify
-    - ki
-    - stm
     - hasql
     - hasql-pool
     - hasql-transaction
@@ -127,14 +125,13 @@ internal-libraries:
     - hs-opentelemetry-exporter-otlp
     - hs-opentelemetry-sdk
     - http-api-data
+    - http-types
     - ki
     - list-t
-    - http-types
     - prometheus-client
     - prometheus-metrics-ghc
-    - wai
-    - warp
     - rel8
+    - stm
     - stm-containers
     - text
     - time
@@ -143,6 +140,8 @@ internal-libraries:
     - unix
     - unordered-containers
     - uuid
+    - wai
+    - warp
 
   atelier-prelude:
     source-dirs: atelier/prelude
@@ -208,8 +207,8 @@ tests:
     - containers
     - data-default
     - effectful
-    - hs-opentelemetry-api
     - hedgehog
+    - hs-opentelemetry-api
     - hspec
     - hspec-hedgehog
     - stm
@@ -231,9 +230,9 @@ tests:
         - hiding (Prelude)
     - atelier-prelude
     - tricorder
+    - atelier
     - Cabal-syntax
     - aeson
-    - atelier
     - containers
     - data-default
     - effectful
