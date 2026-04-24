@@ -11,6 +11,7 @@ import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Console (runConsole)
 import Atelier.Effects.Debounce (runDebounce)
 import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.Exit (runExit)
 import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.FileWatcher (runFileWatcherIO)
@@ -42,6 +43,7 @@ main =
         . runBrickChan
         . runBrick
         . runConsole
+        . runExit
         . runClock
         . runTracingNoOp
         . runDelay
