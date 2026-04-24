@@ -129,7 +129,7 @@ library atelier
       Atelier.Effects.Monitoring.Metrics.Server
       Atelier.Effects.Monitoring.Tracing
       Atelier.Effects.Monitoring.Tracing.Provider
-      Atelier.Effects.Posix.Daemons
+      Atelier.Effects.Posix.Daemon
       Atelier.Effects.Publishing
       Atelier.Effects.Tally
       Atelier.Effects.UUID

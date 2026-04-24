@@ -19,7 +19,7 @@ import Atelier.Effects.FileSystem (FileSystem, doesFileExist, readFileLbs)
 import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
-import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Effects.Posix.Daemon (Daemon)
 import Atelier.Time (Millisecond)
 import Tricorder.Arguments (Command (..))
 import Tricorder.BuildState
@@ -33,7 +33,7 @@ import Tricorder.BuildState
     , TestRun (..)
     )
 import Tricorder.Config (Config)
-import Tricorder.Daemon (startDaemon, stopDaemon)
+import Tricorder.Daemon (startDaemon)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.BuildStore (BuildStore)
@@ -45,8 +45,7 @@ import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Render (diagnosticLineIndexed, formatDuration, renderSourceResults)
 import Tricorder.Runtime (PidFile (..), SocketPath (..))
 import Tricorder.Socket.Client
-    ( isDaemonRunning
-    , querySource
+    ( querySource
     , queryStatus
     , queryStatusWait
     )
@@ -56,6 +55,7 @@ import Atelier.Effects.Console qualified as Console
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.File qualified as File
 import Atelier.Effects.FileSystem qualified as FileSystem
+import Atelier.Effects.Posix.Daemon qualified as Daemon
 import Tricorder.Observability qualified as Observability
 
 
@@ -68,7 +68,7 @@ run
        , Clock :> es
        , Conc :> es
        , Console :> es
-       , Daemons :> es
+       , Daemon tag :> es
        , Debounce FilePath :> es
        , Delay :> es
        , File :> es
@@ -105,7 +105,7 @@ start
        , Clock :> es
        , Conc :> es
        , Console :> es
-       , Daemons :> es
+       , Daemon tag :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
@@ -116,7 +116,6 @@ start
        , Log :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
-       , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -124,7 +123,7 @@ start
        )
     => Eff es ()
 start = do
-    running <- isDaemonRunning
+    running <- Daemon.isRunning
     if running then
         Console.putStrLn "Daemon already running."
     else do
@@ -134,14 +133,14 @@ start = do
 
 stop
     :: ( Console :> es
-       , Daemons :> es
+       , Daemon tag :> es
        , FileSystem :> es
        , Reader PidFile :> es
        , Reader SocketPath :> es
        )
     => Eff es ()
 stop = do
-    stopDaemon
+    Daemon.killAndWait
     Console.putStrLn "Daemon stopped."
     FileSystem.removeFile =<< asks getSocketPath
     FileSystem.removeFile =<< asks getPidFile
@@ -149,16 +148,15 @@ stop = do
 
 showStatus
     :: ( Console :> es
-       , Daemons :> es
+       , Daemon tag :> es
        , File :> es
        , IOE :> es
-       , Reader PidFile :> es
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
     => Bool -> Bool -> Bool -> Maybe Int -> Eff es ()
 showStatus waitFlag jsonFlag verboseFlag expandFlag = do
-    running <- isDaemonRunning
+    running <- Daemon.isRunning
     if not running then
         Console.putStrLn "Stopped."
     else do
@@ -245,18 +243,17 @@ showStatus waitFlag jsonFlag verboseFlag expandFlag = do
 
 showLog
     :: ( Console :> es
-       , Daemons :> es
+       , Daemon tag :> es
        , Delay :> es
        , File :> es
        , FileSystem :> es
        , Reader Observability.Config :> es
-       , Reader PidFile :> es
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
     => Bool -> Eff es ()
 showLog followFlag = do
-    running <- isDaemonRunning
+    running <- Daemon.isRunning
     mLogFile <-
         if running then do
             SocketPath sp <- ask
@@ -298,7 +295,7 @@ ui
        , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
-       , Daemons :> es
+       , Daemon tag :> es
        , Debounce FilePath :> es
        , Delay :> es
        , File :> es
@@ -310,7 +307,6 @@ ui
        , Log :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
-       , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -318,7 +314,7 @@ ui
        )
     => Eff es ()
 ui = do
-    running <- isDaemonRunning
+    running <- Daemon.isRunning
     unless running do
         startDaemon
         waitForDaemon
@@ -332,7 +328,7 @@ showSource
        , Clock :> es
        , Conc :> es
        , Console :> es
-       , Daemons :> es
+       , Daemon tag :> es
        , Debounce FilePath :> es
        , Delay :> es
        , File :> es
@@ -344,7 +340,6 @@ showSource
        , Log :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
-       , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -353,7 +348,7 @@ showSource
     => [ModuleName]
     -> Eff es ()
 showSource moduleNames = do
-    running <- isDaemonRunning
+    running <- Daemon.isRunning
     unless running $ do
         startDaemon
         waitForDaemon
@@ -365,8 +360,8 @@ showSource moduleNames = do
 
 
 -- | Poll until the daemon socket becomes connectable.
-waitForDaemon :: (Daemons :> es, Delay :> es, Reader PidFile :> es, UnixSocket :> es) => Eff es ()
+waitForDaemon :: (Daemon tag :> es, Delay :> es) => Eff es ()
 waitForDaemon = do
     Delay.wait (200 :: Millisecond)
-    running <- isDaemonRunning
+    running <- Daemon.isRunning
     unless running waitForDaemon
