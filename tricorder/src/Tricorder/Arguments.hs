@@ -1,5 +1,10 @@
 module Tricorder.Arguments
     ( Command (..)
+    , FollowMode (..)
+    , OutputFormat (..)
+    , StatusOptions (..)
+    , Verbosity (..)
+    , WaitMode (..)
     , parseArguments
     , runArguments
     ) where
@@ -13,6 +18,7 @@ import Options.Applicative
     , auto
     , command
     , execParser
+    , flag
     , fullDesc
     , header
     , help
@@ -25,18 +31,49 @@ import Options.Applicative
     , progDesc
     , short
     , str
-    , switch
     )
 
 import Tricorder.GhcPkg.Types (ModuleName (..))
 
 
+data WaitMode
+    = ShowCurrent
+    | WaitForBuild
+    deriving stock (Eq)
+
+
+data OutputFormat
+    = TextOutput
+    | JsonOutput
+    deriving stock (Eq)
+
+
+data Verbosity
+    = Concise
+    | Verbose
+    deriving stock (Eq)
+
+
+data FollowMode
+    = NoFollow
+    | Follow
+    deriving stock (Eq)
+
+
+data StatusOptions = StatusOptions
+    { wait :: WaitMode
+    , format :: OutputFormat
+    , verbosity :: Verbosity
+    , expand :: Maybe Int
+    }
+
+
 data Command
     = Start
     | Stop
-    | Status Bool Bool Bool (Maybe Int)
+    | Status StatusOptions
     | UI
-    | Log Bool
+    | Log FollowMode
     | Source [ModuleName]
 
 
@@ -73,7 +110,9 @@ commandParser =
 logParser :: Parser Command
 logParser =
     Log
-        <$> switch
+        <$> flag
+            NoFollow
+            Follow
             ( long "follow"
                 <> short 'f'
                 <> help "Keep streaming new log lines as they are written"
@@ -83,26 +122,34 @@ logParser =
 statusParser :: Parser Command
 statusParser =
     Status
-        <$> switch
-            ( long "wait"
-                <> help "Block until the current build cycle completes"
-            )
-        <*> switch
-            ( long "json"
-                <> help "Output full build state as JSON"
-            )
-        <*> switch
-            ( long "verbose"
-                <> short 'v'
-                <> help "Print full GHC message body under each diagnostic"
-            )
-        <*> optional
-            ( option
-                auto
-                ( long "expand"
-                    <> metavar "N"
-                    <> help "Print full GHC message body for diagnostic #N"
-                )
+        <$> ( StatusOptions
+                <$> flag
+                    ShowCurrent
+                    WaitForBuild
+                    ( long "wait"
+                        <> help "Block until the current build cycle completes"
+                    )
+                <*> flag
+                    TextOutput
+                    JsonOutput
+                    ( long "json"
+                        <> help "Output full build state as JSON"
+                    )
+                <*> flag
+                    Concise
+                    Verbose
+                    ( long "verbose"
+                        <> short 'v'
+                        <> help "Print full GHC message body under each diagnostic"
+                    )
+                <*> optional
+                    ( option
+                        auto
+                        ( long "expand"
+                            <> metavar "N"
+                            <> help "Print full GHC message body for diagnostic #N"
+                        )
+                    )
             )
 
 

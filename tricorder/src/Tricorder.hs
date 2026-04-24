@@ -21,7 +21,14 @@ import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Time (Millisecond)
-import Tricorder.Arguments (Command (..))
+import Tricorder.Arguments
+    ( Command (..)
+    , FollowMode (..)
+    , OutputFormat (..)
+    , StatusOptions (..)
+    , Verbosity (..)
+    , WaitMode (..)
+    )
 import Tricorder.BuildState
     ( BuildPhase (..)
     , BuildResult (..)
@@ -92,8 +99,8 @@ run =
     ask >>= \case
         Start -> start
         Stop -> stop
-        (Status waitFlag jsonFlag verboseFlag expandFlag) -> showStatus waitFlag jsonFlag verboseFlag expandFlag
-        (Log followFlag) -> showLog followFlag
+        (Status opts) -> showStatus opts
+        (Log followMode) -> showLog followMode
         UI -> ui
         (Source moduleNames) -> showSource moduleNames
 
@@ -156,14 +163,14 @@ showStatus
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
-    => Bool -> Bool -> Bool -> Maybe Int -> Eff es ()
-showStatus waitFlag jsonFlag verboseFlag expandFlag = do
+    => StatusOptions -> Eff es ()
+showStatus opts = do
     running <- isDaemonRunning
     if not running then
         Console.putStrLn "Stopped."
     else do
         SocketPath sockPath <- ask
-        when (waitFlag && not jsonFlag) $ do
+        when (opts.wait == WaitForBuild && opts.format == TextOutput) $ do
             current <- queryStatus sockPath
             case current of
                 Right BuildState {phase = Building} -> Console.putStrLn "Building..."
@@ -171,20 +178,20 @@ showStatus waitFlag jsonFlag verboseFlag expandFlag = do
                 Right BuildState {phase = Testing _} -> Console.putStrLn "Testing..."
                 _ -> pure ()
         result <-
-            if waitFlag then
-                queryStatusWait sockPath
-            else
-                queryStatus sockPath
+            case opts.wait of
+                WaitForBuild -> queryStatusWait sockPath
+                ShowCurrent -> queryStatus sockPath
         case result of
             Left err -> Console.putTextLn $ "Error: " <> err
             Right state ->
-                if jsonFlag then do
-                    Console.putStr $ BSL.toStrict $ encode state
-                    Console.putStrLn ""
-                else
-                    renderText verboseFlag expandFlag state
+                case opts.format of
+                    JsonOutput -> do
+                        Console.putStr $ BSL.toStrict $ encode state
+                        Console.putStrLn ""
+                    TextOutput ->
+                        renderText opts.verbosity opts.expand state
   where
-    renderText verbose expand state = case state.phase of
+    renderText verbosity expand state = case state.phase of
         Building -> Console.putStrLn "Building..."
         Restarting -> Console.putStrLn "Restarting..."
         Testing _ -> Console.putStrLn "Testing..."
@@ -204,20 +211,20 @@ showStatus waitFlag jsonFlag verboseFlag expandFlag = do
                             Console.putTextLn $ diagnosticLineIndexed n d
                             Console.putText d.text
                 Nothing -> do
-                    let printDiag (i, d) =
-                            if verbose then do
+                    let printDiag (i, d) = case verbosity of
+                            Verbose -> do
                                 Console.putTextLn $ diagnosticLineIndexed i d
                                 Console.putText d.text
-                            else
+                            Concise ->
                                 Console.putTextLn $ diagnosticLineIndexed i d
                     mapM_ printDiag (zip [1 ..] r.diagnostics)
                     Console.putTextLn $ buildSummary tz r
-                    mapM_ (printTestRun verbose) r.testRuns
+                    mapM_ (printTestRun verbosity) r.testRuns
                     when (buildHasErrors r || testsFailed r) $ liftIO exitFailure
 
-    printTestRun verbose tr = do
+    printTestRun verbosity tr = do
         Console.putTextLn $ testRunSummary tr.target tr.outcome
-        when verbose
+        when (verbosity == Verbose)
             $ mapM_ (Console.putTextLn . ("  " <>) . toText) (lines tr.output)
       where
         testRunSummary t TestsRunning = t <> "  running..."
@@ -254,8 +261,8 @@ showLog
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
-    => Bool -> Eff es ()
-showLog followFlag = do
+    => FollowMode -> Eff es ()
+showLog followMode = do
     running <- isDaemonRunning
     mLogFile <-
         if running then do
@@ -273,11 +280,9 @@ showLog followFlag = do
             exists <- doesFileExist path
             if not exists then
                 Console.putTextLn $ "Log file does not exist yet: " <> toText path
-            else
-                if followFlag then
-                    followLog path
-                else
-                    readFileLbs path >>= Console.putStr . BSL.toStrict
+            else case followMode of
+                Follow -> followLog path
+                NoFollow -> readFileLbs path >>= Console.putStr . BSL.toStrict
   where
     followLog path = File.withFile path ReadMode loop
     loop h =
