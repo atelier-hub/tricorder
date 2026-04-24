@@ -18,6 +18,8 @@ library
       Tricorder
       Tricorder.Arguments
       Tricorder.BuildState
+      Tricorder.CLI
+      Tricorder.CLI.Render
       Tricorder.Config
       Tricorder.Daemon
       Tricorder.Effects.Brick
@@ -32,7 +34,6 @@ library
       Tricorder.GhciSession
       Tricorder.GhcPkg.Types
       Tricorder.Observability
-      Tricorder.Render
       Tricorder.Runtime
       Tricorder.Socket.Client
       Tricorder.Socket.Protocol
@@ -401,10 +402,10 @@ test-suite tricorder-test
   other-modules:
       Unit.Tricorder.BuildStateSpec
       Unit.Tricorder.BuildStoreSpec
+      Unit.Tricorder.CLI.RenderSpec
       Unit.Tricorder.ConfigSpec
       Unit.Tricorder.GhciSessionSpec
       Unit.Tricorder.GhcPkgSpec
-      Unit.Tricorder.RenderSpec
       Unit.Tricorder.SocketSpec
       Unit.Tricorder.SourceLookupSpec
       Unit.Tricorder.SourceSpec
