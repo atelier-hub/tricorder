@@ -15,6 +15,7 @@ build-type:     Simple
 
 library
   exposed-modules:
+      Tricorder
       Tricorder.Arguments
       Tricorder.BuildState
       Tricorder.Config
@@ -31,7 +32,6 @@ library
       Tricorder.GhciSession
       Tricorder.GhcPkg.Types
       Tricorder.Observability
-      Tricorder.Program
       Tricorder.Render
       Tricorder.Runtime
       Tricorder.Socket.Client

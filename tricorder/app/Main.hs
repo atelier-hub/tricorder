@@ -30,8 +30,8 @@ import Tricorder.Effects.UnixSocket (runUnixSocketIO)
 import Tricorder.Runtime (runPidFile, runProjectRoot, runRuntimeDir, runSocketPath)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
+import Tricorder qualified
 import Tricorder.GhcPkg.Types qualified as GhcPkg
-import Tricorder.Program qualified as Program
 
 
 main :: IO ()
@@ -66,4 +66,4 @@ main =
         . runBuildStore
         . runArguments
         . runUnixSocketIO
-        $ Program.run
+        $ Tricorder.run
