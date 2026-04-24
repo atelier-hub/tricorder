@@ -1,4 +1,4 @@
-module Tricorder.Program (run) where
+module Tricorder (run) where
 
 import Data.Aeson (encode)
 import Data.Time.Format (defaultTimeLocale, formatTime)
