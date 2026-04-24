@@ -2,6 +2,7 @@ module Tricorder.Daemon
     ( runDaemon
     , startDaemon
     , stopDaemon
+    , waitForDaemon
     ) where
 
 import Effectful (IOE)
@@ -18,6 +19,7 @@ import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Time (Millisecond)
 import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhcPkg (GhcPkg)
@@ -26,7 +28,9 @@ import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Runtime (PidFile, SocketPath (..))
+import Tricorder.Socket.Client (isDaemonRunning)
 
+import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
@@ -102,3 +106,11 @@ stopDaemon :: (Daemons :> es, Reader PidFile :> es) => Eff es ()
 stopDaemon = do
     pidFile <- ask
     Daemons.killAndWait pidFile
+
+
+-- | Poll until the daemon socket becomes connectable.
+waitForDaemon :: (Daemons :> es, Delay :> es, Reader PidFile :> es, UnixSocket :> es) => Eff es ()
+waitForDaemon = do
+    Delay.wait (200 :: Millisecond)
+    running <- isDaemonRunning
+    unless running waitForDaemon

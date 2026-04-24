@@ -1,4 +1,4 @@
-module Unit.Tricorder.RenderSpec (spec_Render) where
+module Unit.Tricorder.CLI.RenderSpec (spec_Render) where
 
 import Test.Hspec
 
@@ -6,7 +6,7 @@ import Tricorder.BuildState
     ( Diagnostic (..)
     , Severity (..)
     )
-import Tricorder.Render (diagnosticBlock)
+import Tricorder.CLI.Render (diagnosticBlock)
 
 
 spec_Render :: Spec

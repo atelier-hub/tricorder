@@ -1,4 +1,4 @@
-module Tricorder.Render
+module Tricorder.CLI.Render
     ( -- * Plain-text formatting
       diagnosticLine
     , diagnosticLineIndexed
