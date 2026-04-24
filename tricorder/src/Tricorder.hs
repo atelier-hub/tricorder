@@ -9,6 +9,7 @@ import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Console (Console)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
+import Atelier.Effects.Exit (Exit)
 import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.FileWatcher (FileWatcher)
@@ -49,6 +50,7 @@ run
        , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
+       , Exit :> es
        , File :> es
        , FileSystem :> es
        , FileWatcher :> es

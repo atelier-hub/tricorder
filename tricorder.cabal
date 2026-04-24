@@ -121,6 +121,7 @@ library atelier
       Atelier.Effects.Debounce
       Atelier.Effects.Delay
       Atelier.Effects.Env
+      Atelier.Effects.Exit
       Atelier.Effects.File
       Atelier.Effects.FileSystem
       Atelier.Effects.FileWatcher

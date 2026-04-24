@@ -18,7 +18,6 @@ module Prelude
 
       -- * Reexports from Relude.Lifted
     , module Relude.Lifted.Env
-    , module Relude.Lifted.Exit
     , module Relude.Lifted.File
     , module Relude.Lifted.Handle
     , module Relude.Lifted.Terminal
@@ -70,7 +69,6 @@ import Relude.Print
 import Relude.String
 
 -- From Relude.Lifted, we don't want Relude.Lifted.Concurrent.
-import Relude.Lifted.Exit
 import Relude.Lifted.Env hiding (lookupEnv)
 import Relude.Lifted.File
 import Relude.Lifted.Terminal

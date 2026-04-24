@@ -6,14 +6,15 @@ module Tricorder.CLI
 
 import Data.Aeson (encode)
 import Data.Time.Format (defaultTimeLocale, formatTime)
-import Data.Time.LocalTime (getCurrentTimeZone, utcToLocalTime)
-import Effectful (IOE)
+import Data.Time.LocalTime (utcToLocalTime)
 import Effectful.Reader.Static (Reader, ask)
 
 import Data.ByteString.Lazy qualified as BSL
 
+import Atelier.Effects.Clock (Clock, currentTimeZone)
 import Atelier.Effects.Console (Console)
 import Atelier.Effects.Delay (Delay)
+import Atelier.Effects.Exit (Exit, exitFailure)
 import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, readFileLbs)
 import Atelier.Time (Millisecond)
@@ -53,9 +54,10 @@ import Atelier.Effects.File qualified as File
 
 
 showStatus
-    :: ( Console :> es
+    :: ( Clock :> es
+       , Console :> es
+       , Exit :> es
        , File :> es
-       , IOE :> es
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
@@ -88,7 +90,7 @@ showStatus opts = do
         Restarting -> Console.putStrLn "Restarting..."
         Testing _ -> Console.putStrLn "Testing..."
         Done r -> do
-            tz <- liftIO getCurrentTimeZone
+            tz <- currentTimeZone
             case expand of
                 Just n ->
                     case r.diagnostics !!? (n - 1) of
@@ -112,7 +114,7 @@ showStatus opts = do
                     mapM_ printDiag (zip [1 ..] r.diagnostics)
                     Console.putTextLn $ buildSummary tz r
                     mapM_ (printTestRun verbosity) r.testRuns
-                    when (buildHasErrors r || testsFailed r) $ liftIO exitFailure
+                    when (buildHasErrors r || testsFailed r) exitFailure
 
     printTestRun verbosity tr = do
         Console.putTextLn $ testRunSummary tr.target tr.outcome
