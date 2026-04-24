@@ -7,6 +7,7 @@ import Effectful.Reader.Static (runReader)
 import Effectful.Timeout (runTimeout)
 
 import Atelier.Effects.Cache (runCacheTtl)
+import Atelier.Effects.Chan (runChan)
 import Atelier.Effects.Clock (runClock)
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Console (runConsole)
@@ -19,6 +20,7 @@ import Atelier.Effects.FileWatcher (runFileWatcherIO)
 import Atelier.Effects.Monitoring.Metrics (runMetrics)
 import Atelier.Effects.Monitoring.Tracing (runTracingFromConfig)
 import Atelier.Effects.Posix.Daemons (runDaemons)
+import Atelier.Effects.Publishing (runPubSub)
 import Tricorder.Arguments (runArguments)
 import Tricorder.BuildState (runDaemonInfo)
 import Tricorder.Config (runConfig)
@@ -30,11 +32,14 @@ import Tricorder.Effects.GhciSession (runGhciSessionIO)
 import Tricorder.Effects.Logging (runLogging)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
-import Tricorder.Runtime (runPidFile, runProjectRoot, runRuntimeDir, runSocketPath)
+import Tricorder.Runtime (runPidFile, runProjectRoot, runRuntimeDir)
+import Tricorder.Web.Server (ShutdownRequested)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
 import Tricorder qualified
 import Tricorder.GhcPkg.Types qualified as GhcPkg
+import Tricorder.Web.Client qualified as Web.Client
+import Tricorder.Web.Config qualified as Web
 
 
 main :: IO ()
@@ -54,11 +59,11 @@ main =
         . runProjectRoot
         . runRuntimeDir
         . runPidFile
-        . runSocketPath
         . runConfig
         . runTracingFromConfig
         . runMetrics
         . runReader @CacheConfig.Config def
+        . runReader @Web.Config def
         . runDaemonInfo
         . runLogging
         . runDaemons
@@ -72,4 +77,7 @@ main =
         . runGhcPkgIO
         . runArguments
         . runUnixSocketIO
+        . runChan
+        . runPubSub @ShutdownRequested
+        . Web.Client.run
         $ Tricorder.run

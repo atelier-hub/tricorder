@@ -35,9 +35,6 @@ library
       Tricorder.GhcPkg.Types
       Tricorder.Observability
       Tricorder.Runtime
-      Tricorder.Socket.Client
-      Tricorder.Socket.Protocol
-      Tricorder.Socket.Server
       Tricorder.SourceLookup
       Tricorder.TestOutput
       Tricorder.UI
@@ -46,6 +43,11 @@ library
       Tricorder.UI.State
       Tricorder.UI.View
       Tricorder.Watcher
+      Tricorder.Web.API
+      Tricorder.Web.Client
+      Tricorder.Web.Config
+      Tricorder.Web.Protocol
+      Tricorder.Web.Server
   other-modules:
       Paths_tricorder
   autogen-modules:
@@ -89,10 +91,15 @@ library
     , filepath
     , ghcid
     , hashable
+    , http-client
     , mtl
     , network
     , optparse-applicative
     , process
+    , servant
+    , servant-client
+    , servant-client-core
+    , servant-server
     , stm
     , text
     , time
@@ -100,6 +107,7 @@ library
     , typed-process
     , vty
     , vty-crossplatform
+    , warp
     , yaml
   mixins:
       base hiding (Prelude)

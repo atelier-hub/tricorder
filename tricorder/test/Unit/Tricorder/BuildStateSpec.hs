@@ -60,8 +60,24 @@ mkBuildState :: [Diagnostic] -> BuildState
 mkBuildState msgs =
     BuildState
         { buildId = BuildId 1
-        , phase = Done (BuildResult {completedAt = epoch, durationMs = 0, moduleCount = 0, diagnostics = msgs, testRuns = []})
-        , daemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing, metricsPort = Nothing}
+        , phase =
+            Done
+                ( BuildResult
+                    { completedAt = epoch
+                    , durationMs = 0
+                    , moduleCount = 0
+                    , diagnostics = msgs
+                    , testRuns = []
+                    }
+                )
+        , daemonInfo =
+            DaemonInfo
+                { targets = []
+                , watchDirs = []
+                , apiUrl = ""
+                , logFile = Nothing
+                , metricsPort = Nothing
+                }
         }
   where
     epoch = UTCTime (fromGregorian 1970 1 1) 0

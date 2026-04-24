@@ -85,10 +85,15 @@ library:
   - filepath
   - ghcid
   - hashable
-  - process
+  - http-client
   - mtl
   - network
   - optparse-applicative
+  - process
+  - servant
+  - servant-client
+  - servant-client-core
+  - servant-server
   - stm
   - text
   - time
@@ -96,6 +101,7 @@ library:
   - typed-process
   - vty
   - vty-crossplatform
+  - warp
   - yaml
 
 internal-libraries:

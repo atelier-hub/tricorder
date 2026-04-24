@@ -5,9 +5,6 @@ module Tricorder.Runtime
     , runProjectRoot
     , RuntimeDir (..)
     , runRuntimeDir
-    , SocketPath (..)
-    , runSocketPath
-    , runSocketPathConst
     ) where
 
 import Effectful.Reader.Static (Reader, ask, runReader)
@@ -22,23 +19,6 @@ import Atelier.Effects.FileSystem
     , getXdgRuntimeDir
     )
 import Atelier.Effects.Posix.Daemons (PidFile (..))
-
-
-newtype SocketPath = SocketPath {getSocketPath :: FilePath}
-
-
-runSocketPath
-    :: (Reader RuntimeDir :> es)
-    => Eff (Reader SocketPath : es) a
-    -> Eff es a
-runSocketPath act = do
-    RuntimeDir runtimeDir <- ask
-    let sock = runtimeDir </> "socket.sock"
-    runReader (SocketPath sock) act
-
-
-runSocketPathConst :: FilePath -> Eff (Reader SocketPath : es) a -> Eff es a
-runSocketPathConst = runReader . SocketPath
 
 
 newtype RuntimeDir = RuntimeDir {getRuntimeDir :: FilePath}

@@ -82,7 +82,7 @@ daemon for the lifetime of the session.
 ### Milestone 2 — Socket protocol and caching
 
 **Deliverables:**
-- `SourceQuery` and `SourceResponse` types in `Tricorder.Socket.Protocol`
+- `SourceQuery` and `SourceResponse` types in `Tricorder.Web.Protocol`
 - Daemon handler serving source via the socket
 - In-memory cache keyed by `(package-id, module-name)`, populated on first request
 

@@ -13,12 +13,12 @@ import Atelier.Effects.Console (Console)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Exit (Exit)
-import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Effects.Publishing (Pub, Sub)
 import Tricorder.Arguments (Command (..))
 import Tricorder.BuildState (BuildState (..), DaemonInfo (..))
 import Tricorder.CLI (showLog, showSource, showStatus, showTests)
@@ -30,14 +30,15 @@ import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
-import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
-import Tricorder.Runtime (PidFile (..), SocketPath (..))
-import Tricorder.Socket.Client (isDaemonRunning, queryStatus)
+import Tricorder.Runtime (PidFile (..))
 import Tricorder.UI (viewUi)
+import Tricorder.Web.Server (ShutdownRequested)
 
 import Atelier.Effects.Console qualified as Console
 import Tricorder.Observability qualified as Observability
+import Tricorder.Web.Client qualified as Web
+import Tricorder.Web.Config qualified as Web
 
 
 run
@@ -53,35 +54,36 @@ run
        , Debounce FilePath :> es
        , Delay :> es
        , Exit :> es
-       , File :> es
        , FileSystem :> es
        , FileWatcher :> es
        , GhcPkg :> es
        , GhciSession :> es
        , IOE :> es
        , Log :> es
+       , Pub ShutdownRequested :> es
        , Reader Command :> es
        , Reader Config :> es
        , Reader Observability.Config :> es
        , Reader PidFile :> es
-       , Reader SocketPath :> es
+       , Reader Web.Config :> es
+       , Sub ShutdownRequested :> es
        , TestRunner :> es
        , Timeout :> es
        , Tracing :> es
-       , UnixSocket :> es
+       , Web.Client :> es
        )
     => Eff es ()
 run =
     ask >>= \case
         Start -> do
-            running <- isDaemonRunning
+            running <- Web.isDaemonRunning
             if running then
                 Console.putStrLn "Daemon already running."
             else do
                 startDaemon
                 Console.putStrLn "Daemon started."
         Stop -> do
-            running <- isDaemonRunning
+            running <- Web.isDaemonRunning
             when running
                 $ stopDaemon >>= \case
                     Left reasons ->
@@ -91,7 +93,7 @@ run =
                     Right result -> do
                         Console.putTextLn result
         Status opts -> do
-            running <- isDaemonRunning
+            running <- Web.isDaemonRunning
             if not running then
                 Console.putStrLn "Stopped."
             else
@@ -103,11 +105,10 @@ run =
             else
                 showTests opts
         Log followMode -> do
-            running <- isDaemonRunning
+            running <- Web.isDaemonRunning
             mLogFile <-
                 if running then do
-                    SocketPath sp <- ask
-                    result <- queryStatus sp
+                    result <- Web.queryStatus
                     pure $ case result of
                         Right state -> state.daemonInfo.logFile
                         Left _ -> Nothing
@@ -115,13 +116,17 @@ run =
                     asks @Observability.Config (.logFile)
             showLog mLogFile followMode
         UI -> do
-            running <- isDaemonRunning
+            Console.putStrLn "check running"
+            running <- Web.isDaemonRunning
             unless running do
+                Console.putStrLn "starting"
                 startDaemon
+                Console.putStrLn "stat initiated"
                 waitForDaemon
+                Console.putStrLn "started"
             viewUi
         Source moduleNames -> do
-            running <- isDaemonRunning
+            running <- Web.isDaemonRunning
             unless running $ do
                 startDaemon
                 waitForDaemon

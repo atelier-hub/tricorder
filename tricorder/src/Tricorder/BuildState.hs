@@ -27,9 +27,10 @@ import System.FilePath (makeRelative)
 
 import Atelier.Effects.FileSystem (FileSystem)
 import Tricorder.Config (Config (..), resolveWatchDirs)
-import Tricorder.Runtime (ProjectRoot (..), SocketPath (..))
+import Tricorder.Runtime (ProjectRoot (..))
 
 import Tricorder.Observability qualified as Observability
+import Tricorder.Web.Config qualified as Web
 
 
 newtype BuildId = BuildId Int
@@ -40,7 +41,7 @@ newtype BuildId = BuildId Int
 data DaemonInfo = DaemonInfo
     { targets :: [Text]
     , watchDirs :: [FilePath]
-    , sockPath :: FilePath
+    , apiUrl :: Text
     , logFile :: Maybe FilePath
     , metricsPort :: Maybe Int
     }
@@ -53,20 +54,20 @@ runDaemonInfo
        , Reader Config :> es
        , Reader Observability.Config :> es
        , Reader ProjectRoot :> es
-       , Reader SocketPath :> es
+       , Reader Web.Config :> es
        )
     => Eff (Reader DaemonInfo : es) a -> Eff es a
 runDaemonInfo act = do
     cfg <- ask
     obsCfg <- ask @Observability.Config
     ProjectRoot projectRoot <- ask
-    SocketPath sockPath <- ask
+    serverCfg <- ask @Web.Config
     watchDirs <- resolveWatchDirs cfg projectRoot
     let daemonInfo =
             DaemonInfo
                 { targets = cfg.targets
                 , watchDirs = map (makeRelative projectRoot) watchDirs
-                , sockPath
+                , apiUrl = "http://" <> toText (Web.host serverCfg) <> ":" <> show (Web.port serverCfg)
                 , logFile = obsCfg.logFile
                 , metricsPort = if obsCfg.metrics.enabled then Just obsCfg.metrics.port else Nothing
                 }

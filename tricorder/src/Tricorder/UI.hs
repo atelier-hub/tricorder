@@ -8,20 +8,14 @@ import Brick
     , attrName
     , neverShowCursor
     )
-import Effectful.Error.Static (runErrorWith)
-import Effectful.Reader.Static (Reader, ask)
 
 import Graphics.Vty.Attributes qualified as Attr
 import Graphics.Vty.Attributes.Color qualified as Color
 
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.File (File)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
-import Tricorder.Effects.UnixSocket (UnixSocket)
-import Tricorder.Runtime (SocketPath (..))
-import Tricorder.Socket.Client (WatchError, queryWatch)
 import Tricorder.UI.Event (Event (..), handleEvent)
 import Tricorder.UI.State (State (..), Viewports (..))
 import Tricorder.UI.View (view)
@@ -30,6 +24,8 @@ import Atelier.Effects.Conc qualified as Conc
 import Tricorder.Effects.Brick qualified as Brick
 import Tricorder.Effects.BrickChan qualified as BrickChan
 import Tricorder.UI.State qualified as Model
+import Tricorder.Web.Client qualified as Client
+import Tricorder.Web.Client qualified as Web
 
 
 -- | Connect to the daemon and render a live-updating build status display using
@@ -39,22 +35,22 @@ viewUi
        , BrickChan :> es
        , Clock :> es
        , Conc :> es
-       , File :> es
-       , Reader SocketPath :> es
-       , UnixSocket :> es
+       , Web.Client :> es
        )
     => Eff es ()
 viewUi = do
-    SocketPath sockPath <- ask
     chan <- BrickChan.newBChan 10
     initialState <- Model.init
     Conc.scoped do
         _ <-
-            Conc.fork
-                $ runErrorWith @WatchError
-                    (\_ e -> BrickChan.writeBChan chan $ FailedBuild $ show e)
-                $ queryWatch sockPath
-                $ BrickChan.writeBChan chan . NewBuildState
+            Conc.fork $ forever do
+                res <-
+                    Client.watchStatus
+                        $ BrickChan.writeBChan chan . NewBuildState
+                case res of
+                    Left err -> BrickChan.writeBChan chan $ FailedBuild err
+                    _ -> pure ()
+
         void
             $ Brick.runBrickApp
                 chan
