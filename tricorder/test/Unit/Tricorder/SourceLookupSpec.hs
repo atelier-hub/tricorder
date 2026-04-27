@@ -114,7 +114,7 @@ barHtml = "<html><body><pre id=\"src\"><span>module</span> Bar <span>where</span
 runFileSystemScripted :: Map FilePath LByteString -> Eff (FileSystem : es) a -> Eff es a
 runFileSystemScripted files = interpret_ \case
     DoesFileExist path -> pure $ Map.member path files
-    ReadFileLbs path -> pure $ fromMaybe "" (Map.lookup path files)
+    ReadFileLbsFrom path _ -> pure $ fromMaybe "" (Map.lookup path files)
     _ -> error "FileSystemScripted: unexpected operation"
 
 

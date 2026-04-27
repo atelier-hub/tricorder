@@ -15,8 +15,7 @@ import Data.ByteString.Lazy qualified as BSL
 import Atelier.Effects.Console (Console)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.File (File)
-import Atelier.Effects.FileSystem (FileSystem, doesFileExist, readFileLbs)
-import Atelier.Time (Millisecond)
+import Atelier.Effects.FileSystem (FileSystem, doesFileExist, followFile, readFileLbs)
 import Tricorder.Arguments
     ( FollowMode (..)
     , OutputFormat (..)
@@ -48,8 +47,6 @@ import Tricorder.Socket.Client
     )
 
 import Atelier.Effects.Console qualified as Console
-import Atelier.Effects.Delay qualified as Delay
-import Atelier.Effects.File qualified as File
 
 
 showStatus
@@ -145,7 +142,6 @@ showStatus opts = do
 showLog
     :: ( Console :> es
        , Delay :> es
-       , File :> es
        , FileSystem :> es
        )
     => Maybe FilePath -> FollowMode -> Eff es ()
@@ -157,18 +153,8 @@ showLog mLogFile followMode = case mLogFile of
         if not exists then
             Console.putTextLn $ "Log file does not exist yet: " <> toText path
         else case followMode of
-            Follow -> followLog path
+            Follow -> followFile path Console.putStr
             NoFollow -> readFileLbs path >>= Console.putStr . BSL.toStrict
-  where
-    followLog path = File.withFile path ReadMode loop
-    loop h =
-        File.hIsEOF h >>= \case
-            True -> do
-                Delay.wait (200 :: Millisecond)
-                loop h
-            False -> do
-                File.hGetLine h >>= Console.putTextLn
-                loop h
 
 
 showSource
