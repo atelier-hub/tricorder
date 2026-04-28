@@ -3,7 +3,6 @@ module Tricorder (run) where
 import Effectful (IOE)
 import Effectful.Reader.Static (Reader, ask, asks)
 
-import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Console (Console)
@@ -24,13 +23,13 @@ import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.DaemonClient (DaemonClient)
-import Tricorder.Effects.GhcPkg (GhcPkg)
+import Tricorder.Effects.DaemonServer (DaemonServer)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
-import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Runtime (PidFile (..), SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning, queryStatus)
+import Tricorder.Socket.Protocol (Request)
 import Tricorder.UI (viewUi)
 
 import Atelier.Effects.Console qualified as Console
@@ -42,19 +41,17 @@ run
     :: ( Brick :> es
        , BrickChan :> es
        , BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
        , Console :> es
-       , DaemonClient :> es
+       , DaemonClient Request :> es
+       , DaemonServer Request :> es
        , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
        , Exit :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , GhcPkg :> es
        , GhciSession :> es
        , IOE :> es
        , Log :> es

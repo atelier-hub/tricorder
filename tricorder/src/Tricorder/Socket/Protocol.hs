@@ -7,7 +7,7 @@ module Tricorder.Socket.Protocol
     , ErrorResponse (..)
     ) where
 
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON, ToJSON, toEncoding, toJSON)
 
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.GhcPkg.Types (ModuleName)
@@ -23,6 +23,11 @@ data Request (m :: Multiplicity) a where
     Source :: [ModuleName] -> Request Once [ModuleSourceResult]
     DiagnosticAt :: Int -> Request Once (Either Text Diagnostic)
     Watch :: Request Many BuildState
+
+
+instance ToJSON (Request m a) where
+    toJSON = toJSON . toWire
+    toEncoding = toEncoding . toWire
 
 
 data SomeRequest

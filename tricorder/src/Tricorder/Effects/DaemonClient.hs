@@ -29,12 +29,12 @@ import Network.Socket qualified as Net
 import System.IO qualified as IO
 
 import Tricorder.Runtime (SocketPath (..))
-import Tricorder.Socket.Protocol (Multiplicity (..), Request (..), toWire)
+import Tricorder.Socket.Protocol (Multiplicity (..))
 
 
-data DaemonClient :: Effect where
-    RunRequest :: (FromJSON a) => Request Once a -> DaemonClient m (Either Text a)
-    RunStream :: Request Many a -> (a -> m ()) -> DaemonClient m ()
+data DaemonClient req :: Effect where
+    RunRequest :: (FromJSON a, ToJSON (req Once a)) => req Once a -> DaemonClient req m (Either Text a)
+    RunStream :: (FromJSON a, ToJSON (req Many a)) => req Many a -> (a -> m ()) -> DaemonClient req m ()
 
 
 makeEffect ''DaemonClient
@@ -43,15 +43,15 @@ makeEffect ''DaemonClient
 runDaemonClientIO
     :: (IOE :> es)
     => FilePath
-    -> Eff (DaemonClient : es) a
+    -> Eff (DaemonClient req : es) a
     -> Eff es a
 runDaemonClientIO sockPath eff = interpretWith eff \env -> \case
     RunRequest req ->
         liftIO $ withSocketHandle sockPath \h -> do
-            sendWire h (toWire req)
+            sendWire h req
             line <- hGetLine h
             decodeAs $ BSL.fromStrict (encodeUtf8 (toText line))
-    RunStream Watch callback ->
+    RunStream req callback ->
         localSeqUnlift env \unlift -> do
             h <- liftIO (openSocket sockPath)
             let loop = do
@@ -60,12 +60,12 @@ runDaemonClientIO sockPath eff = interpretWith eff \env -> \case
                     case decode raw of
                         Nothing -> pure ()
                         Just v -> unlift (callback v) >> loop
-            liftIO (sendWire h (toWire Watch)) >> loop `finally` liftIO (hClose h)
+            liftIO (sendWire h req) >> loop `finally` liftIO (hClose h)
 
 
 runDaemonClient
     :: (IOE :> es, Reader SocketPath :> es)
-    => Eff (DaemonClient : es) a
+    => Eff (DaemonClient req : es) a
     -> Eff es a
 runDaemonClient action = do
     SocketPath sp <- ask

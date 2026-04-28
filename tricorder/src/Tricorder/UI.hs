@@ -18,6 +18,7 @@ import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.DaemonClient (DaemonClient)
 import Tricorder.Socket.Client (queryWatch)
+import Tricorder.Socket.Protocol (Request)
 import Tricorder.UI.Event (Event (..), handleEvent)
 import Tricorder.UI.State (State (..), Viewports (..))
 import Tricorder.UI.View (view)
@@ -35,7 +36,7 @@ viewUi
        , BrickChan :> es
        , Clock :> es
        , Conc :> es
-       , DaemonClient :> es
+       , DaemonClient Request :> es
        )
     => Eff es ()
 viewUi = do

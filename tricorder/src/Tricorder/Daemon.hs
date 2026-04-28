@@ -9,7 +9,6 @@ import Effectful (IOE)
 import Effectful.Reader.Static (Reader, ask)
 
 import Atelier.Component (runSystem)
-import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce)
@@ -22,13 +21,13 @@ import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Time (Millisecond)
 import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.GhcPkg (GhcPkg)
+import Tricorder.Effects.DaemonServer (DaemonServer)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
-import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Runtime (PidFile, SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning)
+import Tricorder.Socket.Protocol (Request)
 
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.Posix.Daemons qualified as Daemons
@@ -42,15 +41,13 @@ import Tricorder.Watcher qualified as Watcher
 -- Blocks forever; all work happens inside the component system.
 runDaemon
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
+       , DaemonServer Request :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , GhcPkg :> es
        , GhciSession :> es
        , IOE :> es
        , Log :> es
@@ -75,16 +72,14 @@ runDaemon =
 -- No-op if the daemon is already running (caller should check beforehand).
 startDaemon
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
+       , DaemonServer Request :> es
        , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , GhcPkg :> es
        , GhciSession :> es
        , IOE :> es
        , Log :> es

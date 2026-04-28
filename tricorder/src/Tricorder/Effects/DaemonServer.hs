@@ -1,0 +1,92 @@
+module Tricorder.Effects.DaemonServer
+    ( DaemonServer
+    , serveOnce
+    , serveMany
+    , runDaemonServer
+    ) where
+
+import Data.Aeson (ToJSON)
+import Effectful (Effect)
+import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift)
+import Effectful.TH (makeEffect)
+
+import Atelier.Effects.Cache (Cache)
+import Atelier.Effects.Delay (Delay, wait)
+import Atelier.Effects.FileSystem (FileSystem)
+import Atelier.Effects.Log (Log)
+import Atelier.Time (Millisecond)
+import Tricorder.BuildState (BuildPhase (..), BuildResult (..), BuildState (..))
+import Tricorder.Effects.BuildStore (BuildStore, getState, waitForAnyChange, waitUntilDone)
+import Tricorder.Effects.GhcPkg (GhcPkg)
+import Tricorder.GhcPkg.Types (ModuleName, PackageId)
+import Tricorder.Socket.Protocol (Multiplicity (..), Request (..))
+import Tricorder.SourceLookup (lookupModuleSource)
+
+
+data DaemonServer req :: Effect where
+    ServeOnce :: (ToJSON a) => req Once a -> DaemonServer req m a
+    ServeMany :: req Many a -> (a -> m ()) -> DaemonServer req m ()
+
+
+makeEffect ''DaemonServer
+
+
+runDaemonServer
+    :: ( BuildStore :> es
+       , Cache (PackageId, ModuleName) Text :> es
+       , Cache ModuleName PackageId :> es
+       , Delay :> es
+       , FileSystem :> es
+       , GhcPkg :> es
+       , Log :> es
+       )
+    => Eff (DaemonServer Request : es) a
+    -> Eff es a
+runDaemonServer eff = interpretWith eff \env -> \case
+    ServeOnce req -> case req of
+        StatusNow -> getState
+        StatusAwait -> awaitResult
+        Source ms -> mapM lookupModuleSource ms
+        DiagnosticAt i -> do
+            state <- getState
+            pure $ case state.phase of
+                Done r -> case r.diagnostics !!? (i - 1) of
+                    Nothing -> Left $ "No diagnostic #" <> show i <> " (current build has " <> show (length r.diagnostics) <> ")"
+                    Just d -> Right d
+                _ -> Left "Build in progress"
+    ServeMany Watch callback -> localSeqUnlift env \unlift -> do
+        state0 <- getState
+        unlift (callback state0)
+        let loop prev = do
+                new <- waitForAnyChange prev
+                unlift (callback new)
+                loop new
+        loop state0
+
+
+-- internals
+
+-- | Wait for a completed build, then respond.
+--
+-- If the build is already done when this is called, we may be racing the file
+-- watcher's debounce: a file was just changed but the reload hasn't been
+-- dispatched yet (default debounce is 100ms). Poll for up to 250ms to let
+-- any in-flight debounce fire before falling back to the current result.
+awaitResult :: (BuildStore :> es, Delay :> es) => Eff es BuildState
+awaitResult = do
+    s <- getState
+    case s.phase of
+        Building -> waitUntilDone
+        Restarting -> waitUntilDone
+        Testing _ -> waitUntilDone
+        Done _ -> awaitBuildStart (5 :: Int) s
+  where
+    awaitBuildStart 0 s = pure s
+    awaitBuildStart n _ = do
+        wait (50 :: Millisecond)
+        s' <- getState
+        case s'.phase of
+            Building -> waitUntilDone
+            Restarting -> waitUntilDone
+            Testing _ -> waitUntilDone
+            Done _ -> awaitBuildStart (n - 1) s'

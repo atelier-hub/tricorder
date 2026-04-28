@@ -43,6 +43,7 @@ import Tricorder.Socket.Client
     , queryStatus
     , queryStatusWait
     )
+import Tricorder.Socket.Protocol (Request)
 
 import Atelier.Effects.Console qualified as Console
 
@@ -50,7 +51,7 @@ import Atelier.Effects.Console qualified as Console
 showStatus
     :: ( Clock :> es
        , Console :> es
-       , DaemonClient :> es
+       , DaemonClient Request :> es
        , Exit :> es
        )
     => StatusOptions -> Eff es ()
@@ -155,7 +156,7 @@ showLog mLogFile followMode = case mLogFile of
 
 showSource
     :: ( Console :> es
-       , DaemonClient :> es
+       , DaemonClient Request :> es
        )
     => [ModuleName]
     -> Eff es ()
