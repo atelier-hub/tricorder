@@ -16,7 +16,7 @@ module Tricorder.Effects.GhciSession
     , extractTitle
     ) where
 
-import Control.Exception (throwIO, try)
+import Control.Exception (throwIO)
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (reinterpret)
@@ -30,6 +30,7 @@ import Data.List qualified as List
 import Data.Set qualified as Set
 import Language.Haskell.Ghcid qualified as Ghcid
 
+import Atelier.Exception (trySyncIO)
 import Tricorder.BuildState (Diagnostic (..), Severity (..))
 
 import Tricorder.BuildState qualified as BuildState
@@ -105,7 +106,7 @@ runGhciSessionScripted results = reinterpret (evalState results) $ \_ ->
 
 
 stopGhciSilently :: Ghcid.Ghci -> IO ()
-stopGhciSilently ghci = void $ try @SomeException $ Ghcid.stopGhci ghci
+stopGhciSilently ghci = void $ trySyncIO $ Ghcid.stopGhci ghci
 
 
 collectResult :: Ghcid.Ghci -> [Load] -> IO LoadResult

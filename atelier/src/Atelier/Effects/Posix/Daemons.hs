@@ -3,14 +3,14 @@ module Atelier.Effects.Posix.Daemons
     , PidFile (..)
     , daemonize
     , isRunning
-    , killAndWait
+    , forceKillAndWait
     , runDaemons
     ) where
 
 import Data.Default (def)
 import Effectful (Effect, IOE, Limit (..), Persistence (..), UnliftStrategy (..))
 import Effectful.Dispatch.Dynamic (interpretWith, localUnliftIO)
-import Effectful.Exception (IOException, try)
+import Effectful.Exception (trySync)
 import Effectful.TH (makeEffect)
 
 import System.Posix.Daemon qualified as Daemons
@@ -22,9 +22,8 @@ data Daemons :: Effect where
     Daemonize :: PidFile -> m () -> Daemons m ()
     -- | Check whether a daemon is running for the provided PID file.
     IsRunning :: PidFile -> Daemons m Bool
-    -- | Kill the daemon associated with the provided PID file, waiting for it
-    -- to shut down.
-    KillAndWait :: PidFile -> Daemons m ()
+    -- | Kill the daemon associated with the provided PID file using `SIGKILL`.
+    ForceKillAndWait :: PidFile -> Daemons m (Either SomeException ())
 
 
 newtype PidFile = PidFile {getPidFile :: FilePath}
@@ -42,5 +41,5 @@ runDaemons act = do
                     $ unlift program
         IsRunning (PidFile pidFile) ->
             liftIO $ Daemons.isRunning pidFile
-        KillAndWait (PidFile pidFile) ->
-            void $ try @IOException $ liftIO $ Daemons.killAndWait pidFile
+        ForceKillAndWait (PidFile pidFile) ->
+            trySync $ liftIO $ Daemons.brutalKill pidFile
