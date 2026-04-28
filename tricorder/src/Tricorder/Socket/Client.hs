@@ -2,6 +2,7 @@ module Tricorder.Socket.Client
     ( queryStatus
     , queryStatusWait
     , queryWatch
+    , WatchError (..)
     , querySource
     , queryDiagnostic
     , requestShutdown
@@ -9,7 +10,10 @@ module Tricorder.Socket.Client
     ) where
 
 import Data.Aeson (decode, eitherDecode, encode)
+import Effectful.Error.Static (Error, throwError)
+import Effectful.Exception (catchJust)
 import Effectful.Reader.Static (Reader, ask)
+import System.IO.Error (isEOFError)
 
 import Data.ByteString.Lazy qualified as BSL
 
@@ -46,9 +50,13 @@ queryStatusWait sockPath = withConnection sockPath \h -> do
     receiveState h
 
 
+data WatchError = SocketClosed
+    deriving stock (Show)
+
+
 -- | Connect and stream build updates, calling the handler after each completed build.
 queryWatch
-    :: (File :> es, UnixSocket :> es)
+    :: (Error WatchError :> es, File :> es, UnixSocket :> es)
     => FilePath
     -> (BuildState -> Eff es ())
     -> Eff es ()
@@ -57,7 +65,11 @@ queryWatch sockPath handler = withConnection sockPath \h -> do
     loop h
   where
     loop h = do
-        line <- File.hGetLine h
+        line <-
+            catchJust
+                (\e -> if isEOFError e then Just e else Nothing)
+                (File.hGetLine h)
+                (\_ -> throwError SocketClosed)
         case decode (BSL.fromStrict (encodeUtf8 (toText line))) of
             Nothing -> pure ()
             Just state -> handler state >> loop h
