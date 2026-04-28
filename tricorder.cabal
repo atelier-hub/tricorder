@@ -25,6 +25,7 @@ library
       Tricorder.Effects.Brick
       Tricorder.Effects.BrickChan
       Tricorder.Effects.BuildStore
+      Tricorder.Effects.DaemonClient
       Tricorder.Effects.GhciSession
       Tricorder.Effects.GhcPkg
       Tricorder.Effects.Logging

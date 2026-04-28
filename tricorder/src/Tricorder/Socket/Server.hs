@@ -13,7 +13,7 @@ import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Log (Log)
 import Atelier.Time (Millisecond)
-import Tricorder.BuildState (BuildPhase (..), BuildResult (..), BuildState (..), Diagnostic)
+import Tricorder.BuildState (BuildPhase (..), BuildResult (..), BuildState (..))
 import Tricorder.Effects.BuildStore (BuildStore, getState, waitForAnyChange, waitUntilDone)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.UnixSocket
@@ -26,7 +26,13 @@ import Tricorder.Effects.UnixSocket
     , sendLine
     )
 import Tricorder.Runtime (SocketPath (..))
-import Tricorder.Socket.Protocol (DiagnosticQuery (..), ErrorResponse (..), Query (..), StatusQuery (..))
+import Tricorder.Socket.Protocol
+    ( ErrorResponse (..)
+    , Multiplicity (..)
+    , Request (..)
+    , SomeRequest (..)
+    , fromWire
+    )
 import Tricorder.SourceLookup (ModuleName, PackageId, lookupModuleSource)
 
 import Atelier.Effects.Conc qualified as Conc
@@ -99,10 +105,12 @@ handleConnection h = do
     line <- readLine h
     case decode (BSL.fromStrict (encodeUtf8 line)) of
         Nothing -> sendJson h (ErrorResponse "invalid request")
-        Just query -> dispatch query h
+        Just query -> case fromWire query of
+            OnceReq req -> handleOnce req >>= sendJson h
+            ManyReq req -> handleMany req (sendJson h)
 
 
-dispatch
+handleOnce
     :: ( BuildStore :> es
        , Cache (PackageId, ModuleName) Text :> es
        , Cache ModuleName PackageId :> es
@@ -110,21 +118,36 @@ dispatch
        , FileSystem :> es
        , GhcPkg :> es
        , Log :> es
-       , UnixSocket :> es
        )
-    => Query
-    -> Handle
+    => Request Once a
+    -> Eff es a
+handleOnce = \case
+    StatusNow -> getState
+    StatusAwait -> awaitResult
+    Source ms -> mapM lookupModuleSource ms
+    DiagnosticAt i -> do
+        state <- getState
+        pure $ case state.phase of
+            Done r -> case r.diagnostics !!? (i - 1) of
+                Nothing -> Left $ "No diagnostic #" <> show i <> " (current build has " <> show (length r.diagnostics) <> ")"
+                Just d -> Right d
+            _ -> Left "Build in progress"
+
+
+handleMany
+    :: (BuildStore :> es)
+    => Request Many a
+    -> (a -> Eff es ())
     -> Eff es ()
-dispatch query h = case query of
-    Status (StatusQuery False) -> respondOnce h
-    Status (StatusQuery True) -> respondWhenDone h
-    Watch -> watchStream h
-    Source moduleNames -> respondSource moduleNames h
-    DiagnosticAt dq -> respondDiagnostic dq.index h
-
-
-respondOnce :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()
-respondOnce h = getState >>= sendJson h
+handleMany Watch emit = do
+    state0 <- getState
+    emit state0
+    loop state0
+  where
+    loop prev = do
+        new <- waitForAnyChange prev
+        emit new
+        loop new
 
 
 -- | Wait for a completed build, then respond.
@@ -133,18 +156,15 @@ respondOnce h = getState >>= sendJson h
 -- watcher's debounce: a file was just changed but the reload hasn't been
 -- dispatched yet (default debounce is 100ms). Poll for up to 250ms to let
 -- any in-flight debounce fire before falling back to the current result.
-respondWhenDone :: (BuildStore :> es, Delay :> es, UnixSocket :> es) => Handle -> Eff es ()
-respondWhenDone h = awaitResult >>= sendJson h
+awaitResult :: (BuildStore :> es, Delay :> es) => Eff es BuildState
+awaitResult = do
+    s <- getState
+    case s.phase of
+        Building -> waitUntilDone
+        Restarting -> waitUntilDone
+        Testing _ -> waitUntilDone
+        Done _ -> awaitBuildStart (5 :: Int) s
   where
-    awaitResult = do
-        s <- getState
-        case s.phase of
-            Building -> waitUntilDone
-            Restarting -> waitUntilDone
-            Testing _ -> waitUntilDone
-            Done _ -> awaitBuildStart (5 :: Int) s
-
-    -- Poll up to n × 50ms for a build to start, then wait for it to finish.
     awaitBuildStart 0 s = pure s
     awaitBuildStart n _ = do
         wait (50 :: Millisecond)
@@ -154,53 +174,6 @@ respondWhenDone h = awaitResult >>= sendJson h
             Restarting -> waitUntilDone
             Testing _ -> waitUntilDone
             Done _ -> awaitBuildStart (n - 1) s'
-
-
--- | Stream a JSON object after each state change (loops until handle closes or error).
-watchStream :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()
-watchStream h = do
-    state0 <- getState
-    sendJson h state0
-    loop state0
-  where
-    loop prev = do
-        newState <- waitForAnyChange prev
-        sendJson h newState
-        loop newState
-
-
-respondDiagnostic :: (BuildStore :> es, UnixSocket :> es) => Int -> Handle -> Eff es ()
-respondDiagnostic idx h = do
-    state <- getState
-    case state.phase of
-        Done r -> case r.diagnostics !!? (idx - 1) of
-            Nothing ->
-                sendJson h
-                    $ ErrorResponse
-                    $ "No diagnostic #"
-                        <> show idx
-                        <> " (current build has "
-                        <> show (length r.diagnostics)
-                        <> ")"
-            Just d -> sendJson h (d :: Diagnostic)
-        _ -> sendJson h $ ErrorResponse "Build in progress"
-
-
--- | Look up source for each requested module and send the results as a JSON array.
-respondSource
-    :: ( Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
-       , FileSystem :> es
-       , GhcPkg :> es
-       , Log :> es
-       , UnixSocket :> es
-       )
-    => [ModuleName]
-    -> Handle
-    -> Eff es ()
-respondSource moduleNames h = do
-    results <- mapM lookupModuleSource moduleNames
-    sendJson h results
 
 
 sendJson :: (ToJSON a, UnixSocket :> es) => Handle -> a -> Eff es ()

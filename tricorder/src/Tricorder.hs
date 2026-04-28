@@ -10,7 +10,6 @@ import Atelier.Effects.Console (Console)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Exit (Exit)
-import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Log (Log)
@@ -24,6 +23,7 @@ import Tricorder.Daemon (startDaemon, stopDaemon, waitForDaemon)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.BuildStore (BuildStore)
+import Tricorder.Effects.DaemonClient (DaemonClient)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
@@ -47,11 +47,11 @@ run
        , Clock :> es
        , Conc :> es
        , Console :> es
+       , DaemonClient :> es
        , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
        , Exit :> es
-       , File :> es
        , FileSystem :> es
        , FileWatcher :> es
        , GhcPkg :> es
@@ -92,8 +92,7 @@ run =
             running <- isDaemonRunning
             mLogFile <-
                 if running then do
-                    SocketPath sp <- ask
-                    result <- queryStatus sp
+                    result <- queryStatus
                     pure $ case result of
                         Right state -> state.daemonInfo.logFile
                         Left _ -> Nothing

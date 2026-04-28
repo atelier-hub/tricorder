@@ -7,7 +7,6 @@ module Tricorder.CLI
 import Data.Aeson (encode)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (utcToLocalTime)
-import Effectful.Reader.Static (Reader, ask)
 
 import Data.ByteString.Lazy qualified as BSL
 
@@ -15,7 +14,6 @@ import Atelier.Effects.Clock (Clock, currentTimeZone)
 import Atelier.Effects.Console (Console)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Exit (Exit, exitFailure)
-import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, followFile, readFileLbs)
 import Tricorder.Arguments
     ( FollowMode (..)
@@ -38,9 +36,8 @@ import Tricorder.CLI.Render
     , formatDuration
     , renderSourceResults
     )
-import Tricorder.Effects.UnixSocket (UnixSocket)
+import Tricorder.Effects.DaemonClient (DaemonClient)
 import Tricorder.GhcPkg.Types (ModuleName)
-import Tricorder.Runtime (SocketPath (..))
 import Tricorder.Socket.Client
     ( querySource
     , queryStatus
@@ -53,16 +50,13 @@ import Atelier.Effects.Console qualified as Console
 showStatus
     :: ( Clock :> es
        , Console :> es
+       , DaemonClient :> es
        , Exit :> es
-       , File :> es
-       , Reader SocketPath :> es
-       , UnixSocket :> es
        )
     => StatusOptions -> Eff es ()
 showStatus opts = do
-    SocketPath sockPath <- ask
     when (opts.wait == WaitForBuild && opts.format == TextOutput) $ do
-        current <- queryStatus sockPath
+        current <- queryStatus
         case current of
             Right BuildState {phase = Building} -> Console.putStrLn "Building..."
             Right BuildState {phase = Restarting} -> Console.putStrLn "Restarting..."
@@ -70,8 +64,8 @@ showStatus opts = do
             _ -> pure ()
     result <-
         case opts.wait of
-            WaitForBuild -> queryStatusWait sockPath
-            ShowCurrent -> queryStatus sockPath
+            WaitForBuild -> queryStatusWait
+            ShowCurrent -> queryStatus
     case result of
         Left err -> Console.putTextLn $ "Error: " <> err
         Right state ->
@@ -161,15 +155,12 @@ showLog mLogFile followMode = case mLogFile of
 
 showSource
     :: ( Console :> es
-       , File :> es
-       , Reader SocketPath :> es
-       , UnixSocket :> es
+       , DaemonClient :> es
        )
     => [ModuleName]
     -> Eff es ()
 showSource moduleNames = do
-    SocketPath sockPath <- ask
-    result <- querySource sockPath moduleNames
+    result <- querySource moduleNames
     case result of
         Left err -> Console.putTextLn $ "Error: " <> err
         Right results -> renderSourceResults results
