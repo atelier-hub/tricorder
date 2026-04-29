@@ -134,6 +134,7 @@ internal-libraries:
     - rel8
     - stm
     - stm-containers
+    - template-haskell
     - text
     - time
     - time-units

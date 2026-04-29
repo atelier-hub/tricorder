@@ -13,30 +13,30 @@ import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Effects.RPC (Client, runRequest, runStream)
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.GhcPkg.Types (ModuleName)
+import Tricorder.RPC.Protocol (Protocol (..))
 import Tricorder.Runtime (PidFile)
-import Tricorder.Socket.Protocol (Request (..))
 import Tricorder.SourceLookup (ModuleSourceResult)
 
 import Atelier.Effects.Posix.Daemons qualified as Daemons
 
 
-queryStatus :: (Client Request :> es) => Eff es (Either Text BuildState)
+queryStatus :: (Client Protocol :> es) => Eff es (Either Text BuildState)
 queryStatus = runRequest StatusNow
 
 
-queryStatusWait :: (Client Request :> es) => Eff es (Either Text BuildState)
+queryStatusWait :: (Client Protocol :> es) => Eff es (Either Text BuildState)
 queryStatusWait = runRequest StatusAwait
 
 
-queryWatch :: (Client Request :> es) => (BuildState -> Eff es ()) -> Eff es ()
+queryWatch :: (Client Protocol :> es) => (BuildState -> Eff es ()) -> Eff es ()
 queryWatch = runStream Watch
 
 
-querySource :: (Client Request :> es) => [ModuleName] -> Eff es (Either Text [ModuleSourceResult])
+querySource :: (Client Protocol :> es) => [ModuleName] -> Eff es (Either Text [ModuleSourceResult])
 querySource = runRequest . Source
 
 
-queryDiagnostic :: (Client Request :> es) => Int -> Eff es (Either Text Diagnostic)
+queryDiagnostic :: (Client Protocol :> es) => Int -> Eff es (Either Text Diagnostic)
 queryDiagnostic idx =
     runRequest (DiagnosticAt idx) <&> \case
         Left err -> Left err

@@ -15,6 +15,7 @@ import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Effects.RPC (Client, Handler)
+import Atelier.Effects.UnixSocket (UnixSocket)
 import Tricorder.Arguments (Command (..))
 import Tricorder.BuildState (BuildState (..), DaemonInfo (..))
 import Tricorder.CLI (showLog, showSource, showStatus)
@@ -25,10 +26,9 @@ import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
-import Tricorder.Effects.UnixSocket (UnixSocket)
+import Tricorder.RPC.Protocol (Protocol)
 import Tricorder.Runtime (PidFile (..), SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning, queryStatus)
-import Tricorder.Socket.Protocol (Request)
 import Tricorder.UI (viewUi)
 
 import Atelier.Effects.Console qualified as Console
@@ -40,7 +40,7 @@ run
     :: ( Brick :> es
        , BrickChan :> es
        , BuildStore :> es
-       , Client Request :> es
+       , Client Protocol :> es
        , Clock :> es
        , Conc :> es
        , Console :> es
@@ -51,7 +51,7 @@ run
        , FileSystem :> es
        , FileWatcher :> es
        , GhciSession :> es
-       , Handler Request :> es
+       , Handler Protocol :> es
        , IOE :> es
        , Log :> es
        , Reader Command :> es

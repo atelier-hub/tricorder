@@ -38,18 +38,18 @@ import Tricorder.CLI.Render
     , renderSourceResults
     )
 import Tricorder.GhcPkg.Types (ModuleName)
+import Tricorder.RPC.Protocol (Protocol)
 import Tricorder.Socket.Client
     ( querySource
     , queryStatus
     , queryStatusWait
     )
-import Tricorder.Socket.Protocol (Request)
 
 import Atelier.Effects.Console qualified as Console
 
 
 showStatus
-    :: ( Client Request :> es
+    :: ( Client Protocol :> es
        , Clock :> es
        , Console :> es
        , Exit :> es
@@ -155,7 +155,7 @@ showLog mLogFile followMode = case mLogFile of
 
 
 showSource
-    :: ( Client Request :> es
+    :: ( Client Protocol :> es
        , Console :> es
        )
     => [ModuleName]

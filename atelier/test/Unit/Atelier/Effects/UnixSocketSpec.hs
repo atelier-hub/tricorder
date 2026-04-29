@@ -1,10 +1,10 @@
-module Unit.Tricorder.SocketSpec (spec_Socket) where
+module Unit.Atelier.Effects.UnixSocketSpec (spec_UnixSocket) where
 
 import Effectful (IOE, runEff)
 import System.IO (hClose, hGetLine, openFile)
 import Test.Hspec
 
-import Tricorder.Effects.UnixSocket
+import Atelier.Effects.UnixSocket
     ( SocketScript (..)
     , UnixSocket
     , acceptHandle
@@ -15,8 +15,8 @@ import Tricorder.Effects.UnixSocket
     )
 
 
-spec_Socket :: Spec
-spec_Socket = do
+spec_UnixSocket :: Spec
+spec_UnixSocket = do
     describe "runUnixSocketScripted" testScripted
 
 

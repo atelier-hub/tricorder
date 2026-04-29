@@ -1,74 +1,80 @@
 module Atelier.Effects.RPC.Unix
     ( runClientUnix
+    , serveUnix
     ) where
 
-import Control.Exception (bracket)
 import Data.Aeson (FromJSON, ToJSON, decode, eitherDecode, encode)
-import Effectful (IOE)
 import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift)
 import Effectful.Exception (finally)
-import Network.Socket
-    ( Family (..)
-    , SockAddr (..)
-    , SocketType (..)
-    , defaultProtocol
-    , socket
-    , socketToHandle
-    )
-import System.IO (hClose, hGetLine, hSetEncoding, utf8)
 
 import Data.ByteString.Lazy qualified as BSL
-import Data.Text.IO qualified as T
-import Network.Socket qualified as Net
-import System.IO qualified as IO
 
+import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.RPC (Client (..))
+import Atelier.Effects.UnixSocket
+    ( UnixSocket
+    , acceptHandle
+    , bindSocket
+    , closeHandle
+    , readLine
+    , sendLine
+    , withConnection
+    )
+
+import Atelier.Effects.Conc qualified as Conc
 
 
 runClientUnix
-    :: (IOE :> es)
+    :: (UnixSocket :> es)
     => FilePath
     -> Eff (Client req : es) a
     -> Eff es a
 runClientUnix sockPath eff = interpretWith eff \env -> \case
     RunRequest req ->
-        liftIO $ withSocketHandle sockPath \h -> do
-            sendWire h req
-            line <- hGetLine h
-            decodeAs $ BSL.fromStrict (encodeUtf8 (toText line))
+        withConnection sockPath \h -> do
+            sendLine h (encodeJSON req)
+            line <- readLine h
+            pure $ decodeAs $ BSL.fromStrict $ encodeUtf8 line
     RunStream req callback ->
-        localSeqUnlift env \unlift -> do
-            h <- liftIO (openSocket sockPath)
-            let loop = do
-                    line <- liftIO (hGetLine h)
-                    let raw = BSL.fromStrict (encodeUtf8 (toText line))
-                    case decode raw of
-                        Nothing -> pure ()
-                        Just v -> unlift (callback v) >> loop
-            liftIO (sendWire h req) >> loop `finally` liftIO (hClose h)
+        localSeqUnlift env \unlift ->
+            withConnection sockPath \h -> do
+                sendLine h (encodeJSON req)
+                let loop = do
+                        line <- readLine h
+                        let raw = BSL.fromStrict $ encodeUtf8 line
+                        case decode raw of
+                            Nothing -> pure ()
+                            Just v -> unlift (callback v) >> loop
+                loop
 
 
-openSocket :: FilePath -> IO Handle
-openSocket path = do
-    sock <- socket AF_UNIX Stream defaultProtocol
-    Net.connect sock (SockAddrUnix path)
-    h <- socketToHandle sock ReadWriteMode
-    hSetEncoding h utf8
-    hSetBuffering h LineBuffering
-    pure h
+-- | Accept-loop server on a Unix socket.
+--
+-- Binds to the given path, then loops forever: accepts each incoming
+-- connection, forks it with 'Conc.forkTry', reads one line, calls
+-- the dispatch callback with @sendLine@ and the line, then closes the handle.
+serveUnix
+    :: (Conc :> es, UnixSocket :> es)
+    => ((Text -> Eff es ()) -> Text -> Eff es ())
+    -- ^ dispatch: given @sendLine@ and the received line, produce a response
+    -> FilePath
+    -> Eff es Void
+serveUnix dispatch sockPath = do
+    sock <- bindSocket sockPath
+    forever do
+        h <- acceptHandle sock
+        void
+            $ Conc.forkTry @SomeException
+            $ ( do
+                    line <- readLine h
+                    dispatch (sendLine h) line
+              )
+                `finally` closeHandle h
 
 
-withSocketHandle :: FilePath -> (Handle -> IO a) -> IO a
-withSocketHandle path = bracket (openSocket path) hClose
+encodeJSON :: (ToJSON a) => a -> Text
+encodeJSON = decodeUtf8 . BSL.toStrict . encode
 
 
-sendWire :: (ToJSON a) => Handle -> a -> IO ()
-sendWire h val = do
-    T.hPutStrLn h $ decodeUtf8 $ BSL.toStrict $ encode val
-    IO.hFlush h
-
-
-decodeAs :: (FromJSON a) => BSL.ByteString -> IO (Either Text a)
-decodeAs raw = pure $ case eitherDecode raw of
-    Left err -> Left (toText err)
-    Right v -> Right v
+decodeAs :: (FromJSON a) => BSL.ByteString -> Either Text a
+decodeAs = first toText . eitherDecode

@@ -103,6 +103,7 @@
             (hsPkgs."rel8" or (errorHandler.buildDepError "rel8"))
             (hsPkgs."stm" or (errorHandler.buildDepError "stm"))
             (hsPkgs."stm-containers" or (errorHandler.buildDepError "stm-containers"))
+            (hsPkgs."template-haskell" or (errorHandler.buildDepError "template-haskell"))
             (hsPkgs."text" or (errorHandler.buildDepError "text"))
             (hsPkgs."time" or (errorHandler.buildDepError "time"))
             (hsPkgs."time-units" or (errorHandler.buildDepError "time-units"))

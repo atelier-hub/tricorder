@@ -17,8 +17,8 @@ import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.RPC (Client)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
+import Tricorder.RPC.Protocol (Protocol)
 import Tricorder.Socket.Client (queryWatch)
-import Tricorder.Socket.Protocol (Request)
 import Tricorder.UI.Event (Event (..), handleEvent)
 import Tricorder.UI.State (State (..), Viewports (..))
 import Tricorder.UI.View (view)
@@ -34,7 +34,7 @@ import Tricorder.UI.State qualified as Model
 viewUi
     :: ( Brick :> es
        , BrickChan :> es
-       , Client Request :> es
+       , Client Protocol :> es
        , Clock :> es
        , Conc :> es
        )

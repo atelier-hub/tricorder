@@ -19,15 +19,15 @@ import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Effects.RPC (Handler)
+import Atelier.Effects.UnixSocket (UnixSocket)
 import Atelier.Time (Millisecond)
 import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
-import Tricorder.Effects.UnixSocket (UnixSocket)
+import Tricorder.RPC.Protocol (Protocol)
 import Tricorder.Runtime (PidFile, SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning)
-import Tricorder.Socket.Protocol (Request)
 
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.Posix.Daemons qualified as Daemons
@@ -48,7 +48,7 @@ runDaemon
        , FileSystem :> es
        , FileWatcher :> es
        , GhciSession :> es
-       , Handler Request :> es
+       , Handler Protocol :> es
        , IOE :> es
        , Log :> es
        , Reader Config :> es
@@ -80,7 +80,7 @@ startDaemon
        , FileSystem :> es
        , FileWatcher :> es
        , GhciSession :> es
-       , Handler Request :> es
+       , Handler Protocol :> es
        , IOE :> es
        , Log :> es
        , Reader Config :> es

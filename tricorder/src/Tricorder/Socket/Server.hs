@@ -1,32 +1,14 @@
 module Tricorder.Socket.Server (component, SocketRemoved (..)) where
 
-import Data.Aeson (ToJSON, decode, encode)
-import Effectful.Exception (finally)
 import Effectful.Reader.Static (Reader, ask)
-
-import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Component (Component (..), Trigger, defaultComponent)
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.RPC (Handler, serveMany, serveOnce)
-import Tricorder.Effects.UnixSocket
-    ( UnixSocket
-    , acceptHandle
-    , bindSocket
-    , closeHandle
-    , readLine
-    , removeSocketFile
-    , sendLine
-    )
+import Atelier.Effects.RPC (Handler, dispatch)
+import Atelier.Effects.RPC.Unix (serveUnix)
+import Atelier.Effects.UnixSocket (UnixSocket, removeSocketFile)
+import Tricorder.RPC.Protocol (Protocol)
 import Tricorder.Runtime (SocketPath (..))
-import Tricorder.Socket.Protocol
-    ( ErrorResponse (..)
-    , Request (..)
-    , SomeRequest (..)
-    , fromWire
-    )
-
-import Atelier.Effects.Conc qualified as Conc
 
 
 data SocketRemoved = SocketRemoved
@@ -38,7 +20,7 @@ data SocketRemoved = SocketRemoved
 -- Listens on a Unix socket and responds to status/watch/source queries.
 component
     :: ( Conc :> es
-       , Handler Request :> es
+       , Handler Protocol :> es
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
@@ -55,33 +37,11 @@ component =
 
 acceptTrigger
     :: ( Conc :> es
-       , Handler Request :> es
+       , Handler Protocol :> es
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
     => Trigger es
 acceptTrigger = do
     SocketPath sockPath <- ask
-    sock <- bindSocket sockPath
-    forever do
-        h <- acceptHandle sock
-        void $ Conc.forkTry @SomeException $ handleConnection h `finally` closeHandle h
-
-
-handleConnection
-    :: ( Handler Request :> es
-       , UnixSocket :> es
-       )
-    => Handle
-    -> Eff es ()
-handleConnection h = do
-    line <- readLine h
-    case decode (BSL.fromStrict (encodeUtf8 line)) of
-        Nothing -> sendJson h (ErrorResponse "invalid request")
-        Just query -> case fromWire query of
-            OnceReq req -> serveOnce req >>= sendJson h
-            ManyReq req -> serveMany req (sendJson h)
-
-
-sendJson :: (ToJSON a, UnixSocket :> es) => Handle -> a -> Eff es ()
-sendJson h val = sendLine h (decodeUtf8 (BSL.toStrict (encode val)))
+    serveUnix (dispatch @Protocol) sockPath

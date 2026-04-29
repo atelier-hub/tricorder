@@ -3,7 +3,6 @@ module Tricorder.RPC
     , runHandler
     ) where
 
-import Effectful (IOE)
 import Effectful.Dispatch.Dynamic (LocalEnv, interpretWith, localSeqUnlift)
 import Effectful.Reader.Static (Reader, ask)
 
@@ -13,18 +12,19 @@ import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.RPC (Client, Handler (..))
 import Atelier.Effects.RPC.Unix (runClientUnix)
+import Atelier.Effects.UnixSocket (UnixSocket)
 import Atelier.Time (Millisecond)
 import Tricorder.BuildState (BuildPhase (..), BuildResult (..), BuildState (..), Diagnostic)
 import Tricorder.Effects.BuildStore (BuildStore, getState, waitForAnyChange, waitUntilDone)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
+import Tricorder.RPC.Protocol (Protocol (..))
 import Tricorder.Runtime (SocketPath (..))
-import Tricorder.Socket.Protocol (Request (..))
 import Tricorder.SourceLookup (lookupModuleSource)
 
 
 runClient
-    :: (IOE :> es, Reader SocketPath :> es)
+    :: (Reader SocketPath :> es, UnixSocket :> es)
     => Eff (Client req : es) a
     -> Eff es a
 runClient action = do
@@ -41,7 +41,7 @@ runHandler
        , GhcPkg :> es
        , Log :> es
        )
-    => Eff (Handler Request : es) a
+    => Eff (Handler Protocol : es) a
     -> Eff es a
 runHandler eff = interpretWith eff \env -> \case
     ServeOnce req -> case req of

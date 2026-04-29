@@ -29,15 +29,14 @@ library
       Tricorder.Effects.GhcPkg
       Tricorder.Effects.Logging
       Tricorder.Effects.TestRunner
-      Tricorder.Effects.UnixSocket
       Tricorder.Events.FileChanged
       Tricorder.GhciSession
       Tricorder.GhcPkg.Types
       Tricorder.Observability
       Tricorder.RPC
+      Tricorder.RPC.Protocol
       Tricorder.Runtime
       Tricorder.Socket.Client
-      Tricorder.Socket.Protocol
       Tricorder.Socket.Server
       Tricorder.SourceLookup
       Tricorder.UI
@@ -136,8 +135,10 @@ library atelier
       Atelier.Effects.Posix.IO
       Atelier.Effects.Publishing
       Atelier.Effects.RPC
+      Atelier.Effects.RPC.TH
       Atelier.Effects.RPC.Unix
       Atelier.Effects.Tally
+      Atelier.Effects.UnixSocket
       Atelier.Effects.UUID
       Atelier.Exception
       Atelier.Time
@@ -204,6 +205,7 @@ library atelier
     , rel8
     , stm
     , stm-containers
+    , template-haskell
     , text
     , time
     , time-units
@@ -351,7 +353,9 @@ test-suite atelier-test
       Unit.Atelier.Effects.FileWatcherSpec
       Unit.Atelier.Effects.LogSpec
       Unit.Atelier.Effects.PublishingSpec
+      Unit.Atelier.Effects.RPC.THSpec
       Unit.Atelier.Effects.TallySpec
+      Unit.Atelier.Effects.UnixSocketSpec
       Unit.Atelier.Types.WithDefaultsSpec
       Paths_tricorder
   autogen-modules:
@@ -412,7 +416,6 @@ test-suite tricorder-test
       Unit.Tricorder.ConfigSpec
       Unit.Tricorder.GhciSessionSpec
       Unit.Tricorder.GhcPkgSpec
-      Unit.Tricorder.SocketSpec
       Unit.Tricorder.SourceLookupSpec
       Unit.Tricorder.SourceSpec
       Unit.Tricorder.TestRunnerSpec
