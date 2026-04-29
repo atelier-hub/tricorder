@@ -25,10 +25,10 @@ library
       Tricorder.Effects.Brick
       Tricorder.Effects.BrickChan
       Tricorder.Effects.BuildStore
-      Tricorder.Effects.DaemonClient
-      Tricorder.Effects.DaemonServer
+      Tricorder.Effects.Client
       Tricorder.Effects.GhciSession
       Tricorder.Effects.GhcPkg
+      Tricorder.Effects.Handler
       Tricorder.Effects.Logging
       Tricorder.Effects.TestRunner
       Tricorder.Effects.UnixSocket
@@ -113,6 +113,7 @@ library atelier
       Atelier.Effects.Cache.Config
       Atelier.Effects.Cache.Singleflight
       Atelier.Effects.Chan
+      Atelier.Effects.Client
       Atelier.Effects.Clock
       Atelier.Effects.Conc
       Atelier.Effects.Conc.Traced
@@ -127,6 +128,7 @@ library atelier
       Atelier.Effects.File
       Atelier.Effects.FileSystem
       Atelier.Effects.FileWatcher
+      Atelier.Effects.Handler
       Atelier.Effects.Log
       Atelier.Effects.Monitoring.Metrics
       Atelier.Effects.Monitoring.Metrics.Registry

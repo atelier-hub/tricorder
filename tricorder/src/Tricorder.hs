@@ -3,6 +3,7 @@ module Tricorder (run) where
 import Effectful (IOE)
 import Effectful.Reader.Static (Reader, ask, asks)
 
+import Atelier.Effects.Client (Client)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Console (Console)
@@ -11,6 +12,7 @@ import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Exit (Exit)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.FileWatcher (FileWatcher)
+import Atelier.Effects.Handler (Handler)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
@@ -22,8 +24,6 @@ import Tricorder.Daemon (startDaemon, stopDaemon, waitForDaemon)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.DaemonClient (DaemonClient)
-import Tricorder.Effects.DaemonServer (DaemonServer)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
@@ -41,11 +41,10 @@ run
     :: ( Brick :> es
        , BrickChan :> es
        , BuildStore :> es
+       , Client Request :> es
        , Clock :> es
        , Conc :> es
        , Console :> es
-       , DaemonClient Request :> es
-       , DaemonServer Request :> es
        , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
@@ -53,6 +52,7 @@ run
        , FileSystem :> es
        , FileWatcher :> es
        , GhciSession :> es
+       , Handler Request :> es
        , IOE :> es
        , Log :> es
        , Reader Command :> es

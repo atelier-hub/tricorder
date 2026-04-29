@@ -10,6 +10,7 @@ import Data.Time.LocalTime (utcToLocalTime)
 
 import Data.ByteString.Lazy qualified as BSL
 
+import Atelier.Effects.Client (Client)
 import Atelier.Effects.Clock (Clock, currentTimeZone)
 import Atelier.Effects.Console (Console)
 import Atelier.Effects.Delay (Delay)
@@ -36,7 +37,6 @@ import Tricorder.CLI.Render
     , formatDuration
     , renderSourceResults
     )
-import Tricorder.Effects.DaemonClient (DaemonClient)
 import Tricorder.GhcPkg.Types (ModuleName)
 import Tricorder.Socket.Client
     ( querySource
@@ -49,9 +49,9 @@ import Atelier.Effects.Console qualified as Console
 
 
 showStatus
-    :: ( Clock :> es
+    :: ( Client Request :> es
+       , Clock :> es
        , Console :> es
-       , DaemonClient Request :> es
        , Exit :> es
        )
     => StatusOptions -> Eff es ()
@@ -155,8 +155,8 @@ showLog mLogFile followMode = case mLogFile of
 
 
 showSource
-    :: ( Console :> es
-       , DaemonClient Request :> es
+    :: ( Client Request :> es
+       , Console :> es
        )
     => [ModuleName]
     -> Eff es ()

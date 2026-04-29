@@ -8,7 +8,7 @@ import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Component (Component (..), Trigger, defaultComponent)
 import Atelier.Effects.Conc (Conc)
-import Tricorder.Effects.DaemonServer (DaemonServer, serveMany, serveOnce)
+import Atelier.Effects.Handler (Handler, serveMany, serveOnce)
 import Tricorder.Effects.UnixSocket
     ( UnixSocket
     , acceptHandle
@@ -38,7 +38,7 @@ data SocketRemoved = SocketRemoved
 -- Listens on a Unix socket and responds to status/watch/source queries.
 component
     :: ( Conc :> es
-       , DaemonServer Request :> es
+       , Handler Request :> es
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
@@ -55,7 +55,7 @@ component =
 
 acceptTrigger
     :: ( Conc :> es
-       , DaemonServer Request :> es
+       , Handler Request :> es
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
@@ -69,7 +69,7 @@ acceptTrigger = do
 
 
 handleConnection
-    :: ( DaemonServer Request :> es
+    :: ( Handler Request :> es
        , UnixSocket :> es
        )
     => Handle

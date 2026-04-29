@@ -12,11 +12,11 @@ import Brick
 import Graphics.Vty.Attributes qualified as Attr
 import Graphics.Vty.Attributes.Color qualified as Color
 
+import Atelier.Effects.Client (Client)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
-import Tricorder.Effects.DaemonClient (DaemonClient)
 import Tricorder.Socket.Client (queryWatch)
 import Tricorder.Socket.Protocol (Request)
 import Tricorder.UI.Event (Event (..), handleEvent)
@@ -34,9 +34,9 @@ import Tricorder.UI.State qualified as Model
 viewUi
     :: ( Brick :> es
        , BrickChan :> es
+       , Client Request :> es
        , Clock :> es
        , Conc :> es
-       , DaemonClient Request :> es
        )
     => Eff es ()
 viewUi = do

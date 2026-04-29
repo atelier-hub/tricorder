@@ -1,37 +1,27 @@
-module Tricorder.Effects.DaemonServer
-    ( DaemonServer
+module Tricorder.Effects.Handler
+    ( Handler
     , serveOnce
     , serveMany
-    , runDaemonServer
+    , runHandler
     ) where
 
-import Data.Aeson (ToJSON)
-import Effectful (Effect)
 import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift)
-import Effectful.TH (makeEffect)
 
 import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Effects.FileSystem (FileSystem)
+import Atelier.Effects.Handler (Handler (..), serveMany, serveOnce)
 import Atelier.Effects.Log (Log)
 import Atelier.Time (Millisecond)
 import Tricorder.BuildState (BuildPhase (..), BuildResult (..), BuildState (..))
 import Tricorder.Effects.BuildStore (BuildStore, getState, waitForAnyChange, waitUntilDone)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
-import Tricorder.Socket.Protocol (Multiplicity (..), Request (..))
+import Tricorder.Socket.Protocol (Request (..))
 import Tricorder.SourceLookup (lookupModuleSource)
 
 
-data DaemonServer req :: Effect where
-    ServeOnce :: (ToJSON a) => req Once a -> DaemonServer req m a
-    ServeMany :: req Many a -> (a -> m ()) -> DaemonServer req m ()
-
-
-makeEffect ''DaemonServer
-
-
-runDaemonServer
+runHandler
     :: ( BuildStore :> es
        , Cache (PackageId, ModuleName) Text :> es
        , Cache ModuleName PackageId :> es
@@ -40,9 +30,9 @@ runDaemonServer
        , GhcPkg :> es
        , Log :> es
        )
-    => Eff (DaemonServer Request : es) a
+    => Eff (Handler Request : es) a
     -> Eff es a
-runDaemonServer eff = interpretWith eff \env -> \case
+runHandler eff = interpretWith eff \env -> \case
     ServeOnce req -> case req of
         StatusNow -> getState
         StatusAwait -> awaitResult

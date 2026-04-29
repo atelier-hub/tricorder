@@ -1,18 +1,17 @@
-module Tricorder.Effects.DaemonClient
-    ( DaemonClient
+module Tricorder.Effects.Client
+    ( Client
     , runRequest
     , runStream
-    , runDaemonClientIO
-    , runDaemonClient
+    , runClientIO
+    , runClient
     ) where
 
 import Control.Exception (bracket)
 import Data.Aeson (FromJSON, ToJSON, decode, eitherDecode, encode)
-import Effectful (Effect, IOE)
+import Effectful (IOE)
 import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift)
 import Effectful.Exception (finally)
 import Effectful.Reader.Static (Reader, ask)
-import Effectful.TH (makeEffect)
 import Network.Socket
     ( Family (..)
     , SockAddr (..)
@@ -28,24 +27,16 @@ import Data.Text.IO qualified as T
 import Network.Socket qualified as Net
 import System.IO qualified as IO
 
+import Atelier.Effects.Client (Client (..), runRequest, runStream)
 import Tricorder.Runtime (SocketPath (..))
-import Tricorder.Socket.Protocol (Multiplicity (..))
 
 
-data DaemonClient req :: Effect where
-    RunRequest :: (FromJSON a, ToJSON (req Once a)) => req Once a -> DaemonClient req m (Either Text a)
-    RunStream :: (FromJSON a, ToJSON (req Many a)) => req Many a -> (a -> m ()) -> DaemonClient req m ()
-
-
-makeEffect ''DaemonClient
-
-
-runDaemonClientIO
+runClientIO
     :: (IOE :> es)
     => FilePath
-    -> Eff (DaemonClient req : es) a
+    -> Eff (Client req : es) a
     -> Eff es a
-runDaemonClientIO sockPath eff = interpretWith eff \env -> \case
+runClientIO sockPath eff = interpretWith eff \env -> \case
     RunRequest req ->
         liftIO $ withSocketHandle sockPath \h -> do
             sendWire h req
@@ -63,13 +54,13 @@ runDaemonClientIO sockPath eff = interpretWith eff \env -> \case
             liftIO (sendWire h req) >> loop `finally` liftIO (hClose h)
 
 
-runDaemonClient
+runClient
     :: (IOE :> es, Reader SocketPath :> es)
-    => Eff (DaemonClient req : es) a
+    => Eff (Client req : es) a
     -> Eff es a
-runDaemonClient action = do
+runClient action = do
     SocketPath sp <- ask
-    runDaemonClientIO sp action
+    runClientIO sp action
 
 
 -- internals

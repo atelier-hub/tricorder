@@ -9,12 +9,10 @@ module Tricorder.Socket.Protocol
 
 import Data.Aeson (FromJSON, ToJSON, toEncoding, toJSON)
 
+import Atelier.Effects.Client (Multiplicity (..))
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.GhcPkg.Types (ModuleName)
 import Tricorder.SourceLookup (ModuleSourceResult)
-
-
-data Multiplicity = Once | Many
 
 
 data Request (m :: Multiplicity) a where

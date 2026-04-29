@@ -15,13 +15,13 @@ import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.FileWatcher (FileWatcher)
+import Atelier.Effects.Handler (Handler)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Time (Millisecond)
 import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.DaemonServer (DaemonServer)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
@@ -43,12 +43,12 @@ runDaemon
     :: ( BuildStore :> es
        , Clock :> es
        , Conc :> es
-       , DaemonServer Request :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
        , FileWatcher :> es
        , GhciSession :> es
+       , Handler Request :> es
        , IOE :> es
        , Log :> es
        , Reader Config :> es
@@ -74,13 +74,13 @@ startDaemon
     :: ( BuildStore :> es
        , Clock :> es
        , Conc :> es
-       , DaemonServer Request :> es
        , Daemons :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
        , FileWatcher :> es
        , GhciSession :> es
+       , Handler Request :> es
        , IOE :> es
        , Log :> es
        , Reader Config :> es

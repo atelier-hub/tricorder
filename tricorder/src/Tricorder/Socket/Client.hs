@@ -9,9 +9,9 @@ module Tricorder.Socket.Client
 
 import Effectful.Reader.Static (Reader, ask)
 
+import Atelier.Effects.Client (Client, runRequest, runStream)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Tricorder.BuildState (BuildState, Diagnostic)
-import Tricorder.Effects.DaemonClient (DaemonClient, runRequest, runStream)
 import Tricorder.GhcPkg.Types (ModuleName)
 import Tricorder.Runtime (PidFile)
 import Tricorder.Socket.Protocol (Request (..))
@@ -20,23 +20,23 @@ import Tricorder.SourceLookup (ModuleSourceResult)
 import Atelier.Effects.Posix.Daemons qualified as Daemons
 
 
-queryStatus :: (DaemonClient Request :> es) => Eff es (Either Text BuildState)
+queryStatus :: (Client Request :> es) => Eff es (Either Text BuildState)
 queryStatus = runRequest StatusNow
 
 
-queryStatusWait :: (DaemonClient Request :> es) => Eff es (Either Text BuildState)
+queryStatusWait :: (Client Request :> es) => Eff es (Either Text BuildState)
 queryStatusWait = runRequest StatusAwait
 
 
-queryWatch :: (DaemonClient Request :> es) => (BuildState -> Eff es ()) -> Eff es ()
+queryWatch :: (Client Request :> es) => (BuildState -> Eff es ()) -> Eff es ()
 queryWatch = runStream Watch
 
 
-querySource :: (DaemonClient Request :> es) => [ModuleName] -> Eff es (Either Text [ModuleSourceResult])
+querySource :: (Client Request :> es) => [ModuleName] -> Eff es (Either Text [ModuleSourceResult])
 querySource = runRequest . Source
 
 
-queryDiagnostic :: (DaemonClient Request :> es) => Int -> Eff es (Either Text Diagnostic)
+queryDiagnostic :: (Client Request :> es) => Int -> Eff es (Either Text Diagnostic)
 queryDiagnostic idx =
     runRequest (DiagnosticAt idx) <&> \case
         Left err -> Left err

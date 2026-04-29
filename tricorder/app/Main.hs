@@ -23,10 +23,10 @@ import Tricorder.Config (runConfig)
 import Tricorder.Effects.Brick (runBrick)
 import Tricorder.Effects.BrickChan (runBrickChan)
 import Tricorder.Effects.BuildStore (runBuildStore)
-import Tricorder.Effects.DaemonClient (runDaemonClient)
-import Tricorder.Effects.DaemonServer (runDaemonServer)
+import Tricorder.Effects.Client (runClient)
 import Tricorder.Effects.GhcPkg (runGhcPkgIO)
 import Tricorder.Effects.GhciSession (runGhciSessionIO)
+import Tricorder.Effects.Handler (runHandler)
 import Tricorder.Effects.Logging (runLogging)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
@@ -70,6 +70,6 @@ main =
         . runBuildStore
         . runArguments
         . runUnixSocketIO
-        . runDaemonClient
-        . runDaemonServer
+        . runClient
+        . runHandler
         $ Tricorder.run
