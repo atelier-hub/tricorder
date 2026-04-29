@@ -9,8 +9,8 @@ module Tricorder.Socket.Client
 
 import Effectful.Reader.Static (Reader, ask)
 
-import Atelier.Effects.Client (Client, runRequest, runStream)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Effects.RPC (Client, runRequest, runStream)
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.GhcPkg.Types (ModuleName)
 import Tricorder.Runtime (PidFile)

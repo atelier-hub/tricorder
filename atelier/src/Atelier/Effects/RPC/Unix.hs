@@ -1,9 +1,5 @@
-module Tricorder.Effects.Client
-    ( Client
-    , runRequest
-    , runStream
-    , runClientIO
-    , runClient
+module Atelier.Effects.RPC.Unix
+    ( runClientUnix
     ) where
 
 import Control.Exception (bracket)
@@ -11,7 +7,6 @@ import Data.Aeson (FromJSON, ToJSON, decode, eitherDecode, encode)
 import Effectful (IOE)
 import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift)
 import Effectful.Exception (finally)
-import Effectful.Reader.Static (Reader, ask)
 import Network.Socket
     ( Family (..)
     , SockAddr (..)
@@ -27,16 +22,15 @@ import Data.Text.IO qualified as T
 import Network.Socket qualified as Net
 import System.IO qualified as IO
 
-import Atelier.Effects.Client (Client (..), runRequest, runStream)
-import Tricorder.Runtime (SocketPath (..))
+import Atelier.Effects.RPC (Client (..))
 
 
-runClientIO
+runClientUnix
     :: (IOE :> es)
     => FilePath
     -> Eff (Client req : es) a
     -> Eff es a
-runClientIO sockPath eff = interpretWith eff \env -> \case
+runClientUnix sockPath eff = interpretWith eff \env -> \case
     RunRequest req ->
         liftIO $ withSocketHandle sockPath \h -> do
             sendWire h req
@@ -53,17 +47,6 @@ runClientIO sockPath eff = interpretWith eff \env -> \case
                         Just v -> unlift (callback v) >> loop
             liftIO (sendWire h req) >> loop `finally` liftIO (hClose h)
 
-
-runClient
-    :: (IOE :> es, Reader SocketPath :> es)
-    => Eff (Client req : es) a
-    -> Eff es a
-runClient action = do
-    SocketPath sp <- ask
-    runClientIO sp action
-
-
--- internals
 
 openSocket :: FilePath -> IO Handle
 openSocket path = do

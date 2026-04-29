@@ -12,9 +12,9 @@ import Brick
 import Graphics.Vty.Attributes qualified as Attr
 import Graphics.Vty.Attributes.Color qualified as Color
 
-import Atelier.Effects.Client (Client)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.RPC (Client)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Socket.Client (queryWatch)

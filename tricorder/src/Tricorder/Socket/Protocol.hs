@@ -9,7 +9,7 @@ module Tricorder.Socket.Protocol
 
 import Data.Aeson (FromJSON, ToJSON, toEncoding, toJSON)
 
-import Atelier.Effects.Client (Multiplicity (..))
+import Atelier.Effects.RPC (Multiplicity (..))
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.GhcPkg.Types (ModuleName)
 import Tricorder.SourceLookup (ModuleSourceResult)

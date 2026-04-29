@@ -10,12 +10,12 @@ import Data.Time.LocalTime (utcToLocalTime)
 
 import Data.ByteString.Lazy qualified as BSL
 
-import Atelier.Effects.Client (Client)
 import Atelier.Effects.Clock (Clock, currentTimeZone)
 import Atelier.Effects.Console (Console)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Exit (Exit, exitFailure)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, followFile, readFileLbs)
+import Atelier.Effects.RPC (Client)
 import Tricorder.Arguments
     ( FollowMode (..)
     , OutputFormat (..)

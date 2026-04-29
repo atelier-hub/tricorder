@@ -97,6 +97,7 @@
             (hsPkgs."http-types" or (errorHandler.buildDepError "http-types"))
             (hsPkgs."ki" or (errorHandler.buildDepError "ki"))
             (hsPkgs."list-t" or (errorHandler.buildDepError "list-t"))
+            (hsPkgs."network" or (errorHandler.buildDepError "network"))
             (hsPkgs."prometheus-client" or (errorHandler.buildDepError "prometheus-client"))
             (hsPkgs."prometheus-metrics-ghc" or (errorHandler.buildDepError "prometheus-metrics-ghc"))
             (hsPkgs."rel8" or (errorHandler.buildDepError "rel8"))

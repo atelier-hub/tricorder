@@ -25,10 +25,8 @@ library
       Tricorder.Effects.Brick
       Tricorder.Effects.BrickChan
       Tricorder.Effects.BuildStore
-      Tricorder.Effects.Client
       Tricorder.Effects.GhciSession
       Tricorder.Effects.GhcPkg
-      Tricorder.Effects.Handler
       Tricorder.Effects.Logging
       Tricorder.Effects.TestRunner
       Tricorder.Effects.UnixSocket
@@ -36,6 +34,7 @@ library
       Tricorder.GhciSession
       Tricorder.GhcPkg.Types
       Tricorder.Observability
+      Tricorder.RPC
       Tricorder.Runtime
       Tricorder.Socket.Client
       Tricorder.Socket.Protocol
@@ -113,7 +112,6 @@ library atelier
       Atelier.Effects.Cache.Config
       Atelier.Effects.Cache.Singleflight
       Atelier.Effects.Chan
-      Atelier.Effects.Client
       Atelier.Effects.Clock
       Atelier.Effects.Conc
       Atelier.Effects.Conc.Traced
@@ -128,7 +126,6 @@ library atelier
       Atelier.Effects.File
       Atelier.Effects.FileSystem
       Atelier.Effects.FileWatcher
-      Atelier.Effects.Handler
       Atelier.Effects.Log
       Atelier.Effects.Monitoring.Metrics
       Atelier.Effects.Monitoring.Metrics.Registry
@@ -138,6 +135,8 @@ library atelier
       Atelier.Effects.Posix.Daemons
       Atelier.Effects.Posix.IO
       Atelier.Effects.Publishing
+      Atelier.Effects.RPC
+      Atelier.Effects.RPC.Unix
       Atelier.Effects.Tally
       Atelier.Effects.UUID
       Atelier.Exception
@@ -199,6 +198,7 @@ library atelier
     , http-types
     , ki
     , list-t
+    , network
     , prometheus-client
     , prometheus-metrics-ghc
     , rel8

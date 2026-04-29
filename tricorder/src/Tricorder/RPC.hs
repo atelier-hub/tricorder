@@ -1,24 +1,35 @@
-module Tricorder.Effects.Handler
-    ( Handler
-    , serveOnce
-    , serveMany
+module Tricorder.RPC
+    ( runClient
     , runHandler
     ) where
 
-import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift)
+import Effectful (IOE)
+import Effectful.Dispatch.Dynamic (LocalEnv, interpretWith, localSeqUnlift)
+import Effectful.Reader.Static (Reader, ask)
 
 import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Effects.FileSystem (FileSystem)
-import Atelier.Effects.Handler (Handler (..), serveMany, serveOnce)
 import Atelier.Effects.Log (Log)
+import Atelier.Effects.RPC (Client, Handler (..))
+import Atelier.Effects.RPC.Unix (runClientUnix)
 import Atelier.Time (Millisecond)
-import Tricorder.BuildState (BuildPhase (..), BuildResult (..), BuildState (..))
+import Tricorder.BuildState (BuildPhase (..), BuildResult (..), BuildState (..), Diagnostic)
 import Tricorder.Effects.BuildStore (BuildStore, getState, waitForAnyChange, waitUntilDone)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
+import Tricorder.Runtime (SocketPath (..))
 import Tricorder.Socket.Protocol (Request (..))
 import Tricorder.SourceLookup (lookupModuleSource)
+
+
+runClient
+    :: (IOE :> es, Reader SocketPath :> es)
+    => Eff (Client req : es) a
+    -> Eff es a
+runClient action = do
+    SocketPath sp <- ask
+    runClientUnix sp action
 
 
 runHandler
@@ -37,24 +48,34 @@ runHandler eff = interpretWith eff \env -> \case
         StatusNow -> getState
         StatusAwait -> awaitResult
         Source ms -> mapM lookupModuleSource ms
-        DiagnosticAt i -> do
-            state <- getState
-            pure $ case state.phase of
-                Done r -> case r.diagnostics !!? (i - 1) of
-                    Nothing -> Left $ "No diagnostic #" <> show i <> " (current build has " <> show (length r.diagnostics) <> ")"
-                    Just d -> Right d
-                _ -> Left "Build in progress"
-    ServeMany Watch callback -> localSeqUnlift env \unlift -> do
-        state0 <- getState
-        unlift (callback state0)
-        let loop prev = do
-                new <- waitForAnyChange prev
-                unlift (callback new)
-                loop new
-        loop state0
+        DiagnosticAt i -> lookupDiagnostic i
+    ServeMany Watch callback -> watchBuildState env callback
 
 
--- internals
+lookupDiagnostic :: (BuildStore :> es) => Int -> Eff es (Either Text Diagnostic)
+lookupDiagnostic i = do
+    state <- getState
+    pure $ case state.phase of
+        Done r -> case r.diagnostics !!? (i - 1) of
+            Nothing -> Left $ "No diagnostic #" <> show i <> " (current build has " <> show (length r.diagnostics) <> ")"
+            Just d -> Right d
+        _ -> Left "Build in progress"
+
+
+watchBuildState
+    :: (BuildStore :> es)
+    => LocalEnv localEs es
+    -> (BuildState -> Eff localEs ())
+    -> Eff es ()
+watchBuildState env callback = localSeqUnlift env \unlift -> do
+    state0 <- getState
+    unlift (callback state0)
+    let loop prev = do
+            new <- waitForAnyChange prev
+            unlift (callback new)
+            loop new
+    loop state0
+
 
 -- | Wait for a completed build, then respond.
 --

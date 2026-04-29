@@ -1,8 +1,11 @@
-module Atelier.Effects.Client
-    ( Client (..)
-    , Multiplicity (..)
+module Atelier.Effects.RPC
+    ( Multiplicity (..)
+    , Client (..)
     , runRequest
     , runStream
+    , Handler (..)
+    , serveOnce
+    , serveMany
     ) where
 
 import Data.Aeson (FromJSON, ToJSON)
@@ -23,3 +26,11 @@ data Client protocol :: Effect where
 
 
 makeEffect ''Client
+
+
+data Handler protocol :: Effect where
+    ServeOnce :: (ToJSON a) => protocol Once a -> Handler protocol m a
+    ServeMany :: protocol Many a -> (a -> m ()) -> Handler protocol m ()
+
+
+makeEffect ''Handler

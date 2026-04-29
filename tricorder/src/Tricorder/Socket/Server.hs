@@ -8,7 +8,7 @@ import Data.ByteString.Lazy qualified as BSL
 
 import Atelier.Component (Component (..), Trigger, defaultComponent)
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.Handler (Handler, serveMany, serveOnce)
+import Atelier.Effects.RPC (Handler, serveMany, serveOnce)
 import Tricorder.Effects.UnixSocket
     ( UnixSocket
     , acceptHandle
