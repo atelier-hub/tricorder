@@ -80,14 +80,16 @@ run =
             else do
                 startDaemon
                 Console.putStrLn "Daemon started."
-        Stop ->
-            stopDaemon >>= \case
-                Left reasons ->
-                    Console.putTextLn
-                        $ T.intercalate "\n"
-                        $ "Was unable to stop the daemon:" : reasons
-                Right result -> do
-                    Console.putTextLn result
+        Stop -> do
+            running <- isDaemonRunning
+            when running
+                $ stopDaemon >>= \case
+                    Left reasons ->
+                        Console.putTextLn
+                            $ T.intercalate "\n"
+                            $ "Was unable to stop the daemon:" : reasons
+                    Right result -> do
+                        Console.putTextLn result
         Status opts -> do
             running <- isDaemonRunning
             if not running then
