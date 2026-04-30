@@ -10,7 +10,7 @@ import Effectful (Effect)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (TMVar)
 import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift)
-import Effectful.Exception (throwIO, try)
+import Effectful.Exception (throwIO, trySync)
 import Effectful.TH (makeEffect)
 import StmContainers.Map (Map)
 
@@ -80,7 +80,7 @@ runSingleflight action = do
                     throwIO exception
                 (True, Nothing) -> do
                     addAttribute @Text "singleflight.outcome" "compute"
-                    result <- unlift $ try @SomeException computation
+                    result <- unlift $ trySync computation
 
                     -- Try to fill the TMVar with result (success or failure) for waiters
                     -- Use tryPutTMVar in case updateCache already filled it
