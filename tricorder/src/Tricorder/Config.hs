@@ -55,6 +55,7 @@ data Config = Config
     , watchDirs :: [FilePath]
     , testTargets :: Maybe [Text]
     , outputFile :: Maybe FilePath
+    , replBuildDir :: FilePath
     }
     deriving stock (Eq, Generic, Show)
     deriving (FromJSON) via WithDefaults (QuietSnake Config)
@@ -68,6 +69,7 @@ instance Default Config where
             , watchDirs = []
             , testTargets = Nothing
             , outputFile = Just "build.json"
+            , replBuildDir = "dist-newstyle/tricorder"
             }
 
 
@@ -92,21 +94,22 @@ resolveCommand :: (FileSystem :> es) => Config -> FilePath -> Eff es Text
 resolveCommand cfg projectRoot =
     case cfg.command of
         Just cmd -> pure cmd
-        Nothing -> detectCommand cfg.targets projectRoot
+        Nothing -> detectCommand cfg.targets cfg.replBuildDir projectRoot
 
 
-detectCommand :: (FileSystem :> es) => [Text] -> FilePath -> Eff es Text
-detectCommand targets projectRoot = do
+detectCommand :: (FileSystem :> es) => [Text] -> FilePath -> FilePath -> Eff es Text
+detectCommand targets replBuildDir projectRoot = do
     hasCabalProject <- doesFileExist (projectRoot </> "cabal.project")
     cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
     hasStack <- doesFileExist (projectRoot </> "stack.yaml")
     let targetStr = if null targets then "all" else unwords targets
+        buildDirFlag = "--builddir " <> toText replBuildDir <> " "
     pure
         $ if
-            | hasCabalProject -> "cabal repl --enable-multi-repl " <> targetStr
-            | not (null cabalFiles) -> "cabal repl --enable-multi-repl " <> targetStr
+            | hasCabalProject -> "cabal repl --enable-multi-repl " <> buildDirFlag <> targetStr
+            | not (null cabalFiles) -> "cabal repl --enable-multi-repl " <> buildDirFlag <> targetStr
             | hasStack -> "stack ghci " <> targetStr
-            | otherwise -> "cabal repl " <> targetStr
+            | otherwise -> "cabal repl " <> buildDirFlag <> targetStr
 
 
 -- | Resolve the directories to watch.
