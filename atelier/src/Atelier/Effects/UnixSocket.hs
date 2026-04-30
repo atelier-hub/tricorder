@@ -1,4 +1,4 @@
-module Tricorder.Effects.UnixSocket
+module Atelier.Effects.UnixSocket
     ( -- * Effect
       UnixSocket
     , bindSocket

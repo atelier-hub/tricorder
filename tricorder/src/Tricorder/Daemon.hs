@@ -9,7 +9,6 @@ import Effectful (IOE)
 import Effectful.Reader.Static (Reader, ask)
 
 import Atelier.Component (runSystem)
-import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce)
@@ -19,14 +18,14 @@ import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Effects.RPC (Handler)
+import Atelier.Effects.UnixSocket (UnixSocket)
 import Atelier.Time (Millisecond)
 import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
-import Tricorder.Effects.UnixSocket (UnixSocket)
-import Tricorder.GhcPkg.Types (ModuleName, PackageId)
+import Tricorder.RPC.Protocol (Protocol)
 import Tricorder.Runtime (PidFile, SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning)
 
@@ -42,16 +41,14 @@ import Tricorder.Watcher qualified as Watcher
 -- Blocks forever; all work happens inside the component system.
 runDaemon
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
        , Debounce FilePath :> es
        , Delay :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , GhcPkg :> es
        , GhciSession :> es
+       , Handler Protocol :> es
        , IOE :> es
        , Log :> es
        , Reader Config :> es
@@ -75,8 +72,6 @@ runDaemon =
 -- No-op if the daemon is already running (caller should check beforehand).
 startDaemon
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
        , Daemons :> es
@@ -84,8 +79,8 @@ startDaemon
        , Delay :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , GhcPkg :> es
        , GhciSession :> es
+       , Handler Protocol :> es
        , IOE :> es
        , Log :> es
        , Reader Config :> es

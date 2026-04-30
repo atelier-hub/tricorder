@@ -128,11 +128,13 @@ internal-libraries:
     - http-types
     - ki
     - list-t
+    - network
     - prometheus-client
     - prometheus-metrics-ghc
     - rel8
     - stm
     - stm-containers
+    - template-haskell
     - text
     - time
     - time-units
