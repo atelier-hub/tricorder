@@ -20,10 +20,8 @@ import Tricorder.Effects.GhciSession
     ( GhciSession
     , LoadResult (..)
     , extractTitle
-    , reloadGhci
     , runGhciSessionScripted
-    , startGhci
-    , stopGhci
+    , withGhci
     )
 import Tricorder.Effects.TestRunner (TestRunner, runTestRunnerScripted)
 import Tricorder.GhciSession (filterToWatchDirs, mergeDiagnostics, sessionListener)
@@ -44,57 +42,54 @@ spec_GhciSession = do
 
 testScripted :: Spec
 testScripted = do
-    describe "startGhci" do
-        it "returns scripted messages" do
-            LoadResult {diagnostics = msgs} <-
-                runScripted [simpleResult [errMsg]]
-                    $ startGhci "cabal repl" "/"
-            msgs `shouldBe` [errMsg]
+    describe "withGhci" do
+        describe "initial load" do
+            it "returns scripted messages" do
+                LoadResult {diagnostics = msgs} <-
+                    runScripted [simpleResult [errMsg]]
+                        $ withGhci "cabal repl" "/" \initial _ -> pure initial
+                msgs `shouldBe` [errMsg]
 
-        it "returns empty list when scripted result has no messages" do
-            LoadResult {diagnostics = msgs} <-
-                runScripted [simpleResult []]
-                    $ startGhci "cabal repl" "/"
-            msgs `shouldBe` []
+            it "returns empty list when scripted result has no messages" do
+                LoadResult {diagnostics = msgs} <-
+                    runScripted [simpleResult []]
+                        $ withGhci "cabal repl" "/" \initial _ -> pure initial
+                msgs `shouldBe` []
 
-        it "throws when scripted result is Left" do
-            result <-
-                runScripted [Left (toException boom)]
-                    $ try @ErrorCall
-                    $ startGhci "cabal repl" "/"
-            result `shouldBe` Left boom
+            it "throws when scripted result is Left" do
+                result <-
+                    runScripted [Left (toException boom)]
+                        $ try @ErrorCall
+                        $ withGhci "cabal repl" "/" \initial _ -> pure initial
+                result `shouldBe` Left boom
 
-    describe "reloadGhci" do
-        it "returns scripted messages" do
-            LoadResult {diagnostics = msgs} <- runScripted [simpleResult [warnMsg]] reloadGhci
-            msgs `shouldBe` [warnMsg]
+        describe "reloading" do
+            it "returns scripted messages" do
+                LoadResult {diagnostics = msgs} <-
+                    runScripted [simpleResult [warnMsg], simpleResult [errMsg]]
+                        $ withGhci "cabal repl" "/" \_ reload -> reload
+                msgs `shouldBe` [errMsg]
 
-        it "throws when scripted result is Left" do
-            result <-
-                runScripted [Left (toException boom)]
-                    $ try @ErrorCall reloadGhci
-            result `shouldBe` Left boom
-
-    describe "stopGhci" do
-        it "is always a no-op and does not consume from the queue" do
-            LoadResult {diagnostics = msgs} <- runScripted [simpleResult [errMsg]] do
-                stopGhci
-                startGhci "cabal repl" "/"
-            msgs `shouldBe` [errMsg]
+            it "throws when scripted result is Left" do
+                result <-
+                    runScripted [Left (toException boom)]
+                        $ try @ErrorCall
+                        $ withGhci "cabal repl" "/" \_ reload -> reload
+                result `shouldBe` Left boom
 
     describe "sequencing" do
         it "consumes results in order across mixed operations" do
             (a, b) <- runScripted [simpleResult [errMsg], simpleResult [warnMsg]] do
-                LoadResult {diagnostics = a} <- startGhci "cabal repl" "/"
-                LoadResult {diagnostics = b} <- reloadGhci
-                pure (a, b)
+                withGhci "cabal repl" "/" \LoadResult {diagnostics = a} reload -> do
+                    LoadResult {diagnostics = b} <- reload
+                    pure (a, b)
             a `shouldBe` [errMsg]
             b `shouldBe` [warnMsg]
 
         it "recover scenario: error then success" do
             result <- runScripted [Left (toException boom), simpleResult []] do
-                r1 <- try @ErrorCall $ startGhci "cabal repl" "/"
-                LoadResult {diagnostics = r2} <- startGhci "cabal repl" "/"
+                r1 <- try @ErrorCall $ withGhci "cabal repl" "/" \i _ -> pure i
+                LoadResult {diagnostics = r2} <- withGhci "cabal repl" "/" \i _ -> pure i
                 pure (r1, r2)
             fst result `shouldSatisfy` isLeft
             snd result `shouldBe` []
