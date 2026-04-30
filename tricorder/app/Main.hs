@@ -18,6 +18,7 @@ import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.FileWatcher (runFileWatcherIO)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
 import Atelier.Effects.Posix.Daemons (runDaemons)
+import Atelier.Effects.UnixSocket (runUnixSocketIO)
 import Tricorder.Arguments (runArguments)
 import Tricorder.BuildState (runDaemonInfo)
 import Tricorder.Config (runConfig)
@@ -28,7 +29,7 @@ import Tricorder.Effects.GhcPkg (runGhcPkgIO)
 import Tricorder.Effects.GhciSession (runGhciSessionIO)
 import Tricorder.Effects.Logging (runLogging)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
-import Tricorder.Effects.UnixSocket (runUnixSocketIO)
+import Tricorder.RPC (runClient, runHandler)
 import Tricorder.Runtime (runPidFile, runProjectRoot, runRuntimeDir, runSocketPath)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
@@ -70,4 +71,6 @@ main =
         . runBuildStore
         . runArguments
         . runUnixSocketIO
+        . runClient
+        . runHandler
         $ Tricorder.run

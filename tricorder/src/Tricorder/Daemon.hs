@@ -12,26 +12,24 @@ import Effectful.Timeout (Timeout, timeout)
 import Effectful.Writer.Static.Local (runWriter, tell)
 
 import Atelier.Component (runSystem)
-import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Exit (Exit)
-import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Effects.RPC (Client, Handler)
+import Atelier.Effects.UnixSocket (UnixSocket)
 import Atelier.Time (Millisecond)
 import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
-import Tricorder.Effects.UnixSocket (UnixSocket)
-import Tricorder.GhcPkg.Types (ModuleName, PackageId)
+import Tricorder.RPC.Protocol (Protocol)
 import Tricorder.Runtime (PidFile, SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning, requestShutdown)
 
@@ -47,8 +45,6 @@ import Tricorder.Watcher qualified as Watcher
 -- Blocks forever; all work happens inside the component system.
 runDaemon
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
        , Debounce FilePath :> es
@@ -56,8 +52,8 @@ runDaemon
        , Exit :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , GhcPkg :> es
        , GhciSession :> es
+       , Handler Protocol :> es
        , IOE :> es
        , Log :> es
        , Reader Config :> es
@@ -81,8 +77,6 @@ runDaemon =
 -- No-op if the daemon is already running (caller should check beforehand).
 startDaemon
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
        , Clock :> es
        , Conc :> es
        , Daemons :> es
@@ -91,8 +85,8 @@ startDaemon
        , Exit :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , GhcPkg :> es
        , GhciSession :> es
+       , Handler Protocol :> es
        , IOE :> es
        , Log :> es
        , Reader Config :> es
@@ -114,30 +108,27 @@ startDaemon = do
 -- 2. Then attempts to stop the daemon by sending `SIGKILL` to its process.
 stopDaemon
     :: forall es
-     . ( Daemons :> es
+     . ( Client Protocol :> es
+       , Daemons :> es
        , Delay :> es
-       , File :> es
        , Reader PidFile :> es
-       , Reader SocketPath :> es
        , Timeout :> es
-       , UnixSocket :> es
        )
     => Eff es (Either [Text] Text)
 stopDaemon = do
-    SocketPath sockPath <- ask
     pidFile <- ask
     res <-
         runWriter @[Text]
             $ fmap rightToMaybe
             $ runNonDet OnEmptyKeep
-            $ requestStop sockPath pidFile
+            $ requestStop pidFile
                 <|> sendKill pidFile
     case res of
         (Just r, _) -> pure $ Right r
         (Nothing, es) -> pure $ Left es
   where
-    requestStop sockPath pidFile = do
-        timeout1second (requestShutdown sockPath) >>= \_ -> do
+    requestStop pidFile = do
+        timeout1second requestShutdown >>= \_ -> do
             didStop <- fmap isJust $ timeout 3_000_000 $ waitForStop pidFile
             if didStop then
                 pure "Daemon stopped."

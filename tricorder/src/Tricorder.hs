@@ -6,19 +6,19 @@ import Effectful.Timeout (Timeout)
 
 import Data.Text qualified as T
 
-import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Console (Console)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Exit (Exit)
-import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.FileWatcher (FileWatcher)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Effects.RPC (Client, Handler)
+import Atelier.Effects.UnixSocket (UnixSocket)
 import Tricorder.Arguments (Command (..))
 import Tricorder.BuildState (BuildState (..), DaemonInfo (..))
 import Tricorder.CLI (showLog, showSource, showStatus)
@@ -27,11 +27,9 @@ import Tricorder.Daemon (startDaemon, stopDaemon, waitForDaemon)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
-import Tricorder.Effects.UnixSocket (UnixSocket)
-import Tricorder.GhcPkg.Types (ModuleName, PackageId)
+import Tricorder.RPC.Protocol (Protocol)
 import Tricorder.Runtime (PidFile (..), SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning, queryStatus)
 import Tricorder.UI (viewUi)
@@ -44,8 +42,7 @@ run
     :: ( Brick :> es
        , BrickChan :> es
        , BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
+       , Client Protocol :> es
        , Clock :> es
        , Conc :> es
        , Console :> es
@@ -53,11 +50,10 @@ run
        , Debounce FilePath :> es
        , Delay :> es
        , Exit :> es
-       , File :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , GhcPkg :> es
        , GhciSession :> es
+       , Handler Protocol :> es
        , IOE :> es
        , Log :> es
        , Reader Command :> es
@@ -98,8 +94,7 @@ run =
             running <- isDaemonRunning
             mLogFile <-
                 if running then do
-                    SocketPath sp <- ask
-                    result <- queryStatus sp
+                    result <- queryStatus
                     pure $ case result of
                         Right state -> state.daemonInfo.logFile
                         Left _ -> Nothing
