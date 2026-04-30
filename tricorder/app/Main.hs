@@ -63,11 +63,11 @@ main =
         . runTestRunnerIO
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.ModuleName) @Text
+        . runBuildStore
         . runGhciSessionIO
         . runFileWatcherIO
         . runDebounce
         . runGhcPkgIO
-        . runBuildStore
         . runArguments
         . runUnixSocketIO
         $ Tricorder.run

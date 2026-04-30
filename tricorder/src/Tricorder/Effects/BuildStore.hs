@@ -85,7 +85,7 @@ runBuildStoreSTM eff = do
 
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
-        Building -> True
+        Building _ -> True
         Restarting -> True
         Testing _ -> True
         Done _ -> False
@@ -111,7 +111,7 @@ runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef} =
   where
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
-        Building -> True
+        Building _ -> True
         Restarting -> True
         Testing _ -> True
         Done _ -> False
@@ -163,7 +163,7 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
   where
     isBuilding :: BuildState -> Bool
     isBuilding s = case s.phase of
-        Building -> True
+        Building _ -> True
         Restarting -> True
         Testing _ -> True
         Done _ -> False

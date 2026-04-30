@@ -2,6 +2,7 @@ module Tricorder.BuildState
     ( BuildId (..)
     , BuildState (..)
     , BuildPhase (..)
+    , BuildProgress (..)
     , BuildResult (..)
     , TestRun (..)
     , TestOutcome (..)
@@ -94,8 +95,16 @@ data BuildResult = BuildResult
     deriving anyclass (FromJSON, ToJSON)
 
 
+data BuildProgress = BuildProgress
+    { compiled :: Int
+    , total :: Int
+    }
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass (FromJSON, ToJSON)
+
+
 data BuildPhase
-    = Building
+    = Building (Maybe BuildProgress)
     | Restarting
     | Testing BuildResult
     | Done BuildResult
@@ -143,7 +152,7 @@ instance ToJSON Severity where
 
 
 stateLabel :: BuildPhase -> Text
-stateLabel Building = "building"
+stateLabel (Building _) = "building"
 stateLabel Restarting = "restarting"
 stateLabel (Testing _) = "testing"
 stateLabel (Done result)
@@ -168,6 +177,6 @@ initialBuildState :: DaemonInfo -> BuildState
 initialBuildState di =
     BuildState
         { buildId = BuildId 0
-        , phase = Building
+        , phase = Building Nothing
         , daemonInfo = di
         }

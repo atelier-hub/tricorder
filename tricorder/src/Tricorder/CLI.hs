@@ -64,7 +64,7 @@ showStatus opts = do
     when (opts.wait == WaitForBuild && opts.format == TextOutput) $ do
         current <- queryStatus sockPath
         case current of
-            Right BuildState {phase = Building} -> Console.putStrLn "Building..."
+            Right BuildState {phase = Building _} -> Console.putStrLn "Building..."
             Right BuildState {phase = Restarting} -> Console.putStrLn "Restarting..."
             Right BuildState {phase = Testing _} -> Console.putStrLn "Testing..."
             _ -> pure ()
@@ -83,7 +83,7 @@ showStatus opts = do
                     renderText opts.verbosity opts.expand state
   where
     renderText verbosity expand state = case state.phase of
-        Building -> Console.putStrLn "Building..."
+        Building _ -> Console.putStrLn "Building..."
         Restarting -> Console.putStrLn "Restarting..."
         Testing _ -> Console.putStrLn "Testing..."
         Done r -> do

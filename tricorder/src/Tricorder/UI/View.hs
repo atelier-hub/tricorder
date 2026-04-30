@@ -32,6 +32,7 @@ import Data.Text qualified as T
 import Atelier.Effects.Clock (TimeZone)
 import Tricorder.BuildState
     ( BuildPhase (..)
+    , BuildProgress (..)
     , BuildResult (..)
     , BuildState (..)
     , DaemonInfo (..)
@@ -167,7 +168,8 @@ viewWatchDir dir = hBox [txt "- ", txt $ toText displayDir]
 
 viewBuildPhase :: TimeZone -> BuildPhase -> Widget Viewports
 viewBuildPhase tz = \case
-    Building -> warn $ txt "Building..."
+    Building Nothing -> warn $ txt "Building..."
+    Building (Just p) -> warn $ txt $ "Building (" <> show p.compiled <> "/" <> show p.total <> ")..."
     Restarting -> warn $ txt "Restarting..."
     Testing result -> vBoxSpaced 1 [viewBuildResult tz result, viewTestRuns result.testRuns]
     Done result -> vBoxSpaced 1 [viewBuildResult tz result, viewTestRuns result.testRuns]

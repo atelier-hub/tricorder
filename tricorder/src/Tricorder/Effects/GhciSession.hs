@@ -18,7 +18,7 @@ module Tricorder.Effects.GhciSession
 
 import Control.Exception (throwIO)
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
-import Effectful (Effect, IOE)
+import Effectful (Effect, IOE, withEffToIO)
 import Effectful.Dispatch.Dynamic (reinterpret)
 import Effectful.State.Static.Shared (State, evalState, get, put)
 import Effectful.TH (makeEffect)
@@ -30,9 +30,13 @@ import Data.List qualified as List
 import Data.Set qualified as Set
 import Language.Haskell.Ghcid qualified as Ghcid
 
+import Atelier.Effects.Conc (concStrat)
+import Atelier.Effects.Log (Log)
 import Atelier.Exception (trySyncIO)
-import Tricorder.BuildState (Diagnostic (..), Severity (..))
+import Tricorder.BuildState (BuildPhase (..), BuildProgress (..), Diagnostic (..), Severity (..))
+import Tricorder.Effects.BuildStore (BuildStore, getState, setPhase)
 
+import Atelier.Effects.Log qualified as Log
 import Tricorder.BuildState qualified as BuildState
 
 
@@ -63,12 +67,19 @@ makeEffect ''GhciSession
 
 -- | Production interpreter backed by the real ghcid library.
 -- Manages the 'Ghcid.Ghci' handle via 'State'.
-runGhciSessionIO :: (IOE :> es) => Eff (GhciSession : es) a -> Eff es a
+runGhciSessionIO :: (BuildStore :> es, IOE :> es, Log :> es) => Eff (GhciSession : es) a -> Eff es a
 runGhciSessionIO = reinterpret (evalState (Nothing :: Maybe Ghcid.Ghci)) $ \_ -> \case
     StartGhci cmd dir -> do
         mOld <- get
         whenJust mOld \old -> liftIO $ stopGhciSilently old
-        (ghci, loads) <- liftIO $ Ghcid.startGhci (toString cmd) (Just dir) (\_ _ -> pure ())
+        (ghci, loads) <- withEffToIO concStrat \unlift ->
+            Ghcid.startGhci (toString cmd) (Just dir) \_ line -> do
+                unlift $ Log.debug $ "GhciSession callback: " <> toText line
+                whenJust (parseProgress line) \(n, m) ->
+                    unlift do
+                        Log.debug $ "GhciSession: progress " <> show n <> "/" <> show m
+                        bs <- getState
+                        setPhase bs.buildId (Building (Just (BuildProgress {compiled = n, total = m})))
         put (Just ghci)
         liftIO $ collectResult ghci loads
     ReloadGhci ->
@@ -161,6 +172,29 @@ toRelative base path
     joinPath = List.foldr1 (</>)
 
 
+-- | Parse @"[N of M] Compiling ..."@ progress lines from GHCi output.
+--
+-- GHC pads the module index for alignment (e.g. @"[ 1 of 47]"@), so we
+-- extract the content between @[@ and @]@ before splitting on whitespace.
+parseProgress :: String -> Maybe (Int, Int)
+parseProgress line = do
+    rest <- List.stripPrefix "[" (dropWhile isSpace (stripAnsi line))
+    let (inside, after) = break (== ']') rest
+    guard (not (null after))
+    guard ("Compiling" `List.isPrefixOf` dropWhile isSpace (drop 1 after))
+    case words (toText inside) of
+        [nTxt, "of", mTxt] -> (,) <$> readMaybe (toString nTxt) <*> readMaybe (toString mTxt)
+        _ -> Nothing
+
+
+-- | Strip ANSI escape sequences of the form @ESC [ \<params\> \<letter\>@.
+stripAnsi :: String -> String
+stripAnsi [] = []
+stripAnsi ('\ESC' : '[' : rest) =
+    stripAnsi (drop 1 (dropWhile (not . isAlpha) rest))
+stripAnsi (c : rest) = c : stripAnsi rest
+
+
 -- | Extract a short human-readable title from ghcid's 'loadMessage'.
 --
 -- ghcid always places the GHCi header line (@"file:line:col: severity: rest"@) as
@@ -222,10 +256,3 @@ extractTitle (header : body) =
     isSourceLine s = case dropWhile (\c -> isDigit c || c == ' ') s of
         ('|' : _) -> True
         _ -> not (null s) && all (\c -> c `elem` ("^~_ " :: String)) s
-
-    -- Strip ANSI escape sequences of the form ESC [ <params> <letter>.
-    stripAnsi :: String -> String
-    stripAnsi [] = []
-    stripAnsi ('\ESC' : '[' : rest) =
-        stripAnsi (drop 1 (dropWhile (not . isAlpha) rest))
-    stripAnsi (c : rest) = c : stripAnsi rest
