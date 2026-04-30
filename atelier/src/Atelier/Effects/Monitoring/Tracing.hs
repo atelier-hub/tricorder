@@ -41,7 +41,7 @@ module Atelier.Effects.Monitoring.Tracing
     , SpanContext
     ) where
 
-import Data.Aeson (FromJSON)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
 import Effectful (Effect, IOE, Limit (..), Persistence (..), UnliftStrategy (..))
 import Effectful.Dispatch.Dynamic (interposeWith, interpret, interpretWith, localSeqUnlift, localUnlift)
@@ -57,6 +57,7 @@ import OpenTelemetry.Trace qualified as OT
 import OpenTelemetry.Trace.Core qualified as OT
 
 import Atelier.Types.QuietSnake (QuietSnake (..))
+import Atelier.Types.WithDefaults (WithDefaults (..))
 
 import Atelier.Effects.Monitoring.Tracing.Provider qualified as Provider
 
@@ -71,7 +72,8 @@ data TracingConfig = TracingConfig
     -- ^ OTLP endpoint (e.g., "http://localhost:4318")
     }
     deriving stock (Eq, Generic, Show)
-    deriving (FromJSON) via QuietSnake TracingConfig
+    deriving (ToJSON) via QuietSnake TracingConfig
+    deriving (FromJSON) via WithDefaults (QuietSnake TracingConfig)
 
 
 instance Default TracingConfig where
