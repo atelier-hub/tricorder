@@ -1,6 +1,7 @@
 module Tricorder.UI.State
     ( Viewports (..)
     , State (..)
+    , Processed (..)
     , init
     , Collapsible (..)
     , invertCollapsible
@@ -20,11 +21,17 @@ data Viewports
 
 
 data State = State
-    { buildState :: Maybe BuildState
+    { buildState :: Processed Text BuildState
     , timeZone :: TimeZone
     , daemonInfoView :: Collapsible
     , showHelp :: Bool
     }
+
+
+data Processed e a
+    = Waiting
+    | Failure e
+    | Success a
 
 
 data Collapsible
@@ -43,7 +50,7 @@ init = do
     tz <- Clock.currentTimeZone
     pure
         State
-            { buildState = Nothing
+            { buildState = Waiting
             , timeZone = tz
             , daemonInfoView = Collapsed
             , showHelp = False

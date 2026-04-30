@@ -48,11 +48,12 @@ import Graphics.Vty qualified as Vty
 
 import Tricorder.BuildState (BuildState (..))
 import Tricorder.UI.Misc (warn)
-import Tricorder.UI.State (State (..), Viewports (..), invertCollapsible)
+import Tricorder.UI.State (Processed (..), State (..), Viewports (..), invertCollapsible)
 
 
 data Event
     = NewBuildState BuildState
+    | FailedBuild Text
 
 
 handleEvent :: BrickEvent Viewports Event -> EventM Viewports State ()
@@ -64,7 +65,9 @@ handleEvent _ = pure ()
 handleAppEvent :: Event -> EventM Viewports State ()
 handleAppEvent = \case
     NewBuildState bs ->
-        modify \s -> s {buildState = Just bs}
+        modify \s -> s {buildState = Success bs}
+    FailedBuild reason ->
+        modify \s -> s {buildState = Failure reason}
 
 
 data KeyEvent

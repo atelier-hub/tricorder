@@ -8,6 +8,7 @@ import Brick
     , attrName
     , neverShowCursor
     )
+import Effectful.Error.Static (runErrorWith)
 import Effectful.Reader.Static (Reader, ask)
 
 import Graphics.Vty.Attributes qualified as Attr
@@ -20,7 +21,7 @@ import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.Runtime (SocketPath (..))
-import Tricorder.Socket.Client (queryWatch)
+import Tricorder.Socket.Client (WatchError, queryWatch)
 import Tricorder.UI.Event (Event (..), handleEvent)
 import Tricorder.UI.State (State (..), Viewports (..))
 import Tricorder.UI.View (view)
@@ -50,6 +51,8 @@ viewUi = do
     Conc.scoped do
         _ <-
             Conc.fork
+                $ runErrorWith @WatchError
+                    (\_ e -> BrickChan.writeBChan chan $ FailedBuild $ show e)
                 $ queryWatch sockPath
                 $ BrickChan.writeBChan chan . NewBuildState
         void

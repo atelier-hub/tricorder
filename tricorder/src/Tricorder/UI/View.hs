@@ -6,7 +6,6 @@ import Brick
     , ViewportType (..)
     , Widget
     , attrName
-    , str
     , vBox
     , viewport
     )
@@ -43,20 +42,30 @@ import Tricorder.BuildState
     )
 import Tricorder.UI.Event (viewKeybindings)
 import Tricorder.UI.Misc (emphasis, err, hBoxSpaced, ok, subtle, vBoxSpaced, warn)
-import Tricorder.UI.State (Collapsible (..), State (..), Viewports (..))
+import Tricorder.UI.State (Collapsible (..), Processed (..), State (..), Viewports (..))
 
 import Tricorder.UI.Event qualified as Event
 
 
 view :: State -> [Widget Viewports]
 view ws =
-    [ case ws.buildState of
-        Nothing -> str "Waiting for build..."
-        Just bs ->
-            if ws.showHelp then
-                viewHelp
-            else
-                viewBuildState ws bs
+    [ if ws.showHelp then
+        viewHelp
+      else case ws.buildState of
+        Waiting ->
+            vBoxSpaced
+                1
+                [ txt "Waiting for build..."
+                , viewHint
+                ]
+        Failure reason ->
+            vBoxSpaced
+                1
+                [ txt $ "Error when contacting daemon: " <> reason
+                , viewHint
+                ]
+        Success bs ->
+            viewBuildState ws bs
     ]
 
 
