@@ -4,6 +4,7 @@ import Data.Default (def)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
 import Effectful.Reader.Static (runReader)
+import Effectful.Timeout (runTimeout)
 
 import Atelier.Effects.Cache (runCacheTtl)
 import Atelier.Effects.Clock (runClock)
@@ -38,6 +39,7 @@ import Tricorder.GhcPkg.Types qualified as GhcPkg
 main :: IO ()
 main =
     runEff
+        . runTimeout
         . runConcurrent
         . runConc
         . runBrickChan

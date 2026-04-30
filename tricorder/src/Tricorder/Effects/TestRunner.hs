@@ -14,7 +14,7 @@ module Tricorder.Effects.TestRunner
 import Control.Exception (throwIO)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (interpretWith_, reinterpret)
-import Effectful.Exception (try)
+import Effectful.Exception (trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, evalState, get, put)
 import Effectful.TH (makeEffect)
@@ -45,7 +45,7 @@ runTestRunnerIO act = do
     ProjectRoot projectRoot <- ask
     interpretWith_ act \case
         RunTestSuite target -> do
-            result <- try @SomeException $ liftIO do
+            result <- trySync $ liftIO do
                 let config =
                         setStdin (byteStringInput ":main\n:quit\n")
                             $ setWorkingDir projectRoot

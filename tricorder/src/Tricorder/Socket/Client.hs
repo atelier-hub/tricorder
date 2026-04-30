@@ -4,6 +4,7 @@ module Tricorder.Socket.Client
     , queryWatch
     , querySource
     , queryDiagnostic
+    , requestShutdown
     , isDaemonRunning
     ) where
 
@@ -88,6 +89,16 @@ queryDiagnostic sockPath idx = withConnection sockPath \h -> do
     case eitherDecode (BSL.fromStrict (encodeUtf8 (toText line))) of
         Left err -> pure $ Left (toText err)
         Right d -> pure $ Right d
+
+
+requestShutdown :: (File :> es, UnixSocket :> es) => FilePath -> Eff es (Either Text ())
+requestShutdown sockPath = withConnection sockPath \h -> do
+    sendQuery h Quit
+    line <- File.hGetLine h
+    if eitherDecode (BSL.fromStrict (encodeUtf8 line)) == Right True then
+        pure $ Right ()
+    else
+        pure $ Left "Failed to request shutdown"
 
 
 isDaemonRunning :: (Daemons :> es, Reader PidFile :> es) => Eff es Bool

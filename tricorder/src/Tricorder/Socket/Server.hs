@@ -1,7 +1,7 @@
 module Tricorder.Socket.Server (component, SocketRemoved (..)) where
 
 import Data.Aeson (ToJSON, decode, encode)
-import Effectful.Exception (finally)
+import Effectful.Exception (IOException, finally)
 import Effectful.Reader.Static (Reader, ask)
 
 import Data.ByteString.Lazy qualified as BSL
@@ -10,6 +10,7 @@ import Atelier.Component (Component (..), Trigger, defaultComponent)
 import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Delay (Delay, wait)
+import Atelier.Effects.Exit (Exit, exitSuccess)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Log (Log)
 import Atelier.Time (Millisecond)
@@ -30,6 +31,7 @@ import Tricorder.Socket.Protocol (DiagnosticQuery (..), ErrorResponse (..), Quer
 import Tricorder.SourceLookup (ModuleName, PackageId, lookupModuleSource)
 
 import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.Log qualified as Log
 
 
 data SocketRemoved = SocketRemoved
@@ -45,6 +47,7 @@ component
        , Cache ModuleName PackageId :> es
        , Conc :> es
        , Delay :> es
+       , Exit :> es
        , FileSystem :> es
        , GhcPkg :> es
        , Log :> es
@@ -68,6 +71,7 @@ acceptTrigger
        , Cache ModuleName PackageId :> es
        , Conc :> es
        , Delay :> es
+       , Exit :> es
        , FileSystem :> es
        , GhcPkg :> es
        , Log :> es
@@ -80,7 +84,8 @@ acceptTrigger = do
     sock <- bindSocket sockPath
     forever do
         h <- acceptHandle sock
-        void $ Conc.forkTry @SomeException $ handleConnection h `finally` closeHandle h
+        void $ Conc.forkTry @IOException do
+            handleConnection h `finally` closeHandle h
 
 
 handleConnection
@@ -88,6 +93,7 @@ handleConnection
        , Cache (PackageId, ModuleName) Text :> es
        , Cache ModuleName PackageId :> es
        , Delay :> es
+       , Exit :> es
        , FileSystem :> es
        , GhcPkg :> es
        , Log :> es
@@ -107,6 +113,7 @@ dispatch
        , Cache (PackageId, ModuleName) Text :> es
        , Cache ModuleName PackageId :> es
        , Delay :> es
+       , Exit :> es
        , FileSystem :> es
        , GhcPkg :> es
        , Log :> es
@@ -121,6 +128,14 @@ dispatch query h = case query of
     Watch -> watchStream h
     Source moduleNames -> respondSource moduleNames h
     DiagnosticAt dq -> respondDiagnostic dq.index h
+    Quit -> quit h
+
+
+quit :: (Exit :> es, Log :> es, UnixSocket :> es) => Handle -> Eff es ()
+quit h = do
+    sendJson h True
+    Log.info "Shutting down."
+    exitSuccess
 
 
 respondOnce :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()

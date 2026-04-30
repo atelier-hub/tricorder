@@ -7,7 +7,7 @@ module Tricorder.GhciSession
 
 import Control.Monad (foldM)
 import Data.Time (diffUTCTime)
-import Effectful.Exception (throwIO, try)
+import Effectful.Exception (throwIO, trySync)
 import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (isAbsolute, (</>))
 
@@ -121,7 +121,7 @@ sessionListener cmd projectRoot watchDirs testTargets = startSession (BuildId 1)
         Log.info $ "Starting GHCi session #" <> show n <> ": " <> cmd
         setPhase (BuildId n) Building
         t0 <- Clock.currentTime
-        result <- try @SomeException $ GhciSession.startGhci cmd projectRoot
+        result <- trySync $ GhciSession.startGhci cmd projectRoot
         Log.debug $ "GhciSession.startGhci returned (session #" <> show n <> ")"
         case result of
             Left ex -> do
@@ -150,18 +150,18 @@ sessionListener cmd projectRoot watchDirs testTargets = startSession (BuildId 1)
             CabalChange -> do
                 Log.info "Cabal file changed; restarting GHCi session"
                 setPhase (BuildId n) Restarting
-                void $ try @SomeException GhciSession.stopGhci
+                void $ trySync GhciSession.stopGhci
                 startSession nextId
             SourceChange -> do
                 Log.debug $ "GhciSession: dirty flag set, reloading"
                 setPhase (BuildId n) Building
                 t0 <- Clock.currentTime
-                result <- try @SomeException GhciSession.reloadGhci
+                result <- trySync GhciSession.reloadGhci
                 case result of
                     Left ex -> do
                         when (isGracefulShutdown ex) $ throwIO ex
                         Log.warn "GHCi session died; restarting"
-                        void $ try @SomeException GhciSession.stopGhci
+                        void $ trySync GhciSession.stopGhci
                         startSession nextId
                     Right loadResult -> do
                         t1 <- Clock.currentTime

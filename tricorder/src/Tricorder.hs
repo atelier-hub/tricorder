@@ -2,6 +2,9 @@ module Tricorder (run) where
 
 import Effectful (IOE)
 import Effectful.Reader.Static (Reader, ask, asks)
+import Effectful.Timeout (Timeout)
+
+import Data.Text qualified as T
 
 import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Clock (Clock)
@@ -34,7 +37,6 @@ import Tricorder.Socket.Client (isDaemonRunning, queryStatus)
 import Tricorder.UI (viewUi)
 
 import Atelier.Effects.Console qualified as Console
-import Atelier.Effects.FileSystem qualified as FileSystem
 import Tricorder.Observability qualified as Observability
 
 
@@ -64,6 +66,7 @@ run
        , Reader PidFile :> es
        , Reader SocketPath :> es
        , TestRunner :> es
+       , Timeout :> es
        , Tracing :> es
        , UnixSocket :> es
        )
@@ -77,11 +80,14 @@ run =
             else do
                 startDaemon
                 Console.putStrLn "Daemon started."
-        Stop -> do
-            stopDaemon
-            Console.putStrLn "Daemon stopped."
-            FileSystem.removeFile =<< asks getSocketPath
-            FileSystem.removeFile =<< asks getPidFile
+        Stop ->
+            stopDaemon >>= \case
+                Left reasons ->
+                    Console.putTextLn
+                        $ T.intercalate "\n"
+                        $ "Was unable to stop the daemon:" : reasons
+                Right result -> do
+                    Console.putTextLn result
         Status opts -> do
             running <- isDaemonRunning
             if not running then

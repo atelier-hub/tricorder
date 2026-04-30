@@ -16,7 +16,6 @@ module Tricorder.Effects.UnixSocket
     , SocketScript (..)
     ) where
 
-import Control.Exception (try)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift, reinterpret)
 import Effectful.Exception (finally)
@@ -38,6 +37,8 @@ import System.Directory (doesPathExist, removeFile)
 import System.IO (hClose, hGetLine, hPutStrLn, hSetEncoding, utf8)
 
 import Network.Socket qualified as Net
+
+import Atelier.Exception (trySyncIO)
 
 
 data UnixSocket :: Effect where
@@ -91,7 +92,7 @@ runUnixSocketIO eff = interpretWith eff \env -> \case
     SendLine h line -> liftIO $ hPutStrLn h (toString line) >> hFlush h
     CloseHandle h -> liftIO $ hClose h
     RemoveSocketFile path ->
-        liftIO $ void $ try @SomeException $ removeFile path
+        liftIO $ void $ trySyncIO $ removeFile path
     SocketFileExists path ->
         liftIO $ doesPathExist path
 

@@ -5,7 +5,6 @@ module Atelier.Testing.Database
 where
 
 import Control.Concurrent (MVar, forkIO, modifyMVar, newEmptyMVar, newMVar, putMVar, takeMVar, threadDelay, tryPutMVar, withMVar)
-import Control.Exception (try)
 import Data.String.Conversions (cs)
 import Database.PostgreSQL.Simple.Options (Options (..))
 import Hasql.Session (Session, statement)
@@ -22,6 +21,7 @@ import Hasql.Decoders qualified as Decoders
 import Hasql.Pool qualified as Pool
 
 import Atelier.Effects.DB.Config (DBConfig (..), DBPools (..), PoolConfig (..), acquireDatabasePool, acquireDatabasePools)
+import Atelier.Exception (trySyncIO)
 
 
 -- | Project-specific configuration for the temporary test database.
@@ -96,7 +96,7 @@ startSharedServer cfg = do
                             , databaseName = "postgres"
                             , pool = pool
                             }
-                setupResult <- try @SomeException $ do
+                setupResult <- trySyncIO $ do
                     templateName <- generateUniqueDatabaseName
                     adminPool <- acquireDatabasePool adminConfig
                     createDatabase adminPool templateName

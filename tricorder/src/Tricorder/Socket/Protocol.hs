@@ -25,6 +25,7 @@ data Query
     | Watch
     | Source [ModuleName]
     | DiagnosticAt DiagnosticQuery
+    | Quit
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
 
