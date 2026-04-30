@@ -4,10 +4,10 @@ import Effectful.Reader.Static (Reader, ask)
 
 import Atelier.Component (Component (..), Trigger, defaultComponent)
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.RPC (Handler, dispatch)
+import Atelier.Effects.RPC (Handler)
 import Atelier.Effects.RPC.Unix (serveUnix)
 import Atelier.Effects.UnixSocket (UnixSocket, removeSocketFile)
-import Tricorder.RPC.Protocol (Protocol)
+import Tricorder.RPC.Protocol (Protocol, dispatch)
 import Tricorder.Runtime (SocketPath (..))
 
 
@@ -44,4 +44,4 @@ acceptTrigger
     => Trigger es
 acceptTrigger = do
     SocketPath sockPath <- ask
-    serveUnix (dispatch @Protocol) sockPath
+    serveUnix dispatch sockPath

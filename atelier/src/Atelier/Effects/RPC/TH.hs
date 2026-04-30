@@ -1,4 +1,5 @@
--- | Template Haskell deriver for RPC protocol GADTs indexed by 'Multiplicity'.
+-- | Template Haskell deriver for RPC protocol GADTs indexed by an arbitrary
+-- tag kind (e.g. 'Multiplicity', or a HasAgency-style state kind).
 module Atelier.Effects.RPC.TH (makeProtocol) where
 
 import Data.Aeson (FromJSON (..), ToJSON (..), Value, withArray)
@@ -8,89 +9,146 @@ import Language.Haskell.TH hiding (Type)
 import Data.Text qualified as Text
 import Language.Haskell.TH qualified as TH
 
-import Atelier.Effects.RPC (Multiplicity (..), SomeRPC (..))
 
-
--- | Generate JSON wire-format instances for an RPC-protocol GADT indexed by
--- 'Multiplicity'.
+-- | Generate JSON wire-format instances for a GADT indexed by a user-supplied
+-- tag kind.
 --
--- For a GADT @Foo :: Multiplicity -> Type -> Type@, the splice
--- @makeProtocol ''Foo@ emits:
+-- For a tag kind @T = T1 | T2 | ...@ (closed sum of nullary constructors) and
+-- a GADT @Foo :: T -> Type -> Type@, the splice @makeProtocol ''Foo ''T@ emits:
 --
---   * @instance ToJSON (Foo m a)@
---   * @instance FromJSON (SomeRPC Foo)@
+--   * @data SomeFoo where T1Foo :: ToJSON a => Foo 'T1 a -> SomeFoo; ...@
+--   * @instance ToJSON (Foo t a)@
+--   * @instance FromJSON SomeFoo@
 --
--- Each constructor encodes as a 2-element JSON array @[tag, contents]@:
+-- Each GADT constructor encodes as a 2-element JSON array @[tag, contents]@:
 --
---   * Nullary: @["StatusNow", []]@
---   * Unary:   @["DiagnosticAt", 3]@
---   * N-ary:   @["Foo", [a, b, c]]@
+--   * Nullary: @["MkA", []]@
+--   * Unary:   @["MkB", 3]@
+--   * N-ary:   @["MkC", [a, b, c]]@
 --
--- The 'OnceRPC' / 'ManyRPC' wrapper is selected from the constructor's
--- return-type index — 'Once'-indexed constructors round-trip through 'OnceRPC',
--- 'Many'-indexed through 'ManyRPC'. Adding a constructor at a new multiplicity
--- is a compile-time fact: the splice picks the right wrapper, and the tag
--- dispatch table is generated from the constructor list directly, so missing
--- or typo'd tags become impossible.
-makeProtocol :: Name -> Q [Dec]
-makeProtocol gadtName = do
+-- The wrapper constructor is selected from the GADT constructor's return-type
+-- index — a @Foo 'T1 a@-returning constructor wraps in @T1Foo@. Adding a GADT
+-- constructor at a new tag value is a compile-time fact: the splice walks the
+-- constructor list, so missing or typo'd tags become impossible.
+makeProtocol :: Name -> Name -> Q [Dec]
+makeProtocol gadtName tagKindName = do
+    tagCtors <- reifyTagKind tagKindName
     info <- reify gadtName
     cons <- case info of
         TyConI (DataD _ _ _ _ cs _) -> pure cs
         _ ->
             fail
                 $ "makeProtocol: " <> show gadtName <> " is not a data declaration"
-    ctors <- concat <$> traverse analyzeCon cons
+    ctors <- concat <$> traverse (analyzeCon tagCtors) cons
+    let wrapperName = mkName ("Some" <> nameBase gadtName)
+    wrapperD <- buildWrapper gadtName wrapperName tagCtors
     toJSOND <- buildToJSON gadtName ctors
-    fromJSONDs <- buildFromJSON gadtName ctors
-    pure (toJSOND : fromJSONDs)
+    fromJSONDs <- buildFromJSON gadtName wrapperName ctors
+    pure (wrapperD : toJSOND : fromJSONDs)
 
 
-data CtorInfo = CtorInfo Name Bool Int
+-- | Reify a tag kind, returning the 'Name' of each (nullary) constructor.
+reifyTagKind :: Name -> Q [Name]
+reifyTagKind n = do
+    info <- reify n
+    cs <- case info of
+        TyConI (DataD _ _ _ _ cs _) -> pure cs
+        _ ->
+            fail
+                $ "makeProtocol: tag kind "
+                    <> show n
+                    <> " must be a data declaration"
+    traverse extractNullary cs
+  where
+    extractNullary (NormalC name []) = pure name
+    extractNullary (NormalC name _) =
+        fail
+            $ "makeProtocol: tag constructor "
+                <> show name
+                <> " must be nullary"
+    extractNullary c =
+        fail
+            $ "makeProtocol: unsupported tag constructor: " <> show c
 
 
-analyzeCon :: Con -> Q [CtorInfo]
-analyzeCon (GadtC names fields retTy) = do
-    isMany <- multiplicityFromReturn retTy
-    pure [CtorInfo n isMany (length fields) | n <- names]
-analyzeCon (RecGadtC names fields retTy) = do
-    isMany <- multiplicityFromReturn retTy
-    pure [CtorInfo n isMany (length fields) | n <- names]
-analyzeCon (ForallC _ _ con) = analyzeCon con
-analyzeCon other =
+-- | A GADT constructor: its name, the tag value it returns, and its arity.
+data CtorInfo = CtorInfo Name Name Int
+
+
+analyzeCon :: [Name] -> Con -> Q [CtorInfo]
+analyzeCon tagCtors (GadtC names fields retTy) = do
+    tag <- tagFromReturn tagCtors retTy
+    pure [CtorInfo n tag (length fields) | n <- names]
+analyzeCon tagCtors (RecGadtC names fields retTy) = do
+    tag <- tagFromReturn tagCtors retTy
+    pure [CtorInfo n tag (length fields) | n <- names]
+analyzeCon tagCtors (ForallC _ _ con) = analyzeCon tagCtors con
+analyzeCon _ other =
     fail
         $ "makeProtocol: unsupported constructor (must be GADT syntax): "
             <> show other
 
 
-multiplicityFromReturn :: TH.Type -> Q Bool
-multiplicityFromReturn = goReturn
+tagFromReturn :: [Name] -> TH.Type -> Q Name
+tagFromReturn validTags = goReturn
   where
     goReturn (ParensT t) = goReturn t
     goReturn (SigT t _) = goReturn t
-    goReturn (AppT (AppT _ multTy) _) = matchMult multTy
+    goReturn (AppT (AppT _ tagTy) _) = matchTag tagTy
     goReturn t =
         fail
-            $ "makeProtocol: cannot find multiplicity index in return type: "
+            $ "makeProtocol: cannot find tag index in return type: "
                 <> show t
 
-    matchMult (PromotedT n) = matchName n
-    matchMult (ConT n) = matchName n
-    matchMult (SigT t _) = matchMult t
-    matchMult (ParensT t) = matchMult t
-    matchMult t =
+    matchTag (PromotedT n) = check n
+    matchTag (ConT n) = check n
+    matchTag (SigT t _) = matchTag t
+    matchTag (ParensT t) = matchTag t
+    matchTag t =
         fail
-            $ "makeProtocol: expected promoted 'Once or 'Many at first index, "
-                <> "got: "
+            $ "makeProtocol: expected promoted tag at first index, got: "
                 <> show t
 
-    matchName n
-        | n == 'Once = pure False
-        | n == 'Many = pure True
+    check n
+        | n `elem` validTags = pure n
         | otherwise =
             fail
-                $ "makeProtocol: expected 'Once or 'Many at first index, got: "
+                $ "makeProtocol: tag "
                     <> show n
+                    <> " is not a constructor of the supplied tag kind"
+
+
+-- ---------------------------------------------------------------------------
+-- Wrapper data declaration
+--
+-- For tag kind { T1, T2 } and GADT Foo, generate:
+--
+--   data SomeFoo where
+--     T1Foo :: ToJSON a => Foo 'T1 a -> SomeFoo
+--     T2Foo :: ToJSON a => Foo 'T2 a -> SomeFoo
+
+buildWrapper :: Name -> Name -> [Name] -> Q Dec
+buildWrapper gadtName wrapperName tagCtors = do
+    cons <- traverse mkCon tagCtors
+    pure $ DataD [] wrapperName [] Nothing cons []
+  where
+    mkCon tagName = do
+        a <- newName "a"
+        let conName = wrapperCtorName gadtName tagName
+            payloadTy =
+                ConT gadtName `AppT` PromotedT tagName `AppT` VarT a
+            ctx = [ConT ''ToJSON `AppT` VarT a]
+            field = (Bang NoSourceUnpackedness NoSourceStrictness, payloadTy)
+        pure
+            $ ForallC
+                [PlainTV a SpecifiedSpec]
+                ctx
+                (GadtC [conName] [field] (ConT wrapperName))
+
+
+wrapperCtorName :: Name -> Name -> Name
+wrapperCtorName gadtName tagName =
+    mkName (nameBase tagName <> nameBase gadtName)
 
 
 -- ---------------------------------------------------------------------------
@@ -144,12 +202,12 @@ mkToJSONMatch (CtorInfo cName _ arity) = do
 -- calls the helper. Pulling dispatch into a top-level function keeps name
 -- hygiene simple — no need to splice patterns under a quoted lambda.
 
-buildFromJSON :: Name -> [CtorInfo] -> Q [Dec]
-buildFromJSON gadtName ctors = do
+buildFromJSON :: Name -> Name -> [CtorInfo] -> Q [Dec]
+buildFromJSON gadtName wrapperName ctors = do
     let gadtStr = nameBase gadtName
         helperName = mkName ("__makeProtocol_dispatch_" <> gadtStr)
 
-    helperClauses <- traverse mkHelperClause ctors
+    helperClauses <- traverse (mkHelperClause gadtName) ctors
     defaultClause <- mkDefaultClause gadtStr
 
     let helperSig =
@@ -159,9 +217,7 @@ buildFromJSON gadtName ctors = do
                     `AppT` ConT ''Text
                     `AppT` ( ArrowT
                                 `AppT` ConT ''Value
-                                `AppT` ( ConT ''Parser
-                                            `AppT` (ConT ''SomeRPC `AppT` ConT gadtName)
-                                       )
+                                `AppT` (ConT ''Parser `AppT` ConT wrapperName)
                            )
                 )
         helperDef = FunD helperName (helperClauses ++ [defaultClause])
@@ -179,16 +235,16 @@ buildFromJSON gadtName ctors = do
             InstanceD
                 Nothing
                 []
-                (ConT ''FromJSON `AppT` (ConT ''SomeRPC `AppT` ConT gadtName))
+                (ConT ''FromJSON `AppT` ConT wrapperName)
                 [FunD 'parseJSON [Clause [] (NormalB body) []]]
 
     pure [helperSig, helperDef, inst]
 
 
-mkHelperClause :: CtorInfo -> Q Clause
-mkHelperClause (CtorInfo cName isMany arity) = do
+mkHelperClause :: Name -> CtorInfo -> Q Clause
+mkHelperClause gadtName (CtorInfo cName tagName arity) = do
     let tagStr = nameBase cName
-        wrapper = ConE (if isMany then 'ManyRPC else 'OnceRPC)
+        wrapper = ConE (wrapperCtorName gadtName tagName)
         ctorE = ConE cName
     case arity of
         0 -> do
