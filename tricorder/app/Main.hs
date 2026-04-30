@@ -16,7 +16,8 @@ import Atelier.Effects.Exit (runExit)
 import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.FileWatcher (runFileWatcherIO)
-import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
+import Atelier.Effects.Monitoring.Metrics (runMetrics)
+import Atelier.Effects.Monitoring.Tracing (runTracingFromConfig)
 import Atelier.Effects.Posix.Daemons (runDaemons)
 import Tricorder.Arguments (runArguments)
 import Tricorder.BuildState (runDaemonInfo)
@@ -47,7 +48,6 @@ main =
         . runConsole
         . runExit
         . runClock
-        . runTracingNoOp
         . runDelay
         . runFile
         . runFileSystemIO
@@ -56,6 +56,8 @@ main =
         . runPidFile
         . runSocketPath
         . runConfig
+        . runTracingFromConfig
+        . runMetrics
         . runReader @CacheConfig.Config def
         . runDaemonInfo
         . runLogging

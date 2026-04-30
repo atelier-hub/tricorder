@@ -42,6 +42,7 @@ import Data.Yaml qualified as Yaml
 
 import Atelier.Config (LoadedConfig (..), extractConfig)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, listDirectory, readFileBs)
+import Atelier.Effects.Monitoring.Tracing (TracingConfig)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 import Atelier.Types.WithDefaults (WithDefaults (..))
 import Tricorder.Runtime (ProjectRoot (..))
@@ -208,7 +209,7 @@ runConfig
        , HasCallStack
        , Reader ProjectRoot :> es
        )
-    => Eff (Reader Config : Reader Observability.Config : es) a
+    => Eff (Reader Config : Reader Observability.Config : Reader TracingConfig : es) a
     -> Eff es a
 runConfig act = do
     ProjectRoot projectRoot <- ask
@@ -217,4 +218,4 @@ runConfig act = do
         obsCfg = extractConfig @"observability" loadedCfg
     effectiveTargets <- resolveTargets cfg.targets projectRoot
     let cfg' = cfg {targets = effectiveTargets}
-    runReader obsCfg $ runReader cfg' act
+    runReader obsCfg.tracing $ runReader obsCfg $ runReader cfg' act

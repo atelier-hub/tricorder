@@ -1,3 +1,9 @@
 observability:
   log_file: /tmp/tricorder.log
-  metrics_port: 9091
+  metrics:
+    enabled: true
+    port: 9091
+  tracing:
+    enabled: true
+    service_name: tricorder
+    otlp_endpoint: "http://localhost:4318"

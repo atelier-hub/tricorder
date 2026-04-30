@@ -65,7 +65,7 @@ runDaemonInfo act = do
                 , watchDirs = map (makeRelative projectRoot) watchDirs
                 , sockPath
                 , logFile = obsCfg.logFile
-                , metricsPort = obsCfg.metricsPort
+                , metricsPort = if obsCfg.metrics.enabled then Just obsCfg.metrics.port else Nothing
                 }
     runReader daemonInfo act
 
