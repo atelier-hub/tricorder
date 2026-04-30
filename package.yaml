@@ -85,9 +85,14 @@ library:
   - filepath
   - ghcid
   - hashable
+  - http-client
   - mtl
   - network
   - optparse-applicative
+  - servant
+  - servant-client
+  - servant-client-core
+  - servant-server
   - stm
   - text
   - time
@@ -96,6 +101,7 @@ library:
   - vty
   - vty-crossplatform
   - yaml
+  - warp
 
 internal-libraries:
   atelier:

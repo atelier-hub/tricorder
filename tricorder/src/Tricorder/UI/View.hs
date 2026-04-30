@@ -112,7 +112,7 @@ viewExpandedDaemonInfo di =
     vBox
         $ [ viewTargets di.targets
           , viewWatchDirs di.watchDirs
-          , viewSockPath di.sockPath
+          , viewApiUrl di.apiUrl
           , viewLogFile di.logFile
           , viewMetrics di.metricsPort
           ]
@@ -151,9 +151,9 @@ viewLogFile = \case
     Just p -> hBoxSpaced 1 [emphasis $ txt "Log:", txt $ toText p]
 
 
-viewSockPath :: FilePath -> Widget n
-viewSockPath sockPath =
-    hBoxSpaced 1 [emphasis $ txt "Socket:", txt $ toText sockPath]
+viewApiUrl :: Text -> Widget n
+viewApiUrl url =
+    hBoxSpaced 1 [emphasis $ txt "API:", txt url]
 
 
 viewWatchDirs :: [FilePath] -> Widget n

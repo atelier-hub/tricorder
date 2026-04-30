@@ -51,9 +51,14 @@
           (hsPkgs."filepath" or (errorHandler.buildDepError "filepath"))
           (hsPkgs."ghcid" or (errorHandler.buildDepError "ghcid"))
           (hsPkgs."hashable" or (errorHandler.buildDepError "hashable"))
+          (hsPkgs."http-client" or (errorHandler.buildDepError "http-client"))
           (hsPkgs."mtl" or (errorHandler.buildDepError "mtl"))
           (hsPkgs."network" or (errorHandler.buildDepError "network"))
           (hsPkgs."optparse-applicative" or (errorHandler.buildDepError "optparse-applicative"))
+          (hsPkgs."servant-client" or (errorHandler.buildDepError "servant-client"))
+          (hsPkgs."servant-client-core" or (errorHandler.buildDepError "servant-client-core"))
+          (hsPkgs."servant-server" or (errorHandler.buildDepError "servant-server"))
+          (hsPkgs."servant-websockets" or (errorHandler.buildDepError "servant-websockets"))
           (hsPkgs."stm" or (errorHandler.buildDepError "stm"))
           (hsPkgs."text" or (errorHandler.buildDepError "text"))
           (hsPkgs."time" or (errorHandler.buildDepError "time"))
@@ -61,6 +66,8 @@
           (hsPkgs."typed-process" or (errorHandler.buildDepError "typed-process"))
           (hsPkgs."vty" or (errorHandler.buildDepError "vty"))
           (hsPkgs."vty-crossplatform" or (errorHandler.buildDepError "vty-crossplatform"))
+          (hsPkgs."warp" or (errorHandler.buildDepError "warp"))
+          (hsPkgs."websockets" or (errorHandler.buildDepError "websockets"))
           (hsPkgs."yaml" or (errorHandler.buildDepError "yaml"))
         ];
         buildable = true;

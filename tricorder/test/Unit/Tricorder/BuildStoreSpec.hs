@@ -131,7 +131,14 @@ testSTM = do
 --------------------------------------------------------------------------------
 
 emptyDaemonInfo :: DaemonInfo
-emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing, metricsPort = Nothing}
+emptyDaemonInfo =
+    DaemonInfo
+        { targets = []
+        , watchDirs = []
+        , apiUrl = ""
+        , logFile = Nothing
+        , metricsPort = Nothing
+        }
 
 
 buildingAt :: Int -> BuildState
@@ -139,7 +146,20 @@ buildingAt n = BuildState (BuildId n) (Building Nothing) emptyDaemonInfo
 
 
 doneAt :: Int -> BuildState
-doneAt n = BuildState (BuildId n) (Done (BuildResult {completedAt = epoch, durationMs = 0, moduleCount = 0, diagnostics = [], testRuns = []})) emptyDaemonInfo
+doneAt n =
+    BuildState
+        (BuildId n)
+        ( Done
+            ( BuildResult
+                { completedAt = epoch
+                , durationMs = 0
+                , moduleCount = 0
+                , diagnostics = []
+                , testRuns = []
+                }
+            )
+        )
+        emptyDaemonInfo
 
 
 epoch :: UTCTime
