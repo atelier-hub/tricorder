@@ -135,7 +135,7 @@ emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFi
 
 
 buildingAt :: Int -> BuildState
-buildingAt n = BuildState (BuildId n) Building emptyDaemonInfo
+buildingAt n = BuildState (BuildId n) (Building Nothing) emptyDaemonInfo
 
 
 doneAt :: Int -> BuildState

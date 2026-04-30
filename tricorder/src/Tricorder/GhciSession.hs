@@ -119,7 +119,7 @@ sessionListener cmd projectRoot watchDirs testTargets = startSession (BuildId 1)
 
     startSession (BuildId n) = do
         Log.info $ "Starting GHCi session #" <> show n <> ": " <> cmd
-        setPhase (BuildId n) Building
+        setPhase (BuildId n) (Building Nothing)
         t0 <- Clock.currentTime
         result <- trySync $ GhciSession.startGhci cmd projectRoot
         Log.debug $ "GhciSession.startGhci returned (session #" <> show n <> ")"
@@ -154,7 +154,7 @@ sessionListener cmd projectRoot watchDirs testTargets = startSession (BuildId 1)
                 startSession nextId
             SourceChange -> do
                 Log.debug $ "GhciSession: dirty flag set, reloading"
-                setPhase (BuildId n) Building
+                setPhase (BuildId n) (Building Nothing)
                 t0 <- Clock.currentTime
                 result <- trySync GhciSession.reloadGhci
                 case result of

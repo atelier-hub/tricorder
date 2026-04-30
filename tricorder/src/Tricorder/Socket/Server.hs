@@ -154,7 +154,7 @@ respondWhenDone h = awaitResult >>= sendJson h
     awaitResult = do
         s <- getState
         case s.phase of
-            Building -> waitUntilDone
+            Building _ -> waitUntilDone
             Restarting -> waitUntilDone
             Testing _ -> waitUntilDone
             Done _ -> awaitBuildStart (5 :: Int) s
@@ -165,7 +165,7 @@ respondWhenDone h = awaitResult >>= sendJson h
         wait (50 :: Millisecond)
         s' <- getState
         case s'.phase of
-            Building -> waitUntilDone
+            Building _ -> waitUntilDone
             Restarting -> waitUntilDone
             Testing _ -> waitUntilDone
             Done _ -> awaitBuildStart (n - 1) s'
