@@ -1,9 +1,7 @@
 module Tricorder.Effects.GhciSession
     ( -- * Effect
       GhciSession
-    , startGhci
-    , reloadGhci
-    , stopGhci
+    , withGhci
 
       -- * Types
     , LoadResult (..)
@@ -18,8 +16,9 @@ module Tricorder.Effects.GhciSession
 
 import Control.Exception (throwIO)
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
-import Effectful (Effect, IOE, withEffToIO)
-import Effectful.Dispatch.Dynamic (reinterpret)
+import Effectful (Effect, IOE, Limit (..), Persistence (..), UnliftStrategy (..), withEffToIO)
+import Effectful.Dispatch.Dynamic (interpret, localSeqLend, localSeqLift, localSeqUnlift, reinterpret)
+import Effectful.Exception (bracket)
 import Effectful.State.Static.Shared (State, evalState, get, put)
 import Effectful.TH (makeEffect)
 import Language.Haskell.Ghcid (Load (..))
@@ -31,7 +30,6 @@ import Data.List qualified as List
 import Data.Set qualified as Set
 import Language.Haskell.Ghcid qualified as Ghcid
 
-import Atelier.Effects.Conc (concStrat)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (trySyncIO)
 import Tricorder.BuildState (BuildPhase (..), BuildProgress (..), Diagnostic (..), Severity (..))
@@ -54,13 +52,11 @@ data LoadResult = LoadResult
 
 
 data GhciSession :: Effect where
-    -- | Start a new GHCi session. If a session is already running it is
-    -- stopped first. Returns the initial compilation messages with module count.
-    StartGhci :: Text -> FilePath -> GhciSession m LoadResult
-    -- | Send @:reload@ to the current session and return new messages with module count.
-    ReloadGhci :: GhciSession m LoadResult
-    -- | Stop the current session. No-op if no session is running.
-    StopGhci :: GhciSession m ()
+    -- | Start a new GHCi session and run the handler with that session active.
+    -- The handler is also provided an action to reload the GHCi session,
+    -- returning new messages with module counts. The GHCi session is closed
+    -- when the handler returns.
+    WithGhci :: Text -> FilePath -> (LoadResult -> m LoadResult -> m a) -> GhciSession m a
 
 
 makeEffect ''GhciSession
@@ -69,30 +65,32 @@ makeEffect ''GhciSession
 -- | Production interpreter backed by the real ghcid library.
 -- Manages the 'Ghcid.Ghci' handle via 'State'.
 runGhciSessionIO :: (BuildStore :> es, IOE :> es, Log :> es) => Eff (GhciSession : es) a -> Eff es a
-runGhciSessionIO = reinterpret (evalState (Nothing :: Maybe Ghcid.Ghci)) $ \_ -> \case
-    StartGhci cmd dir -> do
-        mOld <- get
-        whenJust mOld \old -> liftIO $ stopGhciSilently old
-        (ghci, loads) <- withEffToIO concStrat \unlift ->
-            Ghcid.startGhci (toString cmd) (Just dir) \_ line -> do
-                unlift $ Log.debug $ "GhciSession callback: " <> toText line
-                whenJust (parseProgress line) \(n, m) ->
-                    unlift do
-                        Log.debug $ "GhciSession: progress " <> show n <> "/" <> show m
-                        bs <- getState
-                        setPhase bs.buildId (Building (Just (BuildProgress {compiled = n, total = m})))
-        put (Just ghci)
-        liftIO $ collectResult ghci loads
-    ReloadGhci ->
-        get >>= \case
-            Nothing -> error "GhciSession: reloadGhci called before startGhci"
-            Just ghci -> liftIO do
-                loads <- Ghcid.reload ghci
-                collectResult ghci loads
-    StopGhci ->
-        get >>= \mGhci -> whenJust mGhci \ghci -> do
-            liftIO $ stopGhciSilently ghci
-            put (Nothing :: Maybe Ghcid.Ghci)
+runGhciSessionIO = interpret $ \env -> \case
+    WithGhci cmd dir handler -> do
+        let mkSession = withEffToIO (ConcUnlift Persistent Unlimited) \unlift -> do
+                Ghcid.startGhci (toString cmd) (Just dir) \_ line -> do
+                    unlift $ Log.debug $ "GhciSession callback: " <> toText line
+                    whenJust (parseProgress line) \(n, m) ->
+                        unlift do
+                            Log.debug $ "GhciSession: progress " <> show n <> "/" <> show m
+                            bs <- getState
+                            setPhase bs.buildId
+                                $ Building
+                                $ Just
+                                $ BuildProgress {compiled = n, total = m}
+
+            stopSession (ghci, _) =
+                liftIO $ stopGhciSilently ghci
+
+        bracket mkSession stopSession \(ghci, loads) ->
+            localSeqLend @'[IOE] env \lendIOE ->
+                localSeqUnlift env \unlift -> do
+                    initialLoadResult <- liftIO $ collectResult ghci loads
+                    unlift
+                        $ handler initialLoadResult
+                        $ lendIOE
+                        $ liftIO
+                        $ Ghcid.reload ghci >>= collectResult ghci
 
 
 -- | Scripted interpreter for testing.
@@ -104,7 +102,7 @@ runGhciSessionIO = reinterpret (evalState (Nothing :: Maybe Ghcid.Ghci)) $ \_ ->
 -- Requires 'IOE' so that 'Left' exceptions can be thrown into the effectful
 -- context, enabling tests of error-handling logic.
 runGhciSessionScripted :: forall es a. (IOE :> es) => [Either SomeException LoadResult] -> Eff (GhciSession : es) a -> Eff es a
-runGhciSessionScripted results = reinterpret (evalState results) $ \_ ->
+runGhciSessionScripted results = reinterpret (evalState results) $ \env ->
     let popResult :: Eff (State [Either SomeException LoadResult] : es) LoadResult
         popResult =
             get >>= \case
@@ -112,9 +110,11 @@ runGhciSessionScripted results = reinterpret (evalState results) $ \_ ->
                 Left ex : rest -> put rest >> liftIO (throwIO ex)
                 Right r : rest -> put rest >> pure r
     in  \case
-            StartGhci _ _ -> popResult
-            ReloadGhci -> popResult
-            StopGhci -> pure ()
+            WithGhci _ _ handler -> do
+                initial <- popResult
+                localSeqLift env \liftEff ->
+                    localSeqUnlift env \unlift ->
+                        unlift $ handler initial (liftEff popResult)
 
 
 stopGhciSilently :: Ghcid.Ghci -> IO ()
