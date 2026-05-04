@@ -22,7 +22,7 @@ import Atelier.Effects.Posix.Daemons (Daemons)
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.Effects.UnixSocket (UnixSocket, withConnection)
 import Tricorder.GhcPkg.Types (ModuleName)
-import Tricorder.Runtime (PidFile)
+import Tricorder.Session.PidFile (PidFile)
 import Tricorder.Socket.Protocol (DiagnosticQuery (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleSourceResult)
 

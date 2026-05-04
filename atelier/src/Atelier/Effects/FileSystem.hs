@@ -14,17 +14,22 @@ module Atelier.Effects.FileSystem
     , getXdgRuntimeDir
     , runFileSystemIO
     , runFileSystemNoOp
+    , runFileSystemState
     ) where
 
 import Control.Exception (bracket)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (interpret_)
+import Effectful.Exception (throwIO)
+import Effectful.State.Static.Shared (State, gets, modify)
 import Effectful.TH (makeEffect)
 import System.Environment (lookupEnv)
-import System.Posix.Types (FileOffset)
+import System.IO.Error (userError)
+import System.Posix.Types (COff (..), FileOffset)
 
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
+import Data.Map.Strict qualified as M
 import System.Directory qualified as Dir
 import System.Posix.IO qualified as Posix
 
@@ -101,4 +106,32 @@ runFileSystemNoOp = interpret_ $ \case
     RemoveFile _ -> pure ()
     CanonicalizePath path -> pure path
     GetCurrentDirectory -> pure "."
+    GetXdgRuntimeDir -> pure "/tmp"
+
+
+-- | Run `FileSystem` effect backed by a `State` effect with a `Map`. The keys
+-- of the `Map` are treated as file names. Only the `dirname` of files are
+-- counted as existing directories.
+runFileSystemState
+    :: (State (Map FilePath ByteString) :> es)
+    => Eff (FileSystem : es) a -> Eff es a
+runFileSystemState = interpret_ \case
+    ReadFileBs fp ->
+        maybe (throwIO $ userError "No such file") pure
+            =<< gets (M.lookup fp)
+    ReadFileLbsFrom fp (COff offset) -> do
+        contents <-
+            maybe (throwIO $ userError "No such file") pure
+                =<< gets (M.lookup fp)
+        pure
+            . toLazy
+            . BS.drop (fromIntegral offset)
+            $ contents
+    DoesFileExist fp -> gets $ M.member fp
+    DoesPathExist fp -> gets $ any (\p -> fp `isPrefixOf` p && fp /= p) . M.keys
+    ListDirectory fp -> gets $ filter (\p -> fp `isPrefixOf` p && fp /= p) . M.keys
+    CreateDirectoryIfMissing _ _ -> pure ()
+    RemoveFile fp -> modify $ M.delete fp
+    CanonicalizePath fp -> pure fp
+    GetCurrentDirectory -> pure "/"
     GetXdgRuntimeDir -> pure "/tmp"

@@ -22,7 +22,6 @@ import Atelier.Effects.Posix.Daemons (Daemons)
 import Tricorder.Arguments (Command (..))
 import Tricorder.BuildState (BuildState (..), DaemonInfo (..))
 import Tricorder.CLI (showLog, showSource, showStatus)
-import Tricorder.Config (Config)
 import Tricorder.Daemon (startDaemon, stopDaemon, waitForDaemon)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
@@ -32,7 +31,12 @@ import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
-import Tricorder.Runtime (PidFile (..), SocketPath (..))
+import Tricorder.Session.BuildCommand (BuildCommand)
+import Tricorder.Session.PidFile (PidFile)
+import Tricorder.Session.ProjectRoot (ProjectRoot)
+import Tricorder.Session.SocketPath (SocketPath (..))
+import Tricorder.Session.TestTargets (TestTargets)
+import Tricorder.Session.WatchDirs (WatchDirs)
 import Tricorder.Socket.Client (isDaemonRunning, queryStatus)
 import Tricorder.UI (viewUi)
 
@@ -60,11 +64,14 @@ run
        , GhciSession :> es
        , IOE :> es
        , Log :> es
+       , Reader BuildCommand :> es
        , Reader Command :> es
-       , Reader Config :> es
        , Reader Observability.Config :> es
        , Reader PidFile :> es
+       , Reader ProjectRoot :> es
        , Reader SocketPath :> es
+       , Reader TestTargets :> es
+       , Reader WatchDirs :> es
        , TestRunner :> es
        , Timeout :> es
        , Tracing :> es

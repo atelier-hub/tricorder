@@ -22,9 +22,10 @@ import Effectful.Concurrent.STM (TVar)
 import Effectful.Reader.Static (Reader, ask, runReader)
 import System.FilePath (makeRelative)
 
-import Atelier.Effects.FileSystem (FileSystem)
-import Tricorder.Config (Config (..), resolveWatchDirs)
-import Tricorder.Runtime (ProjectRoot (..), SocketPath (..))
+import Tricorder.Session.ProjectRoot (ProjectRoot (..))
+import Tricorder.Session.SocketPath (SocketPath (..))
+import Tricorder.Session.Targets (Targets (..))
+import Tricorder.Session.WatchDirs (WatchDirs (..))
 
 import Tricorder.Observability qualified as Observability
 
@@ -46,22 +47,22 @@ data DaemonInfo = DaemonInfo
 
 
 runDaemonInfo
-    :: ( FileSystem :> es
-       , Reader Config :> es
-       , Reader Observability.Config :> es
+    :: ( Reader Observability.Config :> es
        , Reader ProjectRoot :> es
        , Reader SocketPath :> es
+       , Reader Targets :> es
+       , Reader WatchDirs :> es
        )
     => Eff (Reader DaemonInfo : es) a -> Eff es a
 runDaemonInfo act = do
-    cfg <- ask
     obsCfg <- ask @Observability.Config
     ProjectRoot projectRoot <- ask
     SocketPath sockPath <- ask
-    watchDirs <- resolveWatchDirs cfg projectRoot
+    WatchDirs watchDirs <- ask
+    Targets targets <- ask
     let daemonInfo =
             DaemonInfo
-                { targets = cfg.targets
+                { targets
                 , watchDirs = map (makeRelative projectRoot) watchDirs
                 , sockPath
                 , logFile = obsCfg.logFile

@@ -26,7 +26,7 @@ import Tricorder.Effects.UnixSocket
     , removeSocketFile
     , sendLine
     )
-import Tricorder.Runtime (SocketPath (..))
+import Tricorder.Session.SocketPath (SocketPath (..))
 import Tricorder.Socket.Protocol (DiagnosticQuery (..), ErrorResponse (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleName, PackageId, lookupModuleSource)
 

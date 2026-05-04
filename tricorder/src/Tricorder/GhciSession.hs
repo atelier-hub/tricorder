@@ -16,15 +16,26 @@ import Data.Map.Strict qualified as Map
 import Atelier.Component (Component (..), Listener, defaultComponent)
 import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Delay (Delay)
-import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
-import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..), Severity (..), TestOutcome (..), TestRun (..))
-import Tricorder.Config (Config (..), resolveCommand, resolveTestTargets, resolveWatchDirs)
+import Tricorder.BuildState
+    ( BuildId (..)
+    , BuildPhase (..)
+    , BuildResult (..)
+    , ChangeKind (..)
+    , Diagnostic (..)
+    , Severity (..)
+    , TestOutcome (..)
+    , TestRun (..)
+    )
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
 import Tricorder.Effects.TestRunner (TestRunner)
+import Tricorder.Session.BuildCommand (BuildCommand (..))
+import Tricorder.Session.ProjectRoot (ProjectRoot (..))
+import Tricorder.Session.TestTargets (TestTargets (..))
+import Tricorder.Session.WatchDirs (WatchDirs (..))
 
 import Atelier.Effects.Clock qualified as Clock
 import Atelier.Effects.Delay qualified as Delay
@@ -80,10 +91,12 @@ component
     :: ( BuildStore :> es
        , Clock :> es
        , Delay :> es
-       , FileSystem :> es
        , GhciSession :> es
        , Log :> es
-       , Reader Config :> es
+       , Reader BuildCommand :> es
+       , Reader ProjectRoot :> es
+       , Reader TestTargets :> es
+       , Reader WatchDirs :> es
        , TestRunner :> es
        )
     => Component es
@@ -91,11 +104,10 @@ component =
     defaultComponent
         { name = "GhciSession"
         , listeners = do
-            cfg <- ask @Config
-            projectRoot <- getCurrentDirectory
-            cmd <- resolveCommand cfg projectRoot
-            watchDirs <- resolveWatchDirs cfg projectRoot
-            let testTargets = resolveTestTargets cfg
+            ProjectRoot projectRoot <- ask
+            BuildCommand cmd <- ask
+            WatchDirs watchDirs <- ask
+            TestTargets testTargets <- ask
             Log.debug $ "GhciSession.component: resolved command = " <> cmd
             Log.debug $ "GhciSession.component: projectRoot = " <> toText projectRoot
             pure [sessionListener cmd projectRoot watchDirs testTargets]

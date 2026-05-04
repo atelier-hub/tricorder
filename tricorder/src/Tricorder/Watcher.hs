@@ -8,10 +8,18 @@ import System.FilePath (takeExtension, takeFileName)
 import Atelier.Component (Component (..), defaultComponent)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
-import Atelier.Effects.FileWatcher (FileWatcher, Watch, containing, dirExt, dirWhere, excluding, watchFilePathsDebounced)
+import Atelier.Effects.FileWatcher
+    ( FileWatcher
+    , Watch
+    , containing
+    , dirExt
+    , dirWhere
+    , excluding
+    , watchFilePathsDebounced
+    )
 import Tricorder.BuildState (ChangeKind (..))
-import Tricorder.Config (Config (..), resolveWatchDirs)
 import Tricorder.Effects.BuildStore (BuildStore, markDirty)
+import Tricorder.Session.WatchDirs (WatchDirs (..))
 
 
 -- | Watcher component.
@@ -23,16 +31,15 @@ component
        , Debounce FilePath :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , Reader Config :> es
+       , Reader WatchDirs :> es
        )
     => Component es
 component =
     defaultComponent
         { name = "Watcher"
         , triggers = do
-            cfg <- ask @Config
             projectRoot <- getCurrentDirectory
-            dirs <- resolveWatchDirs cfg projectRoot
+            WatchDirs dirs <- ask
             let watches = sourceWatches dirs <> cabalWatches projectRoot
             pure
                 [ watchFilePathsDebounced watches (markDirty . changeKindFor)

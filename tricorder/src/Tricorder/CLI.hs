@@ -40,7 +40,7 @@ import Tricorder.CLI.Render
     )
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName)
-import Tricorder.Runtime (SocketPath (..))
+import Tricorder.Session.SocketPath (SocketPath (..))
 import Tricorder.Socket.Client
     ( querySource
     , queryStatus

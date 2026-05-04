@@ -25,14 +25,18 @@ import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Time (Millisecond)
-import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.GhciSession (GhciSession)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
-import Tricorder.Runtime (PidFile, SocketPath (..))
+import Tricorder.Session.BuildCommand (BuildCommand)
+import Tricorder.Session.PidFile (PidFile)
+import Tricorder.Session.ProjectRoot (ProjectRoot)
+import Tricorder.Session.SocketPath (SocketPath (..))
+import Tricorder.Session.TestTargets (TestTargets)
+import Tricorder.Session.WatchDirs (WatchDirs)
 import Tricorder.Socket.Client (isDaemonRunning, requestShutdown)
 
 import Atelier.Effects.Delay qualified as Delay
@@ -60,9 +64,12 @@ runDaemon
        , GhciSession :> es
        , IOE :> es
        , Log :> es
-       , Reader Config :> es
+       , Reader BuildCommand :> es
        , Reader Observability.Config :> es
+       , Reader ProjectRoot :> es
        , Reader SocketPath :> es
+       , Reader TestTargets :> es
+       , Reader WatchDirs :> es
        , TestRunner :> es
        , Tracing :> es
        , UnixSocket :> es
@@ -95,10 +102,13 @@ startDaemon
        , GhciSession :> es
        , IOE :> es
        , Log :> es
-       , Reader Config :> es
+       , Reader BuildCommand :> es
        , Reader Observability.Config :> es
        , Reader PidFile :> es
+       , Reader ProjectRoot :> es
        , Reader SocketPath :> es
+       , Reader TestTargets :> es
+       , Reader WatchDirs :> es
        , TestRunner :> es
        , Tracing :> es
        , UnixSocket :> es

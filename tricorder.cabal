@@ -34,7 +34,15 @@ library
       Tricorder.GhciSession
       Tricorder.GhcPkg.Types
       Tricorder.Observability
-      Tricorder.Runtime
+      Tricorder.Session.BuildCommand
+      Tricorder.Session.PidFile
+      Tricorder.Session.ProjectRoot
+      Tricorder.Session.ReplBuildDir
+      Tricorder.Session.RuntimeDir
+      Tricorder.Session.SocketPath
+      Tricorder.Session.Targets
+      Tricorder.Session.TestTargets
+      Tricorder.Session.WatchDirs
       Tricorder.Socket.Client
       Tricorder.Socket.Protocol
       Tricorder.Socket.Server
@@ -337,6 +345,7 @@ test-suite atelier-test
   type: exitcode-stdio-1.0
   main-is: Driver.hs
   other-modules:
+      Unit.Atelier.ConfigSpec
       Unit.Atelier.Effects.Cache.SingleflightSpec
       Unit.Atelier.Effects.CacheSpec
       Unit.Atelier.Effects.ChanSpec
@@ -345,6 +354,7 @@ test-suite atelier-test
       Unit.Atelier.Effects.ConsoleSpec
       Unit.Atelier.Effects.DebounceSpec
       Unit.Atelier.Effects.DelaySpec
+      Unit.Atelier.Effects.FileSystemSpec
       Unit.Atelier.Effects.FileWatcherSpec
       Unit.Atelier.Effects.LogSpec
       Unit.Atelier.Effects.PublishingSpec
@@ -405,10 +415,14 @@ test-suite tricorder-test
   other-modules:
       Unit.Tricorder.BuildStateSpec
       Unit.Tricorder.BuildStoreSpec
+      Unit.Tricorder.Cabal
       Unit.Tricorder.CLI.RenderSpec
-      Unit.Tricorder.ConfigSpec
       Unit.Tricorder.GhciSessionSpec
       Unit.Tricorder.GhcPkgSpec
+      Unit.Tricorder.Session.BuildCommandSpec
+      Unit.Tricorder.Session.TargetsSpec
+      Unit.Tricorder.Session.TestTargetsSpec
+      Unit.Tricorder.Session.WatchDirsSpec
       Unit.Tricorder.SocketSpec
       Unit.Tricorder.SourceLookupSpec
       Unit.Tricorder.SourceSpec
