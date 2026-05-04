@@ -38,12 +38,9 @@ import Data.Text qualified as T
 
 import Atelier.Config (LoadedConfig, extractConfig)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, listDirectory, readFileBs)
-import Atelier.Effects.Monitoring.Tracing (TracingConfig)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 import Atelier.Types.WithDefaults (WithDefaults (..))
 import Tricorder.Runtime (ProjectRoot (..))
-
-import Tricorder.Observability qualified as Observability
 
 
 data Session = Session
@@ -190,13 +187,12 @@ runSession
        , Reader LoadedConfig :> es
        , Reader ProjectRoot :> es
        )
-    => Eff (Reader Session : Reader Observability.Config : Reader TracingConfig : es) a
+    => Eff (Reader Session : es) a
     -> Eff es a
 runSession act = do
     ProjectRoot projectRoot <- ask
     loadedCfg <- ask
     let cfg = extractConfig @"session" loadedCfg
-        obsCfg = extractConfig @"observability" loadedCfg
     effectiveTargets <- resolveTargets cfg.targets projectRoot
     let cfg' = cfg {targets = effectiveTargets}
-    runReader obsCfg.tracing $ runReader obsCfg $ runReader cfg' act
+    runReader cfg' act

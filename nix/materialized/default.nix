@@ -739,6 +739,7 @@
           "ghcid".components.library.planned = lib.mkOverride 900 true;
           "bytestring".components.library.planned = lib.mkOverride 900 true;
           "postgresql-libpq-configure".components.library.planned = lib.mkOverride 900 true;
+          "tricorder".components.exes."tricorder-daemon".planned = lib.mkOverride 900 true;
           "pipes".components.library.planned = lib.mkOverride 900 true;
           "bitvec".components.library.planned = lib.mkOverride 900 true;
           "tricorder".components.sublibs."atelier-testing".planned = lib.mkOverride 900 true;

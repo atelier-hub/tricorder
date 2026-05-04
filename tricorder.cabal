@@ -19,9 +19,11 @@ library
       Tricorder.Arguments
       Tricorder.BuildState
       Tricorder.CLI
+      Tricorder.CLI.Main
       Tricorder.CLI.Render
       Tricorder.Config
       Tricorder.Daemon
+      Tricorder.Daemon.Main
       Tricorder.Effects.Brick
       Tricorder.Effects.BrickChan
       Tricorder.Effects.BuildStore
@@ -296,6 +298,42 @@ library atelier-testing
       base hiding (Prelude)
   default-language: GHC2021
 
+executable tricorder-daemon
+  main-is: Main.hs
+  other-modules:
+      Paths_tricorder
+  autogen-modules:
+      Paths_tricorder
+  hs-source-dirs:
+      tricorder/daemon
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
+  build-depends:
+      atelier-prelude
+    , base
+    , effectful-core
+    , effectful-plugin
+    , tricorder
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021
+
 executable tricorder-exe
   main-is: Main.hs
   other-modules:
@@ -323,11 +361,8 @@ executable tricorder-exe
       TypeFamilies
   ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
   build-depends:
-      atelier
-    , atelier-prelude
+      atelier-prelude
     , base
-    , data-default
-    , effectful
     , effectful-core
     , effectful-plugin
     , tricorder

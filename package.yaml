@@ -181,9 +181,17 @@ executables:
         - hiding (Prelude)
     - atelier-prelude
     - tricorder
-    - atelier
-    - effectful
-    - data-default
+  tricorder-daemon:
+    main:                Main.hs
+    source-dirs:         tricorder/daemon
+    ghc-options:
+      - '"-with-rtsopts=-N -T"'
+    dependencies:
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - atelier-prelude
+    - tricorder
 
 tests:
   atelier-test:
