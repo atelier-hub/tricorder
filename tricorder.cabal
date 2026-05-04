@@ -91,6 +91,7 @@ library
     , mtl
     , network
     , optparse-applicative
+    , process
     , stm
     , text
     , time
