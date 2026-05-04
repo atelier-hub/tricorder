@@ -85,6 +85,7 @@ library:
   - filepath
   - ghcid
   - hashable
+  - process
   - mtl
   - network
   - optparse-applicative

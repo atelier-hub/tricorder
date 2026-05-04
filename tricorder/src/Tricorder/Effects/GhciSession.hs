@@ -25,6 +25,7 @@ import Effectful.TH (makeEffect)
 import Language.Haskell.Ghcid (Load (..))
 import System.Directory (getCurrentDirectory)
 import System.FilePath (isAbsolute, makeRelative, splitDirectories, (</>))
+import System.Process (waitForProcess)
 
 import Data.List qualified as List
 import Data.Set qualified as Set
@@ -117,7 +118,9 @@ runGhciSessionScripted results = reinterpret (evalState results) $ \_ ->
 
 
 stopGhciSilently :: Ghcid.Ghci -> IO ()
-stopGhciSilently ghci = void $ trySyncIO $ Ghcid.stopGhci ghci
+stopGhciSilently ghci = do
+    void $ trySyncIO $ Ghcid.stopGhci ghci
+    void $ trySyncIO $ waitForProcess (Ghcid.process ghci)
 
 
 collectResult :: Ghcid.Ghci -> [Load] -> IO LoadResult
