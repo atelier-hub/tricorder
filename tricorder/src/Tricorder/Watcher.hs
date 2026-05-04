@@ -1,5 +1,8 @@
 module Tricorder.Watcher
     ( component
+    , WatchedFile (..)
+    , isCabalFile
+    , markWatchedFiles
     ) where
 
 import Effectful.Reader.Static (Reader, ask)
@@ -16,10 +19,18 @@ import Atelier.Effects.FileWatcher
     , excluding
     , watchFilePathsDebounced
     )
-import Tricorder.BuildState (ChangeKind (..))
-import Tricorder.Effects.BuildStore (BuildStore, markDirty)
+import Atelier.Effects.Publishing (Pub, Sub, publish)
+import Tricorder.BuildState
+    ( CabalChangeDetected (..)
+    , ChangeKind (..)
+    , SourceChangeDetected (..)
+    )
+import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
+
+import Atelier.Effects.Publishing qualified as Sub
+import Tricorder.Effects.BuildStore qualified as BuildStore
 
 
 -- | Watcher component.
@@ -30,8 +41,12 @@ component
     :: ( BuildStore :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
+       , Pub CabalChangeDetected :> es
+       , Pub SourceChangeDetected :> es
+       , Pub WatchedFile :> es
        , Reader ProjectRoot :> es
        , Reader Session :> es
+       , Sub WatchedFile :> es
        )
     => Component es
 component =
@@ -42,9 +57,31 @@ component =
             projectRoot <- ask
             let watches = sourceWatches session <> cabalWatches projectRoot
             pure
-                [ watchFilePathsDebounced watches (markDirty . changeKindFor)
+                [ watchFilePathsDebounced watches $ publish . WatchedFile
+                ]
+        , listeners =
+            pure
+                [ Sub.listen_ markWatchedFiles
                 ]
         }
+
+
+markWatchedFiles
+    :: ( BuildStore :> es
+       , Pub CabalChangeDetected :> es
+       , Pub SourceChangeDetected :> es
+       )
+    => WatchedFile -> Eff es ()
+markWatchedFiles f = do
+    BuildStore.markDirty change
+    case change of
+        CabalChange -> publish CabalChangeDetected
+        SourceChange -> publish SourceChangeDetected
+  where
+    change = changeKindFor . getWatchedFile $ f
+
+
+newtype WatchedFile = WatchedFile {getWatchedFile :: FilePath}
 
 
 sourceWatches :: Session -> [Watch]

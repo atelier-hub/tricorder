@@ -55,6 +55,7 @@
           (hsPkgs."network" or (errorHandler.buildDepError "network"))
           (hsPkgs."optparse-applicative" or (errorHandler.buildDepError "optparse-applicative"))
           (hsPkgs."process" or (errorHandler.buildDepError "process"))
+          (hsPkgs."relude" or (errorHandler.buildDepError "relude"))
           (hsPkgs."stm" or (errorHandler.buildDepError "stm"))
           (hsPkgs."template-haskell" or (errorHandler.buildDepError "template-haskell"))
           (hsPkgs."text" or (errorHandler.buildDepError "text"))
@@ -231,6 +232,7 @@
             (hsPkgs."time" or (errorHandler.buildDepError "time"))
             (hsPkgs."time-units" or (errorHandler.buildDepError "time-units"))
             (hsPkgs."tricorder" or (errorHandler.buildDepError "tricorder"))
+            (hsPkgs."unagi-chan" or (errorHandler.buildDepError "unagi-chan"))
           ];
           build-tools = [
             (hsPkgs.pkgsBuildBuild.tasty-discover.components.exes.tasty-discover or (pkgs.pkgsBuildBuild.tasty-discover or (errorHandler.buildToolDepError "tasty-discover:tasty-discover")))

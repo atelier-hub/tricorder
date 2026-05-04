@@ -23,8 +23,6 @@ import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.Daemon.Main qualified as Daemon.Main
 
 
--- | Fork the daemon as a background process and return immediately.
--- No-op if the daemon is already running (caller should check beforehand).
 startDaemon
     :: ( Daemons :> es
        , IOE :> es

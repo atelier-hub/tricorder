@@ -90,6 +90,7 @@ library:
   - mtl
   - network
   - optparse-applicative
+  - relude
   - stm
   - text
   - time
@@ -254,3 +255,4 @@ tests:
     - text
     - time
     - time-units
+    - unagi-chan

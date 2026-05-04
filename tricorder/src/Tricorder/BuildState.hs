@@ -17,6 +17,10 @@ module Tricorder.BuildState
     , ChangeKind (..)
     , initialBuildState
     , stateLabel
+    , CabalChangeDetected (..)
+    , SourceChangeDetected (..)
+    , EnteringNewPhase (..)
+    , EnteredNewPhase (..)
     ) where
 
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
@@ -34,6 +38,7 @@ import Tricorder.Observability qualified as Observability
 newtype BuildId = BuildId Int
     deriving stock (Eq, Show)
     deriving newtype (FromJSON, ToJSON)
+    deriving (Num) via Int
 
 
 data DaemonInfo = DaemonInfo
@@ -194,6 +199,12 @@ stateLabel (Done result)
 data ChangeKind = SourceChange | CabalChange deriving stock (Eq, Ord, Show)
 
 
+data CabalChangeDetected = CabalChangeDetected
+    deriving stock (Eq, Show)
+data SourceChangeDetected = SourceChangeDetected
+    deriving stock (Eq, Show)
+
+
 data BuildStateRef = BuildStateRef
     { stateRef :: TVar BuildState
     , dirtyRef :: TVar (Maybe ChangeKind)
@@ -207,3 +218,11 @@ initialBuildState di =
         , phase = Building Nothing
         , daemonInfo = di
         }
+
+
+data EnteringNewPhase = EnteringNewPhase BuildId BuildPhase
+    deriving stock (Eq, Show)
+
+
+data EnteredNewPhase = EnteredNewPhase BuildId BuildPhase
+    deriving stock (Eq, Show)
