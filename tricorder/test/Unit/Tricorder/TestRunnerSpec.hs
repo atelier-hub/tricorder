@@ -5,9 +5,10 @@ import Effectful (IOE, runEff)
 import Effectful.Exception (try)
 import Test.Hspec
 
-import Tricorder.BuildState (TestOutcome (..), TestRun (..))
+import Tricorder.BuildState (TestRun (..), TestRunCompletion (..))
 import Tricorder.Effects.TestRunner
-    ( TestRunner
+    ( GhciOutcome (..)
+    , TestRunner
     , detectOutcome
     , runTestRunnerScripted
     , runTestSuite
@@ -28,42 +29,42 @@ testDetectOutcome :: Spec
 testDetectOutcome = do
     describe "no exception line" do
         it "treats empty output as pass" do
-            detectOutcome "" `shouldBe` TestsPassed
+            detectOutcome "" `shouldBe` GhciPassed
 
         it "treats output with no exception as pass" do
-            detectOutcome "2 examples, 0 failures\n" `shouldBe` TestsPassed
+            detectOutcome "2 examples, 0 failures\n" `shouldBe` GhciPassed
 
         it "does not match 'ExitSuccess' without the exception prefix" do
-            detectOutcome "ExitSuccess\n" `shouldBe` TestsPassed
+            detectOutcome "ExitSuccess\n" `shouldBe` GhciPassed
 
     describe "ExitSuccess" do
         it "detects ExitSuccess as pass" do
-            detectOutcome "*** Exception: ExitSuccess\n" `shouldBe` TestsPassed
+            detectOutcome "*** Exception: ExitSuccess\n" `shouldBe` GhciPassed
 
         it "detects ExitSuccess anywhere in output" do
             detectOutcome "All tests passed\n*** Exception: ExitSuccess\n"
-                `shouldBe` TestsPassed
+                `shouldBe` GhciPassed
 
     describe "ExitFailure" do
         it "detects ExitFailure 1 as fail" do
             detectOutcome "1 failure\n*** Exception: ExitFailure 1\n"
-                `shouldBe` TestsFailed
+                `shouldBe` GhciFailed
 
         it "detects ExitFailure with any exit code as fail" do
-            detectOutcome "*** Exception: ExitFailure 42\n" `shouldBe` TestsFailed
+            detectOutcome "*** Exception: ExitFailure 42\n" `shouldBe` GhciFailed
 
         it "detects ExitFailure anywhere in output" do
             detectOutcome "Some output\n*** Exception: ExitFailure 1\nMore output\n"
-                `shouldBe` TestsFailed
+                `shouldBe` GhciFailed
 
     describe "other exception" do
         it "classifies unknown exception as error with message" do
             detectOutcome "*** Exception: SomeException \"oops\"\n"
-                `shouldBe` TestsError "SomeException \"oops\""
+                `shouldBe` GhciCrashed "SomeException \"oops\""
 
         it "trims trailing whitespace from the error message" do
             detectOutcome "*** Exception: Crashed  \n"
-                `shouldBe` TestsError "Crashed"
+                `shouldBe` GhciCrashed "Crashed"
 
 
 --------------------------------------------------------------------------------
@@ -114,11 +115,25 @@ boom = ErrorCall "simulated process crash"
 
 
 passingRun :: TestRun
-passingRun = TestRun {target = "test:foo", outcome = TestsPassed, output = "2 examples, 0 failures\n"}
+passingRun =
+    TestRunCompleted
+        $ TestRunCompletion
+            { target = "test:foo"
+            , passed = True
+            , output = "2 examples, 0 failures\n"
+            , testCases = []
+            }
 
 
 failingRun :: TestRun
-failingRun = TestRun {target = "test:bar", outcome = TestsFailed, output = "1 example, 1 failure\n"}
+failingRun =
+    TestRunCompleted
+        $ TestRunCompletion
+            { target = "test:bar"
+            , passed = False
+            , output = "1 example, 1 failure\n"
+            , testCases = []
+            }
 
 
 runScripted :: [Either SomeException TestRun] -> Eff '[TestRunner, IOE] a -> IO a

@@ -2,6 +2,7 @@ module Tricorder.CLI
     ( showLog
     , showSource
     , showStatus
+    , showTests
     ) where
 
 import Data.Aeson (encode)
@@ -10,6 +11,7 @@ import Data.Time.LocalTime (utcToLocalTime)
 import Effectful.Reader.Static (Reader, ask)
 
 import Data.ByteString.Lazy qualified as BSL
+import Data.Text qualified as T
 
 import Atelier.Effects.Clock (Clock, currentTimeZone)
 import Atelier.Effects.Console (Console)
@@ -21,6 +23,7 @@ import Tricorder.Arguments
     ( FollowMode (..)
     , OutputFormat (..)
     , StatusOptions (..)
+    , TestOptions (..)
     , Verbosity (..)
     , WaitMode (..)
     )
@@ -30,8 +33,11 @@ import Tricorder.BuildState
     , BuildState (..)
     , Diagnostic (..)
     , Severity (..)
-    , TestOutcome (..)
+    , TestCase (..)
+    , TestCaseOutcome (..)
     , TestRun (..)
+    , TestRunCompletion (..)
+    , TestRunError (..)
     )
 import Tricorder.CLI.Render
     ( diagnosticLineIndexed
@@ -114,21 +120,21 @@ showStatus opts = do
                     when (buildHasErrors r || testsFailed r) exitFailure
 
     printTestRun verbosity tr = do
-        Console.putTextLn $ testRunSummary tr.target tr.outcome
-        when (verbosity == Verbose)
-            $ mapM_ (Console.putTextLn . ("  " <>) . toText) (lines tr.output)
-      where
-        testRunSummary t TestsRunning = t <> "  running..."
-        testRunSummary t TestsPassed = t <> "  passed"
-        testRunSummary t TestsFailed = t <> "  failed"
-        testRunSummary t (TestsError msg) = t <> "  error: " <> msg
+        Console.putTextLn $ case tr of
+            TestRunning t -> t <> "  running..."
+            TestRunErrored e -> e.target <> "  error: " <> e.message
+            TestRunCompleted c -> c.target <> "  " <> if c.passed then "passed" else "failed"
+        when (verbosity == Verbose) $ case tr of
+            TestRunCompleted c ->
+                mapM_ (Console.putTextLn . ("  " <>) . toText) (lines c.output)
+            _ -> pure ()
 
     buildHasErrors r = any ((== SError) . (.severity)) r.diagnostics
-    testsFailed r = any (notPassed . (.outcome)) r.testRuns
+    testsFailed r = any isFailedRun r.testRuns
       where
-        notPassed TestsPassed = False
-        notPassed TestsRunning = False
-        notPassed _ = True
+        isFailedRun (TestRunCompleted c) = not c.passed
+        isFailedRun (TestRunErrored _) = True
+        isFailedRun (TestRunning _) = False
 
     buildSummary tz r =
         let errs = length $ filter ((== SError) . (.severity)) r.diagnostics
@@ -157,6 +163,89 @@ showLog mLogFile followMode = case mLogFile of
         else case followMode of
             Follow -> followFile path Console.putStr
             NoFollow -> readFileLbs path >>= Console.putStr . BSL.toStrict
+
+
+showTests
+    :: ( Console :> es
+       , Exit :> es
+       , File :> es
+       , Reader SocketPath :> es
+       , UnixSocket :> es
+       )
+    => TestOptions -> Eff es ()
+showTests opts = do
+    SocketPath sockPath <- ask
+    result <-
+        case opts.wait of
+            WaitForBuild -> queryStatusWait sockPath
+            ShowCurrent -> queryStatus sockPath
+    case result of
+        Left err -> Console.putTextLn $ "Error: " <> err
+        Right state ->
+            case state.phase of
+                Building _ -> Console.putStrLn "Build in progress, no test results yet."
+                Restarting -> Console.putStrLn "Daemon restarting, no test results yet."
+                Testing r -> renderTestRuns r.testRuns
+                Done r -> renderTestRuns r.testRuns
+  where
+    renderTestRuns [] = Console.putStrLn "No test results."
+    renderTestRuns testRuns
+        | null runs = do
+            Console.putStrLn "All passed."
+            mapM_ (Console.putTextLn . ("  " <>) . testRunTarget) testRuns
+        | otherwise = do
+            mapM_ printTestOutput runs
+            when (any isFailed runs) exitFailure
+      where
+        runs =
+            if opts.failedOnly then
+                filter isFailed testRuns
+            else
+                testRuns
+
+    isFailed (TestRunCompleted c) = not c.passed
+    isFailed (TestRunErrored _) = True
+    isFailed (TestRunning _) = False
+
+    testRunTarget (TestRunning t) = t
+    testRunTarget (TestRunErrored e) = e.target
+    testRunTarget (TestRunCompleted c) = c.target
+
+    printTestOutput tr = case tr of
+        TestRunning t ->
+            Console.putTextLn $ t <> "  running..."
+        TestRunErrored e ->
+            Console.putTextLn $ e.target <> "  error: " <> e.message
+        TestRunCompleted c -> do
+            Console.putTextLn $ c.target <> "  " <> if c.passed then "passed" else "failed"
+            if opts.failedOnly then
+                if null c.testCases then do
+                    Console.putTextLn "  (unrecognised test runner format — showing full output)"
+                    mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (lines c.output))
+                else
+                    mapM_ printFailedCase (filter isCaseFailed c.testCases)
+            else
+                mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (lines c.output))
+
+    isCaseFailed (TestCase _ (TestCaseFailed _)) = True
+    isCaseFailed _ = False
+
+    printFailedCase tc = do
+        Console.putTextLn $ "  " <> tc.description
+        case tc.outcome of
+            TestCaseFailed details ->
+                mapM_ (Console.putTextLn . ("    " <>)) (T.lines details)
+            TestCasePassed -> pure ()
+
+    stripGhciNoise ls =
+        case dropWhile (not . T.isPrefixOf "ghci> ") ls of
+            [] -> ls
+            _ : afterPrompt -> reverse $ dropWhile isGhciNoiseLine $ reverse afterPrompt
+
+    isGhciNoiseLine l =
+        T.isPrefixOf "ghci>" l
+            || l == "Leaving GHCi."
+            || T.isPrefixOf "*** Exception: " l
 
 
 showSource

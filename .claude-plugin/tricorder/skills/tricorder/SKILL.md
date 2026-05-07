@@ -19,6 +19,9 @@ tricorder is a daemon-based GHCi build monitor. It exposes build state over a Un
 - `tricorder status --wait --json` — wait then output JSON
 - `tricorder status --verbose` / `-v` — print full GHC message body under each diagnostic
 - `tricorder status --expand <N>` — print the summary line and full GHC message body for diagnostic #N
+- `tricorder test-results` — show full output from the latest test run
+- `tricorder test-results --failed` — show output only from failed test suites
+- `tricorder test-results --wait` — block until the current build cycle completes, then show results
 - `tricorder source MODULE...` — print Haskell source for one or more installed modules (e.g. `tricorder source Data.Map.Strict`)
 - `tricorder ui` — auto-refreshing terminal display (for humans)
 
@@ -113,15 +116,46 @@ Each diagnostic in `diagnostics`:
 - `title` is the short summary (first line of the GHC message)
 - `text` contains the full GHC message body
 
+### Test results (`test-results`)
+
+The daemon runs configured test suites automatically after each clean build — **never run `cabal test` manually**. Use `tricorder test-results` to inspect what happened.
+
+Default output lists each suite with its outcome followed by full captured output:
+
+```
+test:my-tests  failed
+  <full test runner output>
+test:other-tests  passed
+  <full test runner output>
+```
+
+With `--failed`, only failing suites are shown. If all suites passed:
+
+```
+All passed.
+  test:my-tests
+  test:other-tests
+```
+
+With `--wait`, blocks until the current build and test cycle completes before printing results. Combine with `--failed` to get a compact failure report after editing:
+
+```
+tricorder test-results --wait --failed
+```
+
+**Exit code**: 1 when any shown test suite failed or errored, 0 otherwise.
+
 ## Workflow
 
 1. Edit source files
 2. Run `tricorder status --wait` — blocks until tricorder finishes recompiling
 3. If errors are shown, fix them and repeat
-4. `All good.` means the build is clean
+4. `All good.` means the build is clean; test suites run automatically if configured
+5. Run `tricorder test-results --wait --failed` to see any test failures
 
 ## Notes
 
 - The daemon is per-project, scoped by the current working directory
 - `tricorder status` auto-starts the daemon if it isn't running
+- Do not run `cabal test` manually — the daemon manages test execution after each clean build
 - Use `--json` only when you need to parse the full build state; the default text output is sufficient for most workflows

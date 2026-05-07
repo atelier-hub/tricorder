@@ -21,7 +21,7 @@ import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Tricorder.Arguments (Command (..))
 import Tricorder.BuildState (BuildState (..), DaemonInfo (..))
-import Tricorder.CLI (showLog, showSource, showStatus)
+import Tricorder.CLI (showLog, showSource, showStatus, showTests)
 import Tricorder.Config (Config)
 import Tricorder.Daemon (startDaemon, stopDaemon, waitForDaemon)
 import Tricorder.Effects.Brick (Brick)
@@ -96,6 +96,12 @@ run =
                 Console.putStrLn "Stopped."
             else
                 showStatus opts
+        Test opts -> do
+            running <- isDaemonRunning
+            if not running then
+                Console.putStrLn "Stopped."
+            else
+                showTests opts
         Log followMode -> do
             running <- isDaemonRunning
             mLogFile <-

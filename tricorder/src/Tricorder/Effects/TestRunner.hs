@@ -8,6 +8,7 @@ module Tricorder.Effects.TestRunner
     , runTestRunnerScripted
 
       -- * Parsing utilities
+    , GhciOutcome (..)
     , detectOutcome
     ) where
 
@@ -24,8 +25,9 @@ import Data.ByteString.Lazy qualified as BSL
 import Data.List qualified as List
 import Data.Text qualified as T
 
-import Tricorder.BuildState (TestOutcome (..), TestRun (..))
+import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
 import Tricorder.Runtime (ProjectRoot (..))
+import Tricorder.TestOutput (parseHspecOutput)
 
 
 data TestRunner :: Effect where
@@ -54,10 +56,20 @@ runTestRunnerIO act = do
                 pure (out, err)
             pure $ case result of
                 Left ex ->
-                    TestRun {target, outcome = TestsError (show ex :: Text), output = ""}
+                    TestRunErrored $ TestRunError {target, message = show ex}
                 Right (out, err) ->
                     let output = decodeUtf8 (BSL.toStrict out) <> decodeUtf8 (BSL.toStrict err)
-                    in  TestRun {target, outcome = detectOutcome output, output}
+                    in  case detectOutcome output of
+                            GhciCrashed msg ->
+                                TestRunErrored $ TestRunError {target, message = msg}
+                            outcome ->
+                                TestRunCompleted
+                                    $ TestRunCompletion
+                                        { target
+                                        , passed = outcome == GhciPassed
+                                        , output
+                                        , testCases = parseHspecOutput output
+                                        }
 
 
 -- | Scripted interpreter for testing.
@@ -81,6 +93,13 @@ runTestRunnerScripted results = reinterpret (evalState results) $ \_ ->
             RunTestSuite _ -> popResult
 
 
+data GhciOutcome
+    = GhciPassed
+    | GhciFailed
+    | GhciCrashed Text
+    deriving stock (Eq, Show)
+
+
 -- | Detect the test outcome from raw GHCi output.
 --
 -- All major test frameworks (@hspec@, @tasty@, @HUnit@) call
@@ -88,19 +107,19 @@ runTestRunnerScripted results = reinterpret (evalState results) $ \_ ->
 -- matching @*** Exception: ExitSuccess@ (pass) or
 -- @*** Exception: ExitFailure N@ (fail). Any other @*** Exception:@ line
 -- means the runner crashed. Absence of an exception line is treated as pass.
-detectOutcome :: Text -> TestOutcome
+detectOutcome :: Text -> GhciOutcome
 detectOutcome output =
     case List.find ("*** Exception: " `T.isPrefixOf`) (T.lines output) of
-        Nothing -> TestsPassed
+        Nothing -> GhciPassed
         Just line ->
             case T.stripPrefix "*** Exception: " line of
-                Nothing -> TestsPassed
+                Nothing -> GhciPassed
                 Just rest ->
                     let r = T.strip rest
                     in  if r == "ExitSuccess" then
-                            TestsPassed
+                            GhciPassed
                         else
                             if "ExitFailure" `T.isPrefixOf` r then
-                                TestsFailed
+                                GhciFailed
                             else
-                                TestsError r
+                                GhciCrashed r
