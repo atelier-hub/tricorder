@@ -114,11 +114,11 @@ boom = ErrorCall "simulated process crash"
 
 
 passingRun :: TestRun
-passingRun = TestRun {target = "test:foo", outcome = TestsPassed, output = "2 examples, 0 failures\n"}
+passingRun = TestRun {target = "test:foo", outcome = TestsPassed, output = "2 examples, 0 failures\n", testCases = []}
 
 
 failingRun :: TestRun
-failingRun = TestRun {target = "test:bar", outcome = TestsFailed, output = "1 example, 1 failure\n"}
+failingRun = TestRun {target = "test:bar", outcome = TestsFailed, output = "1 example, 1 failure\n", testCases = []}
 
 
 runScripted :: [Either SomeException TestRun] -> Eff '[TestRunner, IOE] a -> IO a

@@ -191,7 +191,7 @@ runTestsIfClean
     => [Text] -> BuildId -> BuildResult -> Eff es [TestRun]
 runTestsIfClean testTargets bid partialResult
     | not (null testTargets) && not (any (\d -> d.severity == SError) partialResult.diagnostics) = do
-        let pendingRun t = TestRun {target = t, outcome = TestsRunning, output = ""}
+        let pendingRun t = TestRun {target = t, outcome = TestsRunning, output = "", testCases = []}
         BuildStore.setPhase bid (Testing partialResult {testRuns = map pendingRun testTargets})
         Log.info $ "Running " <> show (length testTargets) <> " test suite(s)"
         foldM

@@ -26,6 +26,7 @@ import Data.Text qualified as T
 
 import Tricorder.BuildState (TestOutcome (..), TestRun (..))
 import Tricorder.Runtime (ProjectRoot (..))
+import Tricorder.TestOutput (parseHspecOutput)
 
 
 data TestRunner :: Effect where
@@ -54,10 +55,10 @@ runTestRunnerIO act = do
                 pure (out, err)
             pure $ case result of
                 Left ex ->
-                    TestRun {target, outcome = TestsError (show ex :: Text), output = ""}
+                    TestRun {target, outcome = TestsError (show ex :: Text), output = "", testCases = []}
                 Right (out, err) ->
                     let output = decodeUtf8 (BSL.toStrict out) <> decodeUtf8 (BSL.toStrict err)
-                    in  TestRun {target, outcome = detectOutcome output, output}
+                    in  TestRun {target, outcome = detectOutcome output, output, testCases = parseHspecOutput output}
 
 
 -- | Scripted interpreter for testing.

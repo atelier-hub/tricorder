@@ -6,6 +6,8 @@ module Tricorder.BuildState
     , BuildResult (..)
     , TestRun (..)
     , TestOutcome (..)
+    , TestCase (..)
+    , TestCaseOutcome (..)
     , DaemonInfo (..)
     , runDaemonInfo
     , Diagnostic (..)
@@ -75,10 +77,26 @@ data TestOutcome = TestsRunning | TestsPassed | TestsFailed | TestsError Text
     deriving anyclass (FromJSON, ToJSON)
 
 
+data TestCaseOutcome
+    = TestCasePassed
+    | TestCaseFailed Text
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass (FromJSON, ToJSON)
+
+
+data TestCase = TestCase
+    { description :: Text
+    , outcome :: TestCaseOutcome
+    }
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass (FromJSON, ToJSON)
+
+
 data TestRun = TestRun
     { target :: Text
     , outcome :: TestOutcome
     , output :: Text
+    , testCases :: [TestCase]
     }
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)

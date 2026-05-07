@@ -11,6 +11,7 @@ import Data.Time.LocalTime (utcToLocalTime)
 import Effectful.Reader.Static (Reader, ask)
 
 import Data.ByteString.Lazy qualified as BSL
+import Data.Text qualified as T
 
 import Atelier.Effects.Clock (Clock, currentTimeZone)
 import Atelier.Effects.Console (Console)
@@ -32,6 +33,8 @@ import Tricorder.BuildState
     , BuildState (..)
     , Diagnostic (..)
     , Severity (..)
+    , TestCase (..)
+    , TestCaseOutcome (..)
     , TestOutcome (..)
     , TestRun (..)
     )
@@ -206,12 +209,39 @@ showTests opts = do
 
     printTestOutput tr = do
         Console.putTextLn $ tr.target <> "  " <> outcomeLabel tr.outcome
-        mapM_ (Console.putTextLn . ("  " <>) . toText) (lines tr.output)
+        if opts.failedOnly then
+            if null tr.testCases then do
+                Console.putTextLn "  (unrecognised test runner format — showing full output)"
+                mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (lines tr.output))
+            else
+                mapM_ printFailedCase (filter isCaseFailed tr.testCases)
+        else
+            mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (lines tr.output))
       where
         outcomeLabel TestsRunning = "running..."
         outcomeLabel TestsPassed = "passed"
         outcomeLabel TestsFailed = "failed"
         outcomeLabel (TestsError msg) = "error: " <> msg
+
+        isCaseFailed (TestCase _ (TestCaseFailed _)) = True
+        isCaseFailed _ = False
+
+        printFailedCase tc = do
+            Console.putTextLn $ "  " <> tc.description
+            case tc.outcome of
+                TestCaseFailed details ->
+                    mapM_ (Console.putTextLn . ("    " <>)) (T.lines details)
+                TestCasePassed -> pure ()
+
+    stripGhciNoise ls =
+        case dropWhile (not . T.isPrefixOf "ghci> ") ls of
+            [] -> ls
+            _ : afterPrompt -> reverse $ dropWhile isGhciNoiseLine $ reverse afterPrompt
+
+    isGhciNoiseLine l =
+        T.isPrefixOf "ghci>" l
+            || l == "Leaving GHCi."
+            || T.isPrefixOf "*** Exception: " l
 
 
 showSource

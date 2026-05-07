@@ -39,6 +39,7 @@ library
       Tricorder.Socket.Protocol
       Tricorder.Socket.Server
       Tricorder.SourceLookup
+      Tricorder.TestOutput
       Tricorder.UI
       Tricorder.UI.Event
       Tricorder.UI.Misc
@@ -412,6 +413,7 @@ test-suite tricorder-test
       Unit.Tricorder.SocketSpec
       Unit.Tricorder.SourceLookupSpec
       Unit.Tricorder.SourceSpec
+      Unit.Tricorder.TestOutputSpec
       Unit.Tricorder.TestRunnerSpec
       Paths_tricorder
   autogen-modules:
