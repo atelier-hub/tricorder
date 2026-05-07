@@ -185,24 +185,23 @@ showTests opts = do
             case state.phase of
                 Building _ -> Console.putStrLn "Build in progress, no test results yet."
                 Restarting -> Console.putStrLn "Daemon restarting, no test results yet."
-                Testing r -> renderTestRuns r
-                Done r -> renderTestRuns r
+                Testing r -> renderTestRuns r.testRuns
+                Done r -> renderTestRuns r.testRuns
   where
-    renderTestRuns r =
-        let runs =
-                if opts.failedOnly then
-                    filter isFailed r.testRuns
-                else
-                    r.testRuns
-        in  if null r.testRuns then
-                Console.putStrLn "No test results."
+    renderTestRuns [] = Console.putStrLn "No test results."
+    renderTestRuns testRuns
+        | null runs = do
+            Console.putStrLn "All passed."
+            mapM_ (Console.putTextLn . ("  " <>) . testRunTarget) testRuns
+        | otherwise = do
+            mapM_ printTestOutput runs
+            when (any isFailed runs) exitFailure
+      where
+        runs =
+            if opts.failedOnly then
+                filter isFailed testRuns
             else
-                if null runs then do
-                    Console.putStrLn "All passed."
-                    mapM_ (Console.putTextLn . ("  " <>) . testRunTarget) r.testRuns
-                else do
-                    mapM_ printTestOutput runs
-                    when (any isFailed runs) exitFailure
+                testRuns
 
     isFailed (TestRunCompleted c) = not c.passed
     isFailed (TestRunErrored _) = True
