@@ -3,6 +3,7 @@ module Tricorder.Arguments
     , FollowMode (..)
     , OutputFormat (..)
     , StatusOptions (..)
+    , TestOptions (..)
     , Verbosity (..)
     , WaitMode (..)
     , parseArguments
@@ -68,10 +69,17 @@ data StatusOptions = StatusOptions
     }
 
 
+data TestOptions = TestOptions
+    { failedOnly :: Bool
+    , wait :: WaitMode
+    }
+
+
 data Command
     = Start
     | Stop
     | Status StatusOptions
+    | Test TestOptions
     | UI
     | Log FollowMode
     | Source [ModuleName]
@@ -101,6 +109,7 @@ commandParser =
         ( command "start" (info (pure Start) (progDesc "Start the daemon (no-op if already running)"))
             <> command "stop" (info (pure Stop) (progDesc "Stop the daemon"))
             <> command "status" (info statusParser (progDesc "Print build diagnostics (--json for machine-readable output)"))
+            <> command "test-results" (info testParser (progDesc "Show output from the latest test run"))
             <> command "ui" (info (pure UI) (progDesc "Auto-refreshing terminal display"))
             <> command "log" (info logParser (progDesc "Show daemon log output"))
             <> command "source" (info sourceParser (progDesc "Print the Haskell source of one or more installed modules"))
@@ -149,6 +158,25 @@ statusParser =
                             <> metavar "N"
                             <> help "Print full GHC message body for diagnostic #N"
                         )
+                    )
+            )
+
+
+testParser :: Parser Command
+testParser =
+    Test
+        <$> ( TestOptions
+                <$> flag
+                    False
+                    True
+                    ( long "failed"
+                        <> help "Only show output from failed test suites"
+                    )
+                <*> flag
+                    ShowCurrent
+                    WaitForBuild
+                    ( long "wait"
+                        <> help "Block until the current build cycle completes"
                     )
             )
 

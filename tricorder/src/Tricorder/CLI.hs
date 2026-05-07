@@ -2,6 +2,7 @@ module Tricorder.CLI
     ( showLog
     , showSource
     , showStatus
+    , showTests
     ) where
 
 import Data.Aeson (encode)
@@ -21,6 +22,7 @@ import Tricorder.Arguments
     ( FollowMode (..)
     , OutputFormat (..)
     , StatusOptions (..)
+    , TestOptions (..)
     , Verbosity (..)
     , WaitMode (..)
     )
@@ -157,6 +159,59 @@ showLog mLogFile followMode = case mLogFile of
         else case followMode of
             Follow -> followFile path Console.putStr
             NoFollow -> readFileLbs path >>= Console.putStr . BSL.toStrict
+
+
+showTests
+    :: ( Console :> es
+       , Exit :> es
+       , File :> es
+       , Reader SocketPath :> es
+       , UnixSocket :> es
+       )
+    => TestOptions -> Eff es ()
+showTests opts = do
+    SocketPath sockPath <- ask
+    result <-
+        case opts.wait of
+            WaitForBuild -> queryStatusWait sockPath
+            ShowCurrent -> queryStatus sockPath
+    case result of
+        Left err -> Console.putTextLn $ "Error: " <> err
+        Right state ->
+            case state.phase of
+                Building _ -> Console.putStrLn "Build in progress, no test results yet."
+                Restarting -> Console.putStrLn "Daemon restarting, no test results yet."
+                Testing r -> renderTestRuns r
+                Done r -> renderTestRuns r
+  where
+    renderTestRuns r =
+        let runs =
+                if opts.failedOnly then
+                    filter (isFailed . (.outcome)) r.testRuns
+                else
+                    r.testRuns
+        in  if null r.testRuns then
+                Console.putStrLn "No test results."
+            else
+                if null runs then do
+                    Console.putStrLn "All passed."
+                    mapM_ (Console.putTextLn . ("  " <>) . (.target)) r.testRuns
+                else do
+                    mapM_ printTestOutput runs
+                    when (any (isFailed . (.outcome)) runs) exitFailure
+
+    isFailed TestsPassed = False
+    isFailed TestsRunning = False
+    isFailed _ = True
+
+    printTestOutput tr = do
+        Console.putTextLn $ tr.target <> "  " <> outcomeLabel tr.outcome
+        mapM_ (Console.putTextLn . ("  " <>) . toText) (lines tr.output)
+      where
+        outcomeLabel TestsRunning = "running..."
+        outcomeLabel TestsPassed = "passed"
+        outcomeLabel TestsFailed = "failed"
+        outcomeLabel (TestsError msg) = "error: " <> msg
 
 
 showSource
