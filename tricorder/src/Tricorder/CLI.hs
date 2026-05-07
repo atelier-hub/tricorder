@@ -35,8 +35,9 @@ import Tricorder.BuildState
     , Severity (..)
     , TestCase (..)
     , TestCaseOutcome (..)
-    , TestOutcome (..)
     , TestRun (..)
+    , TestRunCompletion (..)
+    , TestRunError (..)
     )
 import Tricorder.CLI.Render
     ( diagnosticLineIndexed
@@ -119,21 +120,21 @@ showStatus opts = do
                     when (buildHasErrors r || testsFailed r) exitFailure
 
     printTestRun verbosity tr = do
-        Console.putTextLn $ testRunSummary tr.target tr.outcome
-        when (verbosity == Verbose)
-            $ mapM_ (Console.putTextLn . ("  " <>) . toText) (lines tr.output)
-      where
-        testRunSummary t TestsRunning = t <> "  running..."
-        testRunSummary t TestsPassed = t <> "  passed"
-        testRunSummary t TestsFailed = t <> "  failed"
-        testRunSummary t (TestsError msg) = t <> "  error: " <> msg
+        Console.putTextLn $ case tr of
+            TestRunning t -> t <> "  running..."
+            TestRunErrored e -> e.target <> "  error: " <> e.message
+            TestRunCompleted c -> c.target <> "  " <> if c.passed then "passed" else "failed"
+        when (verbosity == Verbose) $ case tr of
+            TestRunCompleted c ->
+                mapM_ (Console.putTextLn . ("  " <>) . toText) (lines c.output)
+            _ -> pure ()
 
     buildHasErrors r = any ((== SError) . (.severity)) r.diagnostics
-    testsFailed r = any (notPassed . (.outcome)) r.testRuns
+    testsFailed r = any isFailedRun r.testRuns
       where
-        notPassed TestsPassed = False
-        notPassed TestsRunning = False
-        notPassed _ = True
+        isFailedRun (TestRunCompleted c) = not c.passed
+        isFailedRun (TestRunErrored _) = True
+        isFailedRun (TestRunning _) = False
 
     buildSummary tz r =
         let errs = length $ filter ((== SError) . (.severity)) r.diagnostics
@@ -190,7 +191,7 @@ showTests opts = do
     renderTestRuns r =
         let runs =
                 if opts.failedOnly then
-                    filter (isFailed . (.outcome)) r.testRuns
+                    filter isFailed r.testRuns
                 else
                     r.testRuns
         in  if null r.testRuns then
@@ -198,40 +199,44 @@ showTests opts = do
             else
                 if null runs then do
                     Console.putStrLn "All passed."
-                    mapM_ (Console.putTextLn . ("  " <>) . (.target)) r.testRuns
+                    mapM_ (Console.putTextLn . ("  " <>) . testRunTarget) r.testRuns
                 else do
                     mapM_ printTestOutput runs
-                    when (any (isFailed . (.outcome)) runs) exitFailure
+                    when (any isFailed runs) exitFailure
 
-    isFailed TestsPassed = False
-    isFailed TestsRunning = False
-    isFailed _ = True
+    isFailed (TestRunCompleted c) = not c.passed
+    isFailed (TestRunErrored _) = True
+    isFailed (TestRunning _) = False
 
-    printTestOutput tr = do
-        Console.putTextLn $ tr.target <> "  " <> outcomeLabel tr.outcome
-        if opts.failedOnly then
-            if null tr.testCases then do
-                Console.putTextLn "  (unrecognised test runner format — showing full output)"
-                mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (lines tr.output))
+    testRunTarget (TestRunning t) = t
+    testRunTarget (TestRunErrored e) = e.target
+    testRunTarget (TestRunCompleted c) = c.target
+
+    printTestOutput tr = case tr of
+        TestRunning t ->
+            Console.putTextLn $ t <> "  running..."
+        TestRunErrored e ->
+            Console.putTextLn $ e.target <> "  error: " <> e.message
+        TestRunCompleted c -> do
+            Console.putTextLn $ c.target <> "  " <> if c.passed then "passed" else "failed"
+            if opts.failedOnly then
+                if null c.testCases then do
+                    Console.putTextLn "  (unrecognised test runner format — showing full output)"
+                    mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (lines c.output))
+                else
+                    mapM_ printFailedCase (filter isCaseFailed c.testCases)
             else
-                mapM_ printFailedCase (filter isCaseFailed tr.testCases)
-        else
-            mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (lines tr.output))
-      where
-        outcomeLabel TestsRunning = "running..."
-        outcomeLabel TestsPassed = "passed"
-        outcomeLabel TestsFailed = "failed"
-        outcomeLabel (TestsError msg) = "error: " <> msg
+                mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (lines c.output))
 
-        isCaseFailed (TestCase _ (TestCaseFailed _)) = True
-        isCaseFailed _ = False
+    isCaseFailed (TestCase _ (TestCaseFailed _)) = True
+    isCaseFailed _ = False
 
-        printFailedCase tc = do
-            Console.putTextLn $ "  " <> tc.description
-            case tc.outcome of
-                TestCaseFailed details ->
-                    mapM_ (Console.putTextLn . ("    " <>)) (T.lines details)
-                TestCasePassed -> pure ()
+    printFailedCase tc = do
+        Console.putTextLn $ "  " <> tc.description
+        case tc.outcome of
+            TestCaseFailed details ->
+                mapM_ (Console.putTextLn . ("    " <>)) (T.lines details)
+            TestCasePassed -> pure ()
 
     stripGhciNoise ls =
         case dropWhile (not . T.isPrefixOf "ghci> ") ls of

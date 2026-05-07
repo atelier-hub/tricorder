@@ -37,8 +37,9 @@ import Tricorder.BuildState
     , DaemonInfo (..)
     , Diagnostic (..)
     , Severity (..)
-    , TestOutcome (..)
     , TestRun (..)
+    , TestRunCompletion (..)
+    , TestRunError (..)
     )
 import Tricorder.UI.Event (viewKeybindings)
 import Tricorder.UI.Misc (emphasis, err, hBoxSpaced, ok, subtle, vBoxSpaced, warn)
@@ -251,14 +252,10 @@ viewTestRuns runs = vBox $ viewTestRun <$> runs
 
 
 viewTestRun :: TestRun -> Widget n
-viewTestRun tr = hBox [txt tr.target, txt "  ", viewTestOutcome tr.outcome]
-
-
-viewTestOutcome :: TestOutcome -> Widget n
-viewTestOutcome TestsRunning = warn $ txt "running..."
-viewTestOutcome TestsPassed = ok $ txt "passed"
-viewTestOutcome TestsFailed = err $ txt "failed"
-viewTestOutcome (TestsError msg) = hBox [err $ txt "error:", txt msg]
+viewTestRun (TestRunning t) = hBox [txt t, txt "  ", warn $ txt "running..."]
+viewTestRun (TestRunErrored e) = hBox [txt e.target, txt "  ", err $ txt "error: ", txt e.message]
+viewTestRun (TestRunCompleted c) =
+    hBox [txt c.target, txt "  ", if c.passed then ok (txt "passed") else err (txt "failed")]
 
 
 viewTimestamp :: TimeZone -> UTCTime -> Widget n

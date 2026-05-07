@@ -20,7 +20,7 @@ import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
-import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..), Severity (..), TestOutcome (..), TestRun (..))
+import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..), Severity (..), TestRun (..))
 import Tricorder.Config (Config (..), resolveCommand, resolveTestTargets, resolveWatchDirs)
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
@@ -191,7 +191,7 @@ runTestsIfClean
     => [Text] -> BuildId -> BuildResult -> Eff es [TestRun]
 runTestsIfClean testTargets bid partialResult
     | not (null testTargets) && not (any (\d -> d.severity == SError) partialResult.diagnostics) = do
-        let pendingRun t = TestRun {target = t, outcome = TestsRunning, output = "", testCases = []}
+        let pendingRun = TestRunning
         BuildStore.setPhase bid (Testing partialResult {testRuns = map pendingRun testTargets})
         Log.info $ "Running " <> show (length testTargets) <> " test suite(s)"
         foldM
