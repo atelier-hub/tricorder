@@ -20,11 +20,19 @@ import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
-import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), ChangeKind (..), Diagnostic (..), Severity (..), TestRun (..))
-import Tricorder.Config (Config (..), resolveCommand, resolveTestTargets, resolveWatchDirs)
+import Tricorder.BuildState
+    ( BuildId (..)
+    , BuildPhase (..)
+    , BuildResult (..)
+    , ChangeKind (..)
+    , Diagnostic (..)
+    , Severity (..)
+    , TestRun (..)
+    )
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
 import Tricorder.Effects.TestRunner (TestRunner)
+import Tricorder.Session (Session (..), resolveCommand, resolveTestTargets, resolveWatchDirs)
 
 import Atelier.Effects.Clock qualified as Clock
 import Atelier.Effects.Delay qualified as Delay
@@ -83,7 +91,7 @@ component
        , FileSystem :> es
        , GhciSession :> es
        , Log :> es
-       , Reader Config :> es
+       , Reader Session :> es
        , TestRunner :> es
        )
     => Component es
@@ -91,7 +99,7 @@ component =
     defaultComponent
         { name = "GhciSession"
         , listeners = do
-            cfg <- ask @Config
+            cfg <- ask @Session
             projectRoot <- getCurrentDirectory
             cmd <- resolveCommand cfg projectRoot
             watchDirs <- resolveWatchDirs cfg projectRoot

@@ -10,8 +10,8 @@ import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Atelier.Effects.FileWatcher (FileWatcher, Watch, containing, dirExt, dirWhere, excluding, watchFilePathsDebounced)
 import Tricorder.BuildState (ChangeKind (..))
-import Tricorder.Config (Config (..), resolveWatchDirs)
 import Tricorder.Effects.BuildStore (BuildStore, markDirty)
+import Tricorder.Session (Session (..), resolveWatchDirs)
 
 
 -- | Watcher component.
@@ -23,14 +23,14 @@ component
        , Debounce FilePath :> es
        , FileSystem :> es
        , FileWatcher :> es
-       , Reader Config :> es
+       , Reader Session :> es
        )
     => Component es
 component =
     defaultComponent
         { name = "Watcher"
         , triggers = do
-            cfg <- ask @Config
+            cfg <- ask @Session
             projectRoot <- getCurrentDirectory
             dirs <- resolveWatchDirs cfg projectRoot
             let watches = sourceWatches dirs <> cabalWatches projectRoot

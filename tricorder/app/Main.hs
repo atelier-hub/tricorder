@@ -21,7 +21,7 @@ import Atelier.Effects.Monitoring.Tracing (runTracingFromConfig)
 import Atelier.Effects.Posix.Daemons (runDaemons)
 import Tricorder.Arguments (runArguments)
 import Tricorder.BuildState (runDaemonInfo)
-import Tricorder.Config (runConfig)
+import Tricorder.Config (runLoadedConfig)
 import Tricorder.Effects.Brick (runBrick)
 import Tricorder.Effects.BrickChan (runBrickChan)
 import Tricorder.Effects.BuildStore (runBuildStore)
@@ -31,6 +31,7 @@ import Tricorder.Effects.Logging (runLogging)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
 import Tricorder.Runtime (runPidFile, runProjectRoot, runRuntimeDir, runSocketPath)
+import Tricorder.Session (runSession)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
 import Tricorder qualified
@@ -55,7 +56,8 @@ main =
         . runRuntimeDir
         . runPidFile
         . runSocketPath
-        . runConfig
+        . runLoadedConfig
+        . runSession
         . runTracingFromConfig
         . runMetrics
         . runReader @CacheConfig.Config def

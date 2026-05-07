@@ -26,8 +26,8 @@ import Effectful.Reader.Static (Reader, ask, runReader)
 import System.FilePath (makeRelative)
 
 import Atelier.Effects.FileSystem (FileSystem)
-import Tricorder.Config (Config (..), resolveWatchDirs)
 import Tricorder.Runtime (ProjectRoot (..), SocketPath (..))
+import Tricorder.Session (Session (..), resolveWatchDirs)
 
 import Tricorder.Observability qualified as Observability
 
@@ -50,9 +50,9 @@ data DaemonInfo = DaemonInfo
 
 runDaemonInfo
     :: ( FileSystem :> es
-       , Reader Config :> es
        , Reader Observability.Config :> es
        , Reader ProjectRoot :> es
+       , Reader Session :> es
        , Reader SocketPath :> es
        )
     => Eff (Reader DaemonInfo : es) a -> Eff es a

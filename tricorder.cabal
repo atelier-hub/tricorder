@@ -35,6 +35,7 @@ library
       Tricorder.GhcPkg.Types
       Tricorder.Observability
       Tricorder.Runtime
+      Tricorder.Session
       Tricorder.Socket.Client
       Tricorder.Socket.Protocol
       Tricorder.Socket.Server
@@ -407,9 +408,9 @@ test-suite tricorder-test
       Unit.Tricorder.BuildStateSpec
       Unit.Tricorder.BuildStoreSpec
       Unit.Tricorder.CLI.RenderSpec
-      Unit.Tricorder.ConfigSpec
       Unit.Tricorder.GhciSessionSpec
       Unit.Tricorder.GhcPkgSpec
+      Unit.Tricorder.SessionSpec
       Unit.Tricorder.SocketSpec
       Unit.Tricorder.SourceLookupSpec
       Unit.Tricorder.SourceSpec
