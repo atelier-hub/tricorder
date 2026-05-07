@@ -34,6 +34,7 @@ import Atelier.Effects.Log (Log)
 import Atelier.Exception (trySyncIO)
 import Tricorder.BuildState (BuildPhase (..), BuildProgress (..), Diagnostic (..), Severity (..))
 import Tricorder.Effects.BuildStore (BuildStore, getState, setPhase)
+import Tricorder.Runtime (ProjectRoot (..))
 
 import Atelier.Effects.Log qualified as Log
 import Tricorder.BuildState qualified as BuildState
@@ -56,7 +57,7 @@ data GhciSession :: Effect where
     -- The handler is also provided an action to reload the GHCi session,
     -- returning new messages with module counts. The GHCi session is closed
     -- when the handler returns.
-    WithGhci :: Text -> FilePath -> (LoadResult -> m LoadResult -> m a) -> GhciSession m a
+    WithGhci :: Text -> ProjectRoot -> (LoadResult -> m LoadResult -> m a) -> GhciSession m a
 
 
 makeEffect ''GhciSession
@@ -66,7 +67,7 @@ makeEffect ''GhciSession
 -- Manages the 'Ghcid.Ghci' handle via 'State'.
 runGhciSessionIO :: (BuildStore :> es, IOE :> es, Log :> es) => Eff (GhciSession : es) a -> Eff es a
 runGhciSessionIO = interpret $ \env -> \case
-    WithGhci cmd dir handler -> do
+    WithGhci cmd (ProjectRoot dir) handler -> do
         let mkSession = withEffToIO (ConcUnlift Persistent Unlimited) \unlift -> do
                 Ghcid.startGhci (toString cmd) (Just dir) \_ line -> do
                     unlift $ Log.debug $ "GhciSession callback: " <> toText line

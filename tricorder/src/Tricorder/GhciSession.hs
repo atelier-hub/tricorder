@@ -16,7 +16,6 @@ import Data.Map.Strict qualified as Map
 import Atelier.Component (Component (..), Listener, defaultComponent)
 import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Delay (Delay)
-import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (isGracefulShutdown)
 import Atelier.Time (Millisecond)
@@ -32,7 +31,8 @@ import Tricorder.BuildState
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
 import Tricorder.Effects.TestRunner (TestRunner)
-import Tricorder.Session (Session (..), resolveCommand, resolveTestTargets, resolveWatchDirs)
+import Tricorder.Runtime (ProjectRoot (..))
+import Tricorder.Session (Session (..))
 
 import Atelier.Effects.Clock qualified as Clock
 import Atelier.Effects.Delay qualified as Delay
@@ -61,9 +61,9 @@ mergeDiagnostics prev LoadResult {compiledFiles, diagnostics} =
 -- those with mangled filenames produced by the C preprocessor (e.g.
 -- @"In file included from ..."@) are dropped here, before they can enter the
 -- accumulation map where they would be impossible to evict.
-filterToWatchDirs :: FilePath -> [FilePath] -> [Diagnostic] -> [Diagnostic]
-filterToWatchDirs _ [] diags = diags
-filterToWatchDirs projectRoot watchDirs diags =
+filterToWatchDirs :: ProjectRoot -> Session -> [Diagnostic] -> [Diagnostic]
+filterToWatchDirs _ (Session {watchDirs = []}) diags = diags
+filterToWatchDirs (ProjectRoot projectRoot) (Session {watchDirs}) diags =
     filter (isUnderAnyWatchDir . (.file)) diags
   where
     absWatchDirs = map toAbsWd watchDirs
@@ -88,9 +88,9 @@ component
     :: ( BuildStore :> es
        , Clock :> es
        , Delay :> es
-       , FileSystem :> es
        , GhciSession :> es
        , Log :> es
+       , Reader ProjectRoot :> es
        , Reader Session :> es
        , TestRunner :> es
        )
@@ -99,14 +99,11 @@ component =
     defaultComponent
         { name = "GhciSession"
         , listeners = do
-            cfg <- ask @Session
-            projectRoot <- getCurrentDirectory
-            cmd <- resolveCommand cfg projectRoot
-            watchDirs <- resolveWatchDirs cfg projectRoot
-            let testTargets = resolveTestTargets cfg
-            Log.debug $ "GhciSession.component: resolved command = " <> cmd
-            Log.debug $ "GhciSession.component: projectRoot = " <> toText projectRoot
-            pure [sessionListener cmd projectRoot watchDirs testTargets]
+            session <- ask @Session
+            projectRoot <- ask
+            Log.debug $ "GhciSession.component: resolved command = " <> session.command
+            Log.debug $ "GhciSession.component: projectRoot = " <> toText (getProjectRoot projectRoot)
+            pure [sessionListener session projectRoot]
         }
 
 
@@ -123,24 +120,22 @@ sessionListener
        , Log :> es
        , TestRunner :> es
        )
-    => Text
-    -> FilePath
-    -> [FilePath]
-    -> [Text]
+    => Session
+    -> ProjectRoot
     -> Listener es
-sessionListener cmd projectRoot watchDirs testTargets = initSession (BuildId 1)
+sessionListener session projectRoot = initSession (BuildId 1)
   where
     initSession (BuildId n) = do
-        Log.info $ "Starting GHCi session #" <> show n <> ": " <> cmd
+        Log.info $ "Starting GHCi session #" <> show n <> ": " <> session.command
         BuildStore.setPhase (BuildId n) $ Building Nothing
         t0 <- Clock.currentTime
-        res <- trySync $ GhciSession.withGhci cmd projectRoot \initialLoad@LoadResult {diagnostics = msgs} reload -> do
+        res <- trySync $ GhciSession.withGhci session.command projectRoot \initialLoad@LoadResult {diagnostics = msgs} reload -> do
             t1 <- Clock.currentTime
             let filteredMsgs = filterDiags msgs
-                partialResult = loadResultToBuildResult projectRoot watchDirs t0 t1 initialLoad
+                partialResult = loadResultToBuildResult projectRoot session t0 t1 initialLoad
                 accumulated = Map.fromListWith (++) [(d.file, [d]) | d <- filteredMsgs]
             Log.info $ "GHCi started (session #" <> show n <> "): " <> show (length filteredMsgs) <> " diagnostics"
-            testRuns <- runTestsIfClean testTargets (BuildId n) partialResult
+            testRuns <- runTestsIfClean session (BuildId n) partialResult
             BuildStore.setPhase (BuildId n) $ Done partialResult {testRuns}
             Log.debug $ "Build state updated to Done (session #" <> show n <> ")"
             loopSession reload (BuildId (n + 1)) accumulated
@@ -185,19 +180,19 @@ sessionListener cmd projectRoot watchDirs testTargets = initSession (BuildId 1)
                             newAccumulated = mergeDiagnostics accumulated filteredResult
                             allMsgs = concat (Map.elems newAccumulated)
                         let partialResult = BuildResult {completedAt = t1, durationMs, moduleCount = loadResult.moduleCount, diagnostics = allMsgs, testRuns = []}
-                        testRuns <- runTestsIfClean testTargets (BuildId n) partialResult
+                        testRuns <- runTestsIfClean session (BuildId n) partialResult
                         BuildStore.setPhase (BuildId n) $ Done partialResult {testRuns}
                         loopSession reload nextId newAccumulated
 
-    filterDiags = filterToWatchDirs projectRoot watchDirs
+    filterDiags = filterToWatchDirs projectRoot session
 
 
 -- Run all configured test suites if the build has no errors.
 -- Transitions to 'Testing' phase while suites are running.
 runTestsIfClean
     :: (BuildStore :> es, Log :> es, TestRunner :> es)
-    => [Text] -> BuildId -> BuildResult -> Eff es [TestRun]
-runTestsIfClean testTargets bid partialResult
+    => Session -> BuildId -> BuildResult -> Eff es [TestRun]
+runTestsIfClean (Session {testTargets}) bid partialResult
     | not (null testTargets) && not (any (\d -> d.severity == SError) partialResult.diagnostics) = do
         let pendingRun = TestRunning
         BuildStore.setPhase bid (Testing partialResult {testRuns = map pendingRun testTargets})
@@ -216,10 +211,10 @@ runTestsIfClean testTargets bid partialResult
     | otherwise = pure []
 
 
-loadResultToBuildResult :: FilePath -> [FilePath] -> UTCTime -> UTCTime -> LoadResult -> BuildResult
-loadResultToBuildResult projectRoot watchDirs t0 t1 LoadResult {moduleCount, diagnostics = msgs} = do
+loadResultToBuildResult :: ProjectRoot -> Session -> UTCTime -> UTCTime -> LoadResult -> BuildResult
+loadResultToBuildResult projectRoot session t0 t1 LoadResult {moduleCount, diagnostics = msgs} = do
     BuildResult {completedAt = t1, durationMs, moduleCount, diagnostics = filteredMsgs, testRuns = []}
   where
-    filterDiags = filterToWatchDirs projectRoot watchDirs
+    filterDiags = filterToWatchDirs projectRoot session
     durationMs = round (realToFrac (diffUTCTime t1 t0) * 1000 :: Double) :: Int
     filteredMsgs = filterDiags msgs

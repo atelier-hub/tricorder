@@ -7,11 +7,19 @@ import System.FilePath (takeExtension, takeFileName)
 
 import Atelier.Component (Component (..), defaultComponent)
 import Atelier.Effects.Debounce (Debounce)
-import Atelier.Effects.FileSystem (FileSystem, getCurrentDirectory)
-import Atelier.Effects.FileWatcher (FileWatcher, Watch, containing, dirExt, dirWhere, excluding, watchFilePathsDebounced)
+import Atelier.Effects.FileWatcher
+    ( FileWatcher
+    , Watch
+    , containing
+    , dirExt
+    , dirWhere
+    , excluding
+    , watchFilePathsDebounced
+    )
 import Tricorder.BuildState (ChangeKind (..))
 import Tricorder.Effects.BuildStore (BuildStore, markDirty)
-import Tricorder.Session (Session (..), resolveWatchDirs)
+import Tricorder.Runtime (ProjectRoot (..))
+import Tricorder.Session (Session (..))
 
 
 -- | Watcher component.
@@ -21,8 +29,8 @@ import Tricorder.Session (Session (..), resolveWatchDirs)
 component
     :: ( BuildStore :> es
        , Debounce FilePath :> es
-       , FileSystem :> es
        , FileWatcher :> es
+       , Reader ProjectRoot :> es
        , Reader Session :> es
        )
     => Component es
@@ -30,22 +38,21 @@ component =
     defaultComponent
         { name = "Watcher"
         , triggers = do
-            cfg <- ask @Session
-            projectRoot <- getCurrentDirectory
-            dirs <- resolveWatchDirs cfg projectRoot
-            let watches = sourceWatches dirs <> cabalWatches projectRoot
+            session <- ask @Session
+            projectRoot <- ask
+            let watches = sourceWatches session <> cabalWatches projectRoot
             pure
                 [ watchFilePathsDebounced watches (markDirty . changeKindFor)
                 ]
         }
 
 
-sourceWatches :: [FilePath] -> [Watch]
-sourceWatches dirs = map (\d -> dirExt d ".hs" `excluding` containing "dist-newstyle") dirs
+sourceWatches :: Session -> [Watch]
+sourceWatches = map (\d -> dirExt d ".hs" `excluding` containing "dist-newstyle") . (.watchDirs)
 
 
-cabalWatches :: FilePath -> [Watch]
-cabalWatches projectRoot = [dirWhere projectRoot isCabalFile]
+cabalWatches :: ProjectRoot -> [Watch]
+cabalWatches (ProjectRoot projectRoot) = [dirWhere projectRoot isCabalFile]
 
 
 isCabalFile :: FilePath -> Bool

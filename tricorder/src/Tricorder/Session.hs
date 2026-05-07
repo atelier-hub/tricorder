@@ -1,12 +1,13 @@
 module Tricorder.Session
     ( Session (..)
+    , Config (..)
+    , runSession
     , resolveCommand
     , resolveTargets
+    , allComponentTargets
     , resolveTestTargets
     , resolveWatchDirs
-    , allComponentTargets
     , sourceDirsForTarget
-    , runSession
     ) where
 
 import Data.Aeson (FromJSON)
@@ -44,6 +45,28 @@ import Tricorder.Runtime (ProjectRoot (..))
 
 
 data Session = Session
+    { command :: Text
+    , targets :: [Text]
+    , testTargets :: [Text]
+    , watchDirs :: [FilePath]
+    , outputFile :: Maybe FilePath
+    , replBuildDir :: FilePath
+    }
+
+
+instance Default Session where
+    def =
+        Session
+            { command = ""
+            , targets = []
+            , testTargets = []
+            , watchDirs = []
+            , outputFile = Nothing
+            , replBuildDir = "/tmp"
+            }
+
+
+data Config = Config
     { command :: Maybe Text
     , targets :: [Text]
     , watchDirs :: [FilePath]
@@ -52,12 +75,12 @@ data Session = Session
     , replBuildDir :: FilePath
     }
     deriving stock (Eq, Generic, Show)
-    deriving (FromJSON) via WithDefaults (QuietSnake Session)
+    deriving (FromJSON) via WithDefaults (QuietSnake Config)
 
 
-instance Default Session where
+instance Default Config where
     def =
-        Session
+        Config
             { command = Nothing
             , targets = []
             , watchDirs = []
@@ -68,24 +91,24 @@ instance Default Session where
 
 
 -- | Resolve the GHCi command, using config if set or autodetecting otherwise.
-resolveCommand :: (FileSystem :> es) => Session -> FilePath -> Eff es Text
-resolveCommand cfg projectRoot =
+resolveCommand :: (FileSystem :> es) => ProjectRoot -> Config -> Eff es Text
+resolveCommand projectRoot cfg =
     case cfg.command of
         Just cmd -> pure cmd
         Nothing -> detectCommand cfg.targets cfg.replBuildDir projectRoot
 
 
-detectCommand :: (FileSystem :> es) => [Text] -> FilePath -> FilePath -> Eff es Text
-detectCommand targets replBuildDir projectRoot = do
+detectCommand :: (FileSystem :> es) => [Text] -> FilePath -> ProjectRoot -> Eff es Text
+detectCommand targets replBuildDir (ProjectRoot projectRoot) = do
     hasCabalProject <- doesFileExist (projectRoot </> "cabal.project")
     cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
     hasStack <- doesFileExist (projectRoot </> "stack.yaml")
     let targetStr = if null targets then "all" else unwords targets
         buildDirFlag = "--builddir " <> toText replBuildDir <> " "
     pure
-        $ if
-            | hasCabalProject -> "cabal repl --enable-multi-repl " <> buildDirFlag <> targetStr
-            | not (null cabalFiles) -> "cabal repl --enable-multi-repl " <> buildDirFlag <> targetStr
+        if
+            | hasCabalProject || not (null cabalFiles) ->
+                "cabal repl --enable-multi-repl " <> buildDirFlag <> targetStr
             | hasStack -> "stack ghci " <> targetStr
             | otherwise -> "cabal repl " <> buildDirFlag <> targetStr
 
@@ -96,17 +119,17 @@ detectCommand targets replBuildDir projectRoot = do
 -- 1. @watch_dirs@ from config, if non-empty (used as-is relative to project root)
 -- 2. @hs-source-dirs@ inferred from cabal targets, if targets are set
 -- 3. Falls back to @["."]@ (project root) if neither is available
-resolveWatchDirs :: (FileSystem :> es) => Session -> FilePath -> Eff es [FilePath]
-resolveWatchDirs cfg projectRoot =
+resolveWatchDirs :: (FileSystem :> es) => ProjectRoot -> Config -> Eff es [FilePath]
+resolveWatchDirs projectRoot cfg =
     case cfg.watchDirs of
-        dirs@(_ : _) -> pure (map (projectRoot </>) dirs)
+        dirs@(_ : _) -> pure $ map (coerce projectRoot </>) dirs
         [] -> resolveWatchDirsFromTargets cfg.targets projectRoot
 
 
-resolveWatchDirsFromTargets :: (FileSystem :> es) => [Text] -> FilePath -> Eff es [FilePath]
+resolveWatchDirsFromTargets :: (FileSystem :> es) => [Text] -> ProjectRoot -> Eff es [FilePath]
 resolveWatchDirsFromTargets [] _ = pure ["."]
-resolveWatchDirsFromTargets targets projectRoot = do
-    cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
+resolveWatchDirsFromTargets targets (ProjectRoot projectRoot) = do
+    cabalFiles <- filter ((== ".cabal") . takeExtension) <$> listDirectory projectRoot
     case cabalFiles of
         [] -> pure ["."]
         (cabalFile : _) -> do
@@ -116,34 +139,6 @@ resolveWatchDirsFromTargets targets projectRoot = do
                 Just gpd ->
                     let dirs = nub $ concatMap (sourceDirsForTarget gpd) targets
                     in  pure $ if null dirs then ["."] else map (projectRoot </>) dirs
-
-
--- | Infer the effective targets to build and watch.
--- Returns the configured targets as-is, or auto-detects all components
--- from the .cabal file when no targets are configured.
-resolveTargets :: (FileSystem :> es) => [Text] -> FilePath -> Eff es [Text]
-resolveTargets targets@(_ : _) _ = pure targets
-resolveTargets [] projectRoot = do
-    cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
-    case cabalFiles of
-        [] -> pure []
-        (cabalFile : _) -> do
-            contents <- readFileBs (projectRoot </> cabalFile)
-            pure $ maybe [] allComponentTargets (parseGenericPackageDescriptionMaybe contents)
-
-
-allComponentTargets :: GenericPackageDescription -> [Text]
-allComponentTargets gpd =
-    mainLibTargets
-        ++ subLibTargets
-        ++ exeTargets
-        ++ testTargets
-  where
-    mainPkgName = toText $ unPackageName . pkgName . package . packageDescription $ gpd
-    mainLibTargets = maybe [] (const ["lib:" <> mainPkgName]) (condLibrary gpd)
-    subLibTargets = map (\(n, _) -> "lib:" <> toText (unUnqualComponentName n)) (condSubLibraries gpd)
-    exeTargets = map (\(n, _) -> "exe:" <> toText (unUnqualComponentName n)) (condExecutables gpd)
-    testTargets = map (\(n, _) -> "test:" <> toText (unUnqualComponentName n)) (condTestSuites gpd)
 
 
 sourceDirsForTarget :: GenericPackageDescription -> Text -> [FilePath]
@@ -171,11 +166,39 @@ sourceDirsForTarget gpd target =
     exeDirs = hsSourceDirs . buildInfo
 
 
+-- | Infer the effective targets to build and watch.
+-- Returns the configured targets as-is, or auto-detects all components
+-- from the .cabal file when no targets are configured.
+resolveTargets :: (FileSystem :> es) => ProjectRoot -> [Text] -> Eff es [Text]
+resolveTargets _ targets@(_ : _) = pure targets
+resolveTargets (ProjectRoot projectRoot) [] = do
+    cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
+    case cabalFiles of
+        [] -> pure []
+        (cabalFile : _) -> do
+            contents <- readFileBs (projectRoot </> cabalFile)
+            pure $ maybe [] allComponentTargets (parseGenericPackageDescriptionMaybe contents)
+
+
+allComponentTargets :: GenericPackageDescription -> [Text]
+allComponentTargets gpd =
+    mainLibTargets
+        ++ subLibTargets
+        ++ exeTargets
+        ++ testTargets
+  where
+    mainPkgName = toText $ unPackageName . pkgName . package . packageDescription $ gpd
+    mainLibTargets = maybe [] (const ["lib:" <> mainPkgName]) (condLibrary gpd)
+    subLibTargets = map (\(n, _) -> "lib:" <> toText (unUnqualComponentName n)) (condSubLibraries gpd)
+    exeTargets = map (\(n, _) -> "exe:" <> toText (unUnqualComponentName n)) (condExecutables gpd)
+    testTargets = map (\(n, _) -> "test:" <> toText (unUnqualComponentName n)) (condTestSuites gpd)
+
+
 -- | Resolve which test suites to run after a clean build.
 --
 -- When 'testTargets' is set in config, those suites are used directly.
 -- Otherwise, all @test:@ components in 'targets' are inferred.
-resolveTestTargets :: Session -> [Text]
+resolveTestTargets :: Config -> [Text]
 resolveTestTargets cfg = case cfg.testTargets of
     Just explicit -> explicit
     Nothing -> filter ("test:" `T.isPrefixOf`) cfg.targets
@@ -190,9 +213,20 @@ runSession
     => Eff (Reader Session : es) a
     -> Eff es a
 runSession act = do
-    ProjectRoot projectRoot <- ask
+    projectRoot <- ask @ProjectRoot
     loadedCfg <- ask
-    let cfg = extractConfig @"session" loadedCfg
-    effectiveTargets <- resolveTargets cfg.targets projectRoot
-    let cfg' = cfg {targets = effectiveTargets}
-    runReader cfg' act
+    let cfgFile = extractConfig @"session" @Config loadedCfg
+    effectiveTargets <- resolveTargets projectRoot cfgFile.targets
+    command <- resolveCommand projectRoot cfgFile
+    watchDirs <- resolveWatchDirs projectRoot cfgFile
+    let testTargets = resolveTestTargets cfgFile
+        cfg =
+            Session
+                { targets = effectiveTargets
+                , command
+                , watchDirs
+                , testTargets
+                , outputFile = cfgFile.outputFile
+                , replBuildDir = cfgFile.replBuildDir
+                }
+    runReader cfg act
