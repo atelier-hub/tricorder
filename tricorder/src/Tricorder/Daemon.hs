@@ -1,6 +1,5 @@
 module Tricorder.Daemon
-    ( runDaemon
-    , startDaemon
+    ( startDaemon
     , stopDaemon
     , waitForDaemon
     ) where
@@ -11,110 +10,37 @@ import Effectful.Reader.Static (Reader, ask)
 import Effectful.Timeout (Timeout, timeout)
 import Effectful.Writer.Static.Local (runWriter, tell)
 
-import Atelier.Component (runSystem)
-import Atelier.Effects.Cache (Cache)
-import Atelier.Effects.Clock (Clock)
-import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.Delay (Delay)
-import Atelier.Effects.Exit (Exit)
 import Atelier.Effects.File (File)
-import Atelier.Effects.FileSystem (FileSystem)
-import Atelier.Effects.FileWatcher (FileWatcher)
-import Atelier.Effects.Log (Log)
-import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Time (Millisecond)
-import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.GhcPkg (GhcPkg)
-import Tricorder.Effects.GhciSession (GhciSession)
-import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
-import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Runtime (PidFile, SocketPath (..))
-import Tricorder.Session (Session (..))
 import Tricorder.Socket.Client (isDaemonRunning, requestShutdown)
 
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.Posix.Daemons qualified as Daemons
-import Tricorder.GhciSession qualified as GhciSession
-import Tricorder.Observability qualified as Observability
-import Tricorder.Socket.Server qualified as SocketServer
-import Tricorder.Watcher qualified as Watcher
-
-
--- | Run the daemon for the given project root.
--- Blocks forever; all work happens inside the component system.
-runDaemon
-    :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
-       , Clock :> es
-       , Conc :> es
-       , Debounce FilePath :> es
-       , Delay :> es
-       , Exit :> es
-       , FileSystem :> es
-       , FileWatcher :> es
-       , GhcPkg :> es
-       , GhciSession :> es
-       , IOE :> es
-       , Log :> es
-       , Reader Observability.Config :> es
-       , Reader Session :> es
-       , Reader SocketPath :> es
-       , TestRunner :> es
-       , Tracing :> es
-       , UnixSocket :> es
-       )
-    => Eff es ()
-runDaemon =
-    runSystem
-        [ Observability.component
-        , Watcher.component
-        , GhciSession.component
-        , SocketServer.component
-        ]
+import Tricorder.Daemon.Main qualified as Daemon.Main
 
 
 -- | Fork the daemon as a background process and return immediately.
 -- No-op if the daemon is already running (caller should check beforehand).
 startDaemon
-    :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
-       , Cache ModuleName PackageId :> es
-       , Clock :> es
-       , Conc :> es
-       , Daemons :> es
-       , Debounce FilePath :> es
-       , Delay :> es
-       , Exit :> es
-       , FileSystem :> es
-       , FileWatcher :> es
-       , GhcPkg :> es
-       , GhciSession :> es
+    :: ( Daemons :> es
        , IOE :> es
-       , Log :> es
-       , Reader Observability.Config :> es
        , Reader PidFile :> es
-       , Reader Session :> es
-       , Reader SocketPath :> es
-       , TestRunner :> es
-       , Tracing :> es
-       , UnixSocket :> es
        )
     => Eff es ()
 startDaemon = do
     pidFile <- ask
-    Daemons.daemonize pidFile runDaemon
+    Daemons.daemonize pidFile $ liftIO Daemon.Main.main
 
 
 -- | Attempts to stop the daemon in progressively more forceful ways.
 -- 1. First attempts to make the daemon stop using the API.
 -- 2. Then attempts to stop the daemon by sending `SIGKILL` to its process.
 stopDaemon
-    :: forall es
-     . ( Daemons :> es
+    :: ( Daemons :> es
        , Delay :> es
        , File :> es
        , Reader PidFile :> es
