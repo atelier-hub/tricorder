@@ -1,15 +1,15 @@
-module Unit.Tricorder.ConfigSpec (spec_Config) where
+module Unit.Tricorder.SessionSpec (spec_Session) where
 
 import Data.Default (Default (..))
 import Distribution.PackageDescription.Parsec (parseGenericPackageDescriptionMaybe)
 import Distribution.Types.GenericPackageDescription (GenericPackageDescription)
 import Test.Hspec
 
-import Tricorder.Config (Config (..), allComponentTargets, resolveTestTargets, sourceDirsForTarget)
+import Tricorder.Session (Session (..), allComponentTargets, resolveTestTargets, sourceDirsForTarget)
 
 
-spec_Config :: Spec
-spec_Config = do
+spec_Session :: Spec
+spec_Session = do
     describe "resolveTestTargets" testResolveTestTargets
     describe "sourceDirsForTarget" do
         describe "lib:" do

@@ -25,7 +25,6 @@ import Atelier.Effects.Log (Log)
 import Atelier.Effects.Monitoring.Tracing (Tracing)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Time (Millisecond)
-import Tricorder.Config (Config (..))
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.Effects.GhciSession (GhciSession)
@@ -33,6 +32,7 @@ import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId)
 import Tricorder.Runtime (PidFile, SocketPath (..))
+import Tricorder.Session (Session (..))
 import Tricorder.Socket.Client (isDaemonRunning, requestShutdown)
 
 import Atelier.Effects.Delay qualified as Delay
@@ -60,8 +60,8 @@ runDaemon
        , GhciSession :> es
        , IOE :> es
        , Log :> es
-       , Reader Config :> es
        , Reader Observability.Config :> es
+       , Reader Session :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
@@ -95,9 +95,9 @@ startDaemon
        , GhciSession :> es
        , IOE :> es
        , Log :> es
-       , Reader Config :> es
        , Reader Observability.Config :> es
        , Reader PidFile :> es
+       , Reader Session :> es
        , Reader SocketPath :> es
        , TestRunner :> es
        , Tracing :> es
