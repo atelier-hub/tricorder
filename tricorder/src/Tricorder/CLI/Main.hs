@@ -4,6 +4,7 @@ import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
 import Effectful.Timeout (runTimeout)
 
+import Atelier.Config (runConfig)
 import Atelier.Effects.Clock (runClock)
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Console (runConsole)
@@ -20,6 +21,7 @@ import Tricorder.Effects.UnixSocket (runUnixSocketIO)
 import Tricorder.Runtime (runLogPath, runPidFile, runProjectRoot, runRuntimeDir, runSocketPath)
 
 import Tricorder qualified
+import Tricorder.UI.Keys qualified as Keys
 
 
 main :: IO ()
@@ -42,6 +44,7 @@ main =
         . runSocketPath
         . runLogPath
         . runLoadedConfig
+        . runConfig @"keybindings" @Keys.Config
         . runDaemons
         . runArguments
         . runUnixSocketIO

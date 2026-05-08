@@ -26,6 +26,7 @@ import Tricorder.Socket.Client (isDaemonRunning, queryStatus)
 import Tricorder.UI (viewUi)
 
 import Atelier.Effects.Console qualified as Console
+import Tricorder.UI.Keys qualified as Keys
 
 
 run
@@ -41,6 +42,7 @@ run
        , FileSystem :> es
        , IOE :> es
        , Reader Command :> es
+       , Reader Keys.Config :> es
        , Reader LogPath :> es
        , Reader PidFile :> es
        , Reader SocketPath :> es

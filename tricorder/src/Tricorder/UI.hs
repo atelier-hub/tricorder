@@ -8,6 +8,7 @@ import Brick
     , attrName
     , neverShowCursor
     )
+import Brick.Keybindings (KeyConfig)
 import Effectful.Error.Static (runErrorWith)
 import Effectful.Reader.Static (Reader, ask)
 
@@ -16,6 +17,7 @@ import Graphics.Vty.Attributes.Color qualified as Color
 
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.Console (Console)
 import Atelier.Effects.File (File)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
@@ -23,12 +25,14 @@ import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.Runtime (SocketPath (..))
 import Tricorder.Socket.Client (WatchError, queryWatch)
 import Tricorder.UI.Event (Event (..), handleEvent)
+import Tricorder.UI.Keys (KeyEvent, dispatcher)
 import Tricorder.UI.State (State (..), Viewports (..))
 import Tricorder.UI.View (view)
 
 import Atelier.Effects.Conc qualified as Conc
 import Tricorder.Effects.Brick qualified as Brick
 import Tricorder.Effects.BrickChan qualified as BrickChan
+import Tricorder.UI.Keys qualified as Keys
 import Tricorder.UI.State qualified as Model
 
 
@@ -39,7 +43,9 @@ viewUi
        , BrickChan :> es
        , Clock :> es
        , Conc :> es
+       , Console :> es
        , File :> es
+       , Reader Keys.Config :> es
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
@@ -55,18 +61,19 @@ viewUi = do
                     (\_ e -> BrickChan.writeBChan chan $ FailedBuild $ show e)
                 $ queryWatch sockPath
                 $ BrickChan.writeBChan chan . NewBuildState
+        keyConfig <- Keys.mkKeyConfig
         void
             $ Brick.runBrickApp
                 chan
-                watchApp
+                (watchApp keyConfig)
                 initialState
 
 
-watchApp :: App State Event Viewports
-watchApp =
+watchApp :: KeyConfig KeyEvent -> App State Event Viewports
+watchApp kc =
     App
-        { appDraw = view
-        , appHandleEvent = handleEvent
+        { appDraw = view kc
+        , appHandleEvent = handleEvent $ dispatcher kc
         , appStartEvent = pure ()
         , appAttrMap =
             const

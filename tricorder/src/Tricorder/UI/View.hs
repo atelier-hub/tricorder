@@ -9,7 +9,7 @@ import Brick
     , vBox
     , viewport
     )
-import Brick.Keybindings (KeyHandler (..), keyDispatcherToList)
+import Brick.Keybindings (KeyConfig, KeyHandler (..), keyDispatcherToList)
 import Brick.Widgets.Core
     ( Padding (..)
     , emptyWidget
@@ -41,18 +41,18 @@ import Tricorder.BuildState
     , TestRunCompletion (..)
     , TestRunError (..)
     )
-import Tricorder.UI.Event (viewKeybindings)
+import Tricorder.UI.Keys (KeyEvent, viewKeybindings)
 import Tricorder.UI.Misc (emphasis, err, hBoxSpaced, ok, subtle, vBoxSpaced, warn)
 import Tricorder.UI.State (Collapsible (..), Processed (..), State (..), Viewports (..))
 
-import Tricorder.UI.Event qualified as Event
+import Tricorder.UI.Keys qualified as Keys
 import Tricorder.Version qualified as Version
 
 
-view :: State -> [Widget Viewports]
-view ws =
+view :: KeyConfig KeyEvent -> State -> [Widget Viewports]
+view kc ws =
     [ if ws.showHelp then
-        viewHelp
+        viewHelp kc
       else case ws.buildState of
         Waiting ->
             vBoxSpaced
@@ -71,16 +71,16 @@ view ws =
     ]
 
 
-viewHelp :: Widget n
-viewHelp =
+viewHelp :: KeyConfig KeyEvent -> Widget n
+viewHelp kc =
     vBoxSpaced
         1
         [ ok $ txt "Keymap:"
-        , viewKeybindings Event.keyConfig handlers
+        , viewKeybindings kc handlers
         , subtle $ txt "Press 'h' to go back"
         ]
   where
-    handlers = (.khHandler) . snd <$> keyDispatcherToList Event.dispatcher
+    handlers = (.khHandler) . snd <$> keyDispatcherToList (Keys.dispatcher kc)
 
 
 viewBuildState :: State -> BuildState -> Widget Viewports

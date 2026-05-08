@@ -41,6 +41,7 @@
           (hsPkgs."base" or (errorHandler.buildDepError "base"))
           (hsPkgs."brick" or (errorHandler.buildDepError "brick"))
           (hsPkgs."bytestring" or (errorHandler.buildDepError "bytestring"))
+          (hsPkgs."casing" or (errorHandler.buildDepError "casing"))
           (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
           (hsPkgs."data-default" or (errorHandler.buildDepError "data-default"))
           (hsPkgs."directory" or (errorHandler.buildDepError "directory"))
