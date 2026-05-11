@@ -4,11 +4,13 @@ import Data.Default (def)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
 import Effectful.Reader.Static (runReader)
+import Effectful.State.Static.Shared (evalState)
 import Effectful.Timeout (runTimeout)
 
 import Atelier.Component (runSystem)
 import Atelier.Config (runConfig)
 import Atelier.Effects.Cache (runCacheTtl)
+import Atelier.Effects.Chan (runChan)
 import Atelier.Effects.Clock (runClock)
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Debounce (runDebounce)
@@ -18,7 +20,8 @@ import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.FileWatcher (runFileWatcherIO)
 import Atelier.Effects.Monitoring.Tracing (TracingConfig, runTracingFromConfig)
-import Tricorder.BuildState (runDaemonInfo)
+import Atelier.Effects.Publishing (runPubSub)
+import Tricorder.BuildState (BuildId (..), runDaemonInfo)
 import Tricorder.Config (runLoadedConfig)
 import Tricorder.Effects.BuildStore (runBuildStore)
 import Tricorder.Effects.GhcPkg (runGhcPkgIO)
@@ -31,8 +34,9 @@ import Tricorder.Session (runSession)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
 import Atelier.Effects.Log qualified as Log
+import Tricorder.BuildState qualified as BuildState
+import Tricorder.Builder qualified as Builder
 import Tricorder.GhcPkg.Types qualified as GhcPkg
-import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
 import Tricorder.Socket.Server qualified as SocketServer
 import Tricorder.Version qualified as Version
@@ -61,22 +65,32 @@ main =
         . runConfig @"observability.tracing" @TracingConfig
         . runTracingFromConfig
         . runReader @CacheConfig.Config def
+        . runChan
+        . runPubSub @Watcher.WatchedFile
+        . runPubSub @Builder.NewLoadResult
+        . runPubSub @BuildState.BuildResult
+        . runPubSub @BuildState.CabalChangeDetected
+        . runPubSub @BuildState.SourceChangeDetected
+        . runPubSub @BuildState.EnteredNewPhase
+        . runPubSub @BuildState.EnteringNewPhase
         . runDaemonInfo
         . runLogging
         . runTestRunnerIO
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.ModuleName) @Text
         . runBuildStore
-        . runGhciSessionIO
         . runFileWatcherIO
         . runDebounce
         . runGhcPkgIO
         . runUnixSocketIO
+        . runGhciSessionIO
+        . evalState (BuildId 1)
+        . evalState @Builder.DiagnosticMap mempty
         $ do
             Log.info $ "Starting tricorder " <> Version.gitHash
             runSystem
                 [ Observability.component
                 , Watcher.component
-                , GhciSession.component
+                , Builder.component
                 , SocketServer.component
                 ]

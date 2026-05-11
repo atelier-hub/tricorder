@@ -16,10 +16,24 @@ module Tricorder.Effects.GhciSession
 
 import Control.Exception (throwIO)
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
-import Effectful (Effect, IOE, Limit (..), Persistence (..), UnliftStrategy (..), withEffToIO)
-import Effectful.Dispatch.Dynamic (interpret, localSeqLend, localSeqLift, localSeqUnlift, reinterpret)
+import Effectful
+    ( Effect
+    , IOE
+    , Limit (..)
+    , Persistence (..)
+    , UnliftStrategy (..)
+    , withEffToIO
+    )
+import Effectful.Dispatch.Dynamic
+    ( interpret
+    , localLend
+    , localSeqLift
+    , localSeqUnlift
+    , localUnlift
+    , reinterpret
+    )
 import Effectful.Exception (bracket)
-import Effectful.State.Static.Shared (State, evalState, get, put)
+import Effectful.State.Static.Shared (State, evalState, state)
 import Effectful.TH (makeEffect)
 import Language.Haskell.Ghcid (Load (..))
 import System.Directory (getCurrentDirectory)
@@ -32,7 +46,12 @@ import Language.Haskell.Ghcid qualified as Ghcid
 
 import Atelier.Effects.Log (Log)
 import Atelier.Exception (trySyncIO)
-import Tricorder.BuildState (BuildPhase (..), BuildProgress (..), Diagnostic (..), Severity (..))
+import Tricorder.BuildState
+    ( BuildPhase (..)
+    , BuildProgress (..)
+    , Diagnostic (..)
+    , Severity (..)
+    )
 import Tricorder.Effects.BuildStore (BuildStore, getState, setPhase)
 import Tricorder.Runtime (ProjectRoot (..))
 
@@ -84,8 +103,8 @@ runGhciSessionIO = interpret $ \env -> \case
                 liftIO $ stopGhciSilently ghci
 
         bracket mkSession stopSession \(ghci, loads) ->
-            localSeqLend @'[IOE] env \lendIOE ->
-                localSeqUnlift env \unlift -> do
+            localLend @'[IOE] env (ConcUnlift Persistent Unlimited) \lendIOE ->
+                localUnlift env (ConcUnlift Persistent Unlimited) \unlift -> do
                     initialLoadResult <- liftIO $ collectResult ghci loads
                     unlift
                         $ handler initialLoadResult
@@ -105,11 +124,13 @@ runGhciSessionIO = interpret $ \env -> \case
 runGhciSessionScripted :: forall es a. (IOE :> es) => [Either SomeException LoadResult] -> Eff (GhciSession : es) a -> Eff es a
 runGhciSessionScripted results = reinterpret (evalState results) $ \env ->
     let popResult :: Eff (State [Either SomeException LoadResult] : es) LoadResult
-        popResult =
-            get >>= \case
+        popResult = do
+            x <- state \case
+                x : xs -> (x, xs)
                 [] -> error "GhciSessionScripted: no more results in queue"
-                Left ex : rest -> put rest >> liftIO (throwIO ex)
-                Right r : rest -> put rest >> pure r
+            case x of
+                Left ex -> liftIO (throwIO ex)
+                Right r -> pure r
     in  \case
             WithGhci _ _ handler -> do
                 initial <- popResult

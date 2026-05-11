@@ -1,6 +1,6 @@
 module Tricorder.Effects.BuildStore
     ( -- * Effect
-      BuildStore
+      BuildStore (..)
     , getState
     , putState
     , waitUntilDone

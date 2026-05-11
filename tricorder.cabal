@@ -17,6 +17,7 @@ library
   exposed-modules:
       Tricorder
       Tricorder.Arguments
+      Tricorder.Builder
       Tricorder.BuildState
       Tricorder.CLI
       Tricorder.CLI.Main
@@ -33,7 +34,6 @@ library
       Tricorder.Effects.TestRunner
       Tricorder.Effects.UnixSocket
       Tricorder.Events.FileChanged
-      Tricorder.GhciSession
       Tricorder.GhcPkg.Types
       Tricorder.Observability
       Tricorder.Runtime
@@ -97,6 +97,7 @@ library
     , network
     , optparse-applicative
     , process
+    , relude
     , stm
     , template-haskell
     , text
@@ -443,10 +444,11 @@ test-suite tricorder-test
   type: exitcode-stdio-1.0
   main-is: Driver.hs
   other-modules:
+      Unit.Tricorder.BuilderSpec
       Unit.Tricorder.BuildStateSpec
       Unit.Tricorder.BuildStoreSpec
       Unit.Tricorder.CLI.RenderSpec
-      Unit.Tricorder.GhciSessionSpec
+      Unit.Tricorder.Effects.GhciSessionSpec
       Unit.Tricorder.GhcPkgSpec
       Unit.Tricorder.SessionSpec
       Unit.Tricorder.SocketSpec
@@ -454,6 +456,7 @@ test-suite tricorder-test
       Unit.Tricorder.SourceSpec
       Unit.Tricorder.TestOutputSpec
       Unit.Tricorder.TestRunnerSpec
+      Unit.Tricorder.WatcherSpec
       Paths_tricorder
   autogen-modules:
       Paths_tricorder
@@ -499,6 +502,7 @@ test-suite tricorder-test
     , time
     , time-units
     , tricorder
+    , unagi-chan
   mixins:
       base hiding (Prelude)
   default-language: GHC2021
