@@ -1,4 +1,4 @@
-module Tricorder.TestOutput (parseHspecOutput) where
+module Tricorder.TestOutput (parseHspecOutput, stripGhciNoise) where
 
 import Data.Text qualified as T
 
@@ -29,3 +29,18 @@ parseHspecOutput = go . T.lines
         T.strip $ T.dropEnd (T.length suffix) $ T.stripEnd l
 
     indentOf = T.length . T.takeWhile (== ' ')
+
+
+-- | Strip GHCi/cabal startup and shutdown noise from captured output lines.
+stripGhciNoise :: [Text] -> [Text]
+stripGhciNoise ls =
+    case dropWhile (not . T.isPrefixOf "ghci> ") ls of
+        [] -> ls
+        _ : afterPrompt -> reverse $ dropWhile isGhciNoiseLine $ reverse afterPrompt
+
+
+isGhciNoiseLine :: Text -> Bool
+isGhciNoiseLine l =
+    T.isPrefixOf "ghci>" l
+        || l == "Leaving GHCi."
+        || T.isPrefixOf "*** Exception: " l

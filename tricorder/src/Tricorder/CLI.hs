@@ -52,6 +52,7 @@ import Tricorder.Socket.Client
     , queryStatus
     , queryStatusWait
     )
+import Tricorder.TestOutput (stripGhciNoise)
 
 import Atelier.Effects.Console qualified as Console
 
@@ -126,7 +127,7 @@ showStatus opts = do
             TestRunCompleted c -> c.target <> "  " <> if c.passed then "passed" else "failed"
         when (verbosity == Verbose) $ case tr of
             TestRunCompleted c ->
-                mapM_ (Console.putTextLn . ("  " <>) . toText) (lines c.output)
+                mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (T.lines c.output))
             _ -> pure ()
 
     buildHasErrors r = any ((== SError) . (.severity)) r.diagnostics
@@ -236,16 +237,6 @@ showTests opts = do
             TestCaseFailed details ->
                 mapM_ (Console.putTextLn . ("    " <>)) (T.lines details)
             TestCasePassed -> pure ()
-
-    stripGhciNoise ls =
-        case dropWhile (not . T.isPrefixOf "ghci> ") ls of
-            [] -> ls
-            _ : afterPrompt -> reverse $ dropWhile isGhciNoiseLine $ reverse afterPrompt
-
-    isGhciNoiseLine l =
-        T.isPrefixOf "ghci>" l
-            || l == "Leaving GHCi."
-            || T.isPrefixOf "*** Exception: " l
 
 
 showSource
