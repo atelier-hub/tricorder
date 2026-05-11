@@ -26,6 +26,7 @@ import Options.Applicative
     , helper
     , hsubparser
     , info
+    , infoOption
     , long
     , metavar
     , option
@@ -35,6 +36,8 @@ import Options.Applicative
     )
 
 import Tricorder.GhcPkg.Types (ModuleName (..))
+
+import Tricorder.Version qualified as Version
 
 
 data WaitMode
@@ -97,10 +100,14 @@ parseArguments = execParser opts
 
 opts :: ParserInfo Command
 opts =
-    info (commandParser <**> helper)
+    info (commandParser <**> versionOption <**> helper)
         $ fullDesc
             <> progDesc "tricorder — daemon-based GHCi build status"
             <> header "tricorder — robust GHCi daemon with structured querying"
+
+
+versionOption :: Parser (a -> a)
+versionOption = infoOption (toString Version.gitHash) (long "version" <> help "Show version and exit")
 
 
 commandParser :: Parser Command

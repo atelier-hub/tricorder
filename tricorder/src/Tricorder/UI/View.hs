@@ -46,6 +46,7 @@ import Tricorder.UI.Misc (emphasis, err, hBoxSpaced, ok, subtle, vBoxSpaced, war
 import Tricorder.UI.State (Collapsible (..), Processed (..), State (..), Viewports (..))
 
 import Tricorder.UI.Event qualified as Event
+import Tricorder.Version qualified as Version
 
 
 view :: State -> [Widget Viewports]
@@ -111,12 +112,22 @@ viewHint = subtle $ txt "Press 'h' for help"
 viewExpandedDaemonInfo :: DaemonInfo -> Widget n
 viewExpandedDaemonInfo di =
     vBox
-        $ [ viewTargets di.targets
-          , viewWatchDirs di.watchDirs
-          , viewSockPath di.sockPath
-          , viewLogFile di.logFile
-          , viewMetrics di.metricsPort
-          ]
+        [ viewVersion
+        , viewTargets di.targets
+        , viewWatchDirs di.watchDirs
+        , viewSockPath di.sockPath
+        , viewLogFile di.logFile
+        , viewMetrics di.metricsPort
+        ]
+
+
+viewVersion :: Widget n
+viewVersion =
+    hBoxSpaced
+        1
+        [ emphasis $ txt "Client version:"
+        , txt Version.gitHash
+        ]
 
 
 viewTargets :: [Text] -> Widget n

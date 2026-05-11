@@ -86,6 +86,7 @@ library:
   - ghcid
   - hashable
   - process
+  - template-haskell
   - mtl
   - network
   - optparse-applicative

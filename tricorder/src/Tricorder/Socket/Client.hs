@@ -23,11 +23,12 @@ import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.Effects.UnixSocket (UnixSocket, withConnection)
 import Tricorder.GhcPkg.Types (ModuleName)
 import Tricorder.Runtime (PidFile)
-import Tricorder.Socket.Protocol (DiagnosticQuery (..), Query (..), StatusQuery (..))
+import Tricorder.Socket.Protocol (ClientMessage (..), DiagnosticQuery (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleSourceResult)
 
 import Atelier.Effects.File qualified as File
 import Atelier.Effects.Posix.Daemons qualified as Daemons
+import Tricorder.Version qualified as Version
 
 
 -- | Query the current build status (non-blocking).
@@ -122,7 +123,7 @@ isDaemonRunning = do
 -- internals
 
 sendQuery :: (File :> es) => Handle -> Query -> Eff es ()
-sendQuery h q = File.hPutLBsLn h $ encode q
+sendQuery h q = File.hPutLBsLn h $ encode ClientMessage {clientVersion = Version.gitHash, payload = q}
 
 
 receiveState :: (File :> es) => Handle -> Eff es (Either Text BuildState)

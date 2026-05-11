@@ -30,10 +30,12 @@ import Tricorder.Runtime (runProjectRoot, runRuntimeDir, runSocketPath)
 import Tricorder.Session (runSession)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
+import Atelier.Effects.Log qualified as Log
 import Tricorder.GhcPkg.Types qualified as GhcPkg
 import Tricorder.GhciSession qualified as GhciSession
 import Tricorder.Observability qualified as Observability
 import Tricorder.Socket.Server qualified as SocketServer
+import Tricorder.Version qualified as Version
 import Tricorder.Watcher qualified as Watcher
 
 
@@ -70,9 +72,11 @@ main =
         . runDebounce
         . runGhcPkgIO
         . runUnixSocketIO
-        $ runSystem
-            [ Observability.component
-            , Watcher.component
-            , GhciSession.component
-            , SocketServer.component
-            ]
+        $ do
+            Log.info $ "Starting tricorder " <> Version.gitHash
+            runSystem
+                [ Observability.component
+                , Watcher.component
+                , GhciSession.component
+                , SocketServer.component
+                ]
