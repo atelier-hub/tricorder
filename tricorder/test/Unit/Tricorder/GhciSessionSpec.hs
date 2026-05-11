@@ -1,6 +1,7 @@
 module Unit.Tricorder.GhciSessionSpec (spec_GhciSession) where
 
 import Control.Exception (ErrorCall (..))
+import Data.Default (def)
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian)
 import Effectful (IOE, runEff)
 import Effectful.Concurrent (Concurrent, runConcurrent)
@@ -25,6 +26,8 @@ import Tricorder.Effects.GhciSession
     )
 import Tricorder.Effects.TestRunner (TestRunner, runTestRunnerScripted)
 import Tricorder.GhciSession (filterToWatchDirs, mergeDiagnostics, sessionListener)
+import Tricorder.Runtime (ProjectRoot (..))
+import Tricorder.Session (Session (..))
 
 
 spec_GhciSession :: Spec
@@ -47,40 +50,40 @@ testScripted = do
             it "returns scripted messages" do
                 LoadResult {diagnostics = msgs} <-
                     runScripted [simpleResult [errMsg]]
-                        $ withGhci "cabal repl" "/" \initial _ -> pure initial
+                        $ withGhci "cabal repl" (ProjectRoot "/") \initial _ -> pure initial
                 msgs `shouldBe` [errMsg]
 
             it "returns empty list when scripted result has no messages" do
                 LoadResult {diagnostics = msgs} <-
                     runScripted [simpleResult []]
-                        $ withGhci "cabal repl" "/" \initial _ -> pure initial
+                        $ withGhci "cabal repl" (ProjectRoot "/") \initial _ -> pure initial
                 msgs `shouldBe` []
 
             it "throws when scripted result is Left" do
                 result <-
                     runScripted [Left (toException boom)]
                         $ try @ErrorCall
-                        $ withGhci "cabal repl" "/" \initial _ -> pure initial
+                        $ withGhci "cabal repl" (ProjectRoot "/") \initial _ -> pure initial
                 result `shouldBe` Left boom
 
         describe "reloading" do
             it "returns scripted messages" do
                 LoadResult {diagnostics = msgs} <-
                     runScripted [simpleResult [warnMsg], simpleResult [errMsg]]
-                        $ withGhci "cabal repl" "/" \_ reload -> reload
+                        $ withGhci "cabal repl" (ProjectRoot "/") \_ reload -> reload
                 msgs `shouldBe` [errMsg]
 
             it "throws when scripted result is Left" do
                 result <-
                     runScripted [Left (toException boom)]
                         $ try @ErrorCall
-                        $ withGhci "cabal repl" "/" \_ reload -> reload
+                        $ withGhci "cabal repl" (ProjectRoot "/") \_ reload -> reload
                 result `shouldBe` Left boom
 
     describe "sequencing" do
         it "consumes results in order across mixed operations" do
             (a, b) <- runScripted [simpleResult [errMsg], simpleResult [warnMsg]] do
-                withGhci "cabal repl" "/" \LoadResult {diagnostics = a} reload -> do
+                withGhci "cabal repl" (ProjectRoot "/") \LoadResult {diagnostics = a} reload -> do
                     LoadResult {diagnostics = b} <- reload
                     pure (a, b)
             a `shouldBe` [errMsg]
@@ -88,8 +91,8 @@ testScripted = do
 
         it "recover scenario: error then success" do
             result <- runScripted [Left (toException boom), simpleResult []] do
-                r1 <- try @ErrorCall $ withGhci "cabal repl" "/" \i _ -> pure i
-                LoadResult {diagnostics = r2} <- withGhci "cabal repl" "/" \i _ -> pure i
+                r1 <- try @ErrorCall $ withGhci "cabal repl" (ProjectRoot "/") \i _ -> pure i
+                LoadResult {diagnostics = r2} <- withGhci "cabal repl" (ProjectRoot "/") \i _ -> pure i
                 pure (r1, r2)
             fst result `shouldSatisfy` isLeft
             snd result `shouldBe` []
@@ -106,7 +109,7 @@ testSessionListener = do
             let t0 = epoch
                 t1 = addUTCTime 2 epoch -- 2 seconds later
             result <- runListenerTest [t0, t1] [simpleResult []] do
-                void $ fork $ sessionListener "cabal repl" "/" [] []
+                void $ fork $ sessionListener session (ProjectRoot "/")
                 waitUntilDone
             case result.phase of
                 Done br -> br.durationMs `shouldBe` 2000
@@ -114,11 +117,16 @@ testSessionListener = do
 
         it "records moduleCount from LoadResult" do
             result <- runListenerTest [epoch, epoch] [simpleResultWith 7 []] do
-                void $ fork $ sessionListener "cabal repl" "/" [] []
+                void $ fork $ sessionListener session (ProjectRoot "/")
                 waitUntilDone
             case result.phase of
                 Done br -> br.moduleCount `shouldBe` 7
                 _ -> expectationFailure "expected Done phase"
+  where
+    session =
+        def
+            { command = "cabal repl"
+            }
 
 
 --------------------------------------------------------------------------------
@@ -181,39 +189,39 @@ testMergeDiagnostics = do
 
 testFilterToWatchDirs :: Spec
 testFilterToWatchDirs = do
-    let root = "/project"
-        watchDirs = ["/project/src"]
+    let root = ProjectRoot "/project"
+        session = def {watchDirs = ["/project/src"]}
 
     it "keeps diagnostics under a watched directory" do
         -- ./src/Foo.hs is what toRelative produces for an absolute project file
         let d = errMsg {file = "./src/Foo.hs"}
-        filterToWatchDirs root watchDirs [d] `shouldBe` [d]
+        filterToWatchDirs root session [d] `shouldBe` [d]
 
     it "drops diagnostics from outside the project (e.g. Nix store .h files)" do
         let d = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
-        filterToWatchDirs root watchDirs [d] `shouldBe` []
+        filterToWatchDirs root session [d] `shouldBe` []
 
     it "drops diagnostics with mangled CPP filenames" do
         -- The ghcid parser produces "In file included from <path>" as the file
         -- field for GCC-style CPP include-chain messages.
         let d = errMsg {file = "In file included from src/Foo.hs"}
-        filterToWatchDirs root watchDirs [d] `shouldBe` []
+        filterToWatchDirs root session [d] `shouldBe` []
 
     it "drops mangled CPP filenames when watchDirs is [\".\"] (project root)" do
         -- With watchDirs=["."], the watch dir resolves to projectRoot itself.
         -- A mangled path joined onto projectRoot would incorrectly start with
         -- projectRoot+"/", so this case requires an explicit guard.
         let d = errMsg {file = "In file included from src/Foo.hs"}
-        filterToWatchDirs root ["."] [d] `shouldBe` []
+        filterToWatchDirs root (def {watchDirs = ["."]}) [d] `shouldBe` []
 
     it "passes everything through when watchDirs is empty" do
         let d = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
-        filterToWatchDirs root [] [d] `shouldBe` [d]
+        filterToWatchDirs root (def {watchDirs = []}) [d] `shouldBe` [d]
 
     it "works with the '.' fallback watch dir (whole project root)" do
         let d = errMsg {file = "./src/Foo.hs"}
             nixD = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
-        filterToWatchDirs root ["."] [d, nixD] `shouldBe` [d]
+        filterToWatchDirs root (def {watchDirs = ["."]}) [d, nixD] `shouldBe` [d]
 
 
 --------------------------------------------------------------------------------
