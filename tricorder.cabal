@@ -48,6 +48,7 @@ library
       Tricorder.UI.Misc
       Tricorder.UI.State
       Tricorder.UI.View
+      Tricorder.Version
       Tricorder.Watcher
   other-modules:
       Paths_tricorder
@@ -97,6 +98,7 @@ library
     , optparse-applicative
     , process
     , stm
+    , template-haskell
     , text
     , time
     , time-units

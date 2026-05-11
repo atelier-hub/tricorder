@@ -3,6 +3,7 @@ module Tricorder.Socket.Protocol
     , StatusQuery (..)
     , DiagnosticQuery (..)
     , ErrorResponse (..)
+    , ClientMessage (..)
     ) where
 
 import Data.Aeson (FromJSON, ToJSON)
@@ -33,3 +34,11 @@ data Query
 newtype ErrorResponse = ErrorResponse {message :: Text}
     deriving stock (Eq, Generic, Show)
     deriving anyclass (ToJSON)
+
+
+data ClientMessage = ClientMessage
+    { clientVersion :: Text
+    , payload :: Query
+    }
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass (FromJSON, ToJSON)

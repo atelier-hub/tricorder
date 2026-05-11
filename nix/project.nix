@@ -2,6 +2,7 @@
   inputs,
   pkgs,
   compiler-nix-name,
+  self,
 }:
 pkgs.haskell-nix.cabalProject' {
   src = ../.;
@@ -34,6 +35,11 @@ pkgs.haskell-nix.cabalProject' {
         tricorder = {
           # Treat warnings as errors in Nix builds (CI), but not in local dev
           ghcOptions = [ "-Werror" ];
+          # Embed the flake's git revision so the released binary carries the
+          # correct hash. Falls back to "unknown" on dirty trees (no shortRev).
+          preBuild = ''
+            export TRICORDER_VERSION="${self.shortRev or "unknown"}"
+          '';
         };
       };
     }

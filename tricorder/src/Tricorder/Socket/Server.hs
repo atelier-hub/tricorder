@@ -27,8 +27,9 @@ import Tricorder.Effects.UnixSocket
     , sendLine
     )
 import Tricorder.Runtime (SocketPath (..))
-import Tricorder.Socket.Protocol (DiagnosticQuery (..), ErrorResponse (..), Query (..), StatusQuery (..))
+import Tricorder.Socket.Protocol (ClientMessage (..), DiagnosticQuery (..), ErrorResponse (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleName, PackageId, lookupModuleSource)
+import Tricorder.Version (VersionMismatch (..), checkVersion)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Log qualified as Log
@@ -105,7 +106,13 @@ handleConnection h = do
     line <- readLine h
     case decode (BSL.fromStrict (encodeUtf8 line)) of
         Nothing -> sendJson h (ErrorResponse "invalid request")
-        Just query -> dispatch query h
+        Just ClientMessage {clientVersion, payload} -> do
+            let result = checkVersion clientVersion
+            case result of
+                Left VersionMismatch {expected, received} -> do
+                    Log.warn $ "Version mismatch: server=" <> expected <> " client=" <> received
+                    dispatch payload h
+                Right () -> dispatch payload h
 
 
 dispatch

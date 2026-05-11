@@ -11,7 +11,14 @@ let
   pkgs = import ./pkgs.nix { inherit inputs system; };
 
   # Configure haskell.nix project
-  project = import ./project.nix { inherit inputs pkgs compiler-nix-name; };
+  project = import ./project.nix {
+    inherit
+      inputs
+      pkgs
+      compiler-nix-name
+      self
+      ;
+  };
 
   # Get the project flake for packages
   projectFlake = project.flake { };
