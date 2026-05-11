@@ -4,16 +4,15 @@ module Atelier.Config
     ( envOverrides
     , deepMerge
     , extractConfig
+    , extractNestedConfig
     , LoadedConfig (..)
     , runConfig
     ) where
 
 import Data.Aeson (FromJSON (..), Value (..))
 import Data.Default (Default (..))
-import Effectful.Exception (throwIO)
 import Effectful.Reader.Static (Reader, ask, runReader)
 import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
-import System.IO.Error (userError)
 
 import Data.Aeson qualified as Aeson
 import Data.Aeson.KeyMap qualified as KM
@@ -93,24 +92,49 @@ extractConfig (LoadedConfig root) =
         _ -> def
 
 
--- | Extract and decode a config section by type-level key from the root config Value.
--- Falls back to the type's 'Default' instance if the key is absent.
+-- | Variant of 'extractConfig' that extracts nested configuration values.
+-- Nested properties are delimited by @"."@, so @foo.bar@ would attempt to
+-- extract the nested property @bar@ contained in the top-level property @foo@.
+--
+-- Example:
+--
+-- Assuming @cfg@ is a 'LoadedConfig' representing the following JSON/YAML
+-- structure:
+--
+-- @
+-- {
+--   "foo": {
+--     "bar": "test"
+--   }
+-- }
+-- @
+--
+-- The following will be @True@:
+--
+-- @
+-- extractNestedConfig \@"foo.bar" \@Text cfg == "test"
+-- @
+extractNestedConfig :: forall (key :: Symbol) r. (Default r, FromJSON r, KnownSymbol key) => LoadedConfig -> r
+extractNestedConfig (LoadedConfig root) = go props root
+  where
+    props = T.splitOn "." $ toText $ symbolVal $ Proxy @key
+
+    go (p : ps) (Aeson.Object m) = maybe def (go ps) $ KM.lookup (fromString $ toString p) m
+    go (_ : _) _ = def
+    go [] x = fromJSON x
+
+    fromJSON x = case Aeson.fromJSON x of
+        Aeson.Success a -> a
+        Aeson.Error _ -> def
+
+
+-- | Extract and decode a (potentially nested) config section by type-level key
+-- from the root config Value.
+-- Falls back to the type's 'Default' instance if the (nested) key is absent.
 runConfig
     :: forall (key :: Symbol) r es a
      . (Default r, FromJSON r, KnownSymbol key, Reader LoadedConfig :> es)
-    => Eff (Reader r : es) a
-    -> Eff es a
-runConfig eff = do
-    LoadedConfig root <- ask
-    r <- case root of
-        Aeson.Object m ->
-            case KM.lookup (fromString (symbolVal (Proxy @key))) m of
-                Nothing -> pure def
-                Just v -> case Aeson.fromJSON v of
-                    Aeson.Success a -> pure a
-                    Aeson.Error e ->
-                        throwIO
-                            $ userError
-                            $ "Failed to parse config key '" <> symbolVal (Proxy @key) <> "': " <> e
-        _ -> pure def
-    runReader r eff
+    => Eff (Reader r : es) a -> Eff es a
+runConfig act = do
+    loadedCfg <- ask
+    runReader (extractNestedConfig @key loadedCfg) act

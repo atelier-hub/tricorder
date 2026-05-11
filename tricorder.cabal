@@ -377,6 +377,7 @@ test-suite atelier-test
   type: exitcode-stdio-1.0
   main-is: Driver.hs
   other-modules:
+      Unit.Atelier.ConfigSpec
       Unit.Atelier.Effects.Cache.SingleflightSpec
       Unit.Atelier.Effects.CacheSpec
       Unit.Atelier.Effects.ChanSpec
