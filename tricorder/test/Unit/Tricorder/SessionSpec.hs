@@ -16,6 +16,7 @@ import Tricorder.Session
     , allComponentTargets
     , resolveCommand
     , resolveTestTargets
+    , resolveWatchDirs
     , sourceDirsForTarget
     )
 
@@ -23,6 +24,7 @@ import Tricorder.Session
 spec_Session :: Spec
 spec_Session = do
     describe "resolveCommand" testResolveCommand
+    describe "resolveWatchDirs" testResolveWatchDirs
     describe "resolveTestTargets" testResolveTestTargets
     describe "sourceDirsForTarget" testSourceDirsForTarget
     describe "allComponentTargets" testAllComponentTargets
@@ -75,6 +77,45 @@ testAllComponentTargets = do
     it "returns all four components for the fixture" do
         allComponentTargets gpd
             `shouldBe` ["lib:myapp", "lib:myapp-utils", "exe:myapp-exe", "test:myapp-test"]
+
+
+testResolveWatchDirs :: Spec
+testResolveWatchDirs = do
+    describe "when watch_dirs is set in config" do
+        it "uses config dirs relative to project root" do
+            let actual =
+                    runPureEff
+                        . evalState mempty
+                        . runFileSystemState
+                        $ resolveWatchDirs pr def {watchDirs = ["src", "test"]} []
+            actual `shouldBe` ["/src", "/test"]
+
+    describe "when watch_dirs is not set" do
+        it "falls back to [\".\"] when targets list is empty" do
+            let actual =
+                    runPureEff
+                        . evalState mempty
+                        . runFileSystemState
+                        $ resolveWatchDirs pr def []
+            actual `shouldBe` ["."]
+
+        it "infers source dirs from resolved targets" do
+            let actual =
+                    runPureEff
+                        . evalState (Map.singleton "/myapp.cabal" cabalFixture)
+                        . runFileSystemState
+                        $ resolveWatchDirs pr def ["lib:myapp", "test:myapp-test"]
+            actual `shouldBe` ["/src", "/test"]
+
+        it "falls back to [\".\"] when no cabal file exists" do
+            let actual =
+                    runPureEff
+                        . evalState mempty
+                        . runFileSystemState
+                        $ resolveWatchDirs pr def ["lib:myapp"]
+            actual `shouldBe` ["."]
+  where
+    pr = ProjectRoot "/"
 
 
 testResolveTestTargets :: Spec
