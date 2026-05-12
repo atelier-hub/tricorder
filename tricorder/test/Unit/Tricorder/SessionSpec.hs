@@ -16,6 +16,7 @@ import Tricorder.Session
     , allComponentTargets
     , resolveCommand
     , resolveTestTargets
+    , resolveWatchDirs
     , sourceDirsForTarget
     )
 
@@ -23,6 +24,7 @@ import Tricorder.Session
 spec_Session :: Spec
 spec_Session = do
     describe "resolveCommand" testResolveCommand
+    describe "resolveWatchDirs" testResolveWatchDirs
     describe "resolveTestTargets" testResolveTestTargets
     describe "sourceDirsForTarget" testSourceDirsForTarget
     describe "allComponentTargets" testAllComponentTargets
@@ -77,32 +79,66 @@ testAllComponentTargets = do
             `shouldBe` ["lib:myapp", "lib:myapp-utils", "exe:myapp-exe", "test:myapp-test"]
 
 
+testResolveWatchDirs :: Spec
+testResolveWatchDirs = do
+    describe "when watch_dirs is set in config" do
+        it "uses config dirs relative to project root" do
+            let actual =
+                    runPureEff
+                        . evalState mempty
+                        . runFileSystemState
+                        $ resolveWatchDirs pr def {watchDirs = ["src", "test"]} []
+            actual `shouldBe` ["/src", "/test"]
+
+    describe "when watch_dirs is not set" do
+        it "falls back to [\".\"] when targets list is empty" do
+            let actual =
+                    runPureEff
+                        . evalState mempty
+                        . runFileSystemState
+                        $ resolveWatchDirs pr def []
+            actual `shouldBe` ["."]
+
+        it "infers source dirs from resolved targets" do
+            let actual =
+                    runPureEff
+                        . evalState (Map.singleton "/myapp.cabal" cabalFixture)
+                        . runFileSystemState
+                        $ resolveWatchDirs pr def ["lib:myapp", "test:myapp-test"]
+            actual `shouldBe` ["/src", "/test"]
+
+        it "falls back to [\".\"] when no cabal file exists" do
+            let actual =
+                    runPureEff
+                        . evalState mempty
+                        . runFileSystemState
+                        $ resolveWatchDirs pr def ["lib:myapp"]
+            actual `shouldBe` ["."]
+  where
+    pr = ProjectRoot "/"
+
+
 testResolveTestTargets :: Spec
 testResolveTestTargets = do
     it "infers test: components from targets when testTargets is absent" do
-        let cfg = def {targets = ["lib:mylib", "test:mylib-test"]} :: Config
-        resolveTestTargets cfg `shouldBe` ["test:mylib-test"]
+        let cfg = def :: Config
+        resolveTestTargets cfg ["lib:mylib", "test:mylib-test"] `shouldBe` ["test:mylib-test"]
 
     it "returns empty list when no test: components in targets" do
-        let cfg = def {targets = ["lib:mylib", "exe:myapp"]} :: Config
-        resolveTestTargets cfg `shouldBe` []
+        let cfg = def :: Config
+        resolveTestTargets cfg ["lib:mylib", "exe:myapp"] `shouldBe` []
 
     it "uses explicit testTargets list when set" do
-        let cfg =
-                def
-                    { targets = ["lib:a", "test:a-test", "test:b-test"]
-                    , testTargets = Just ["test:b-test"]
-                    }
-                    :: Config
-        resolveTestTargets cfg `shouldBe` ["test:b-test"]
+        let cfg = def {testTargets = Just ["test:b-test"]} :: Config
+        resolveTestTargets cfg ["lib:a", "test:a-test", "test:b-test"] `shouldBe` ["test:b-test"]
 
     it "returns empty list when testTargets is explicitly empty" do
-        let cfg = def {targets = ["lib:a", "test:a-test"], testTargets = Just []}
-        resolveTestTargets cfg `shouldBe` []
+        let cfg = def {testTargets = Just []} :: Config
+        resolveTestTargets cfg ["lib:a", "test:a-test"] `shouldBe` []
 
     it "infers multiple test: components" do
-        let cfg = def {targets = ["lib:a", "test:a-test", "test:b-test"]}
-        resolveTestTargets cfg `shouldBe` ["test:a-test", "test:b-test"]
+        let cfg = def :: Config
+        resolveTestTargets cfg ["lib:a", "test:a-test", "test:b-test"] `shouldBe` ["test:a-test", "test:b-test"]
 
 
 testResolveCommand :: Spec
