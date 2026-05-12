@@ -198,10 +198,10 @@ allComponentTargets gpd =
 --
 -- When 'testTargets' is set in config, those suites are used directly.
 -- Otherwise, all @test:@ components in 'targets' are inferred.
-resolveTestTargets :: Config -> [Text]
-resolveTestTargets cfg = case cfg.testTargets of
+resolveTestTargets :: Config -> [Text] -> [Text]
+resolveTestTargets cfg targets = case cfg.testTargets of
     Just explicit -> explicit
-    Nothing -> filter ("test:" `T.isPrefixOf`) cfg.targets
+    Nothing -> filter ("test:" `T.isPrefixOf`) targets
 
 
 runSession
@@ -219,7 +219,7 @@ runSession act = do
     effectiveTargets <- resolveTargets projectRoot cfgFile.targets
     command <- resolveCommand projectRoot cfgFile
     watchDirs <- resolveWatchDirs projectRoot cfgFile
-    let testTargets = resolveTestTargets cfgFile
+    let testTargets = resolveTestTargets cfgFile effectiveTargets
         cfg =
             Session
                 { targets = effectiveTargets
