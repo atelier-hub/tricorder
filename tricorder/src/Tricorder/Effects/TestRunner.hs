@@ -13,20 +13,25 @@ module Tricorder.Effects.TestRunner
     ) where
 
 import Control.Exception (throwIO)
+import Data.Time.Units (Second)
 import Effectful (Effect, IOE)
+import Effectful.Concurrent (Concurrent)
+import Effectful.Concurrent.STM (atomically)
 import Effectful.Dispatch.Dynamic (interpretWith_, reinterpret)
 import Effectful.Exception (trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, evalState, get, put)
 import Effectful.TH (makeEffect)
-import System.Process.Typed (byteStringInput, proc, readProcess, setStdin, setWorkingDir)
+import System.Process.Typed (byteStringInput, byteStringOutput, getStderr, getStdout, proc, setStderr, setStdin, setStdout, setWorkingDir, withProcessTerm)
 
 import Data.ByteString.Lazy qualified as BSL
 import Data.List qualified as List
 import Data.Text qualified as T
 
+import Atelier.Effects.Delay (Delay, withTimeout)
 import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
 import Tricorder.Runtime (ProjectRoot (..))
+import Tricorder.Session (Session (..))
 import Tricorder.TestOutput (parseHspecOutput)
 
 
@@ -42,23 +47,36 @@ makeEffect ''TestRunner
 -- | Production interpreter that spawns a short-lived @cabal repl test:\<name\>@
 -- process for each suite, feeds @:main\\n:quit\\n@ to stdin, captures combined
 -- stdout+stderr, and detects the outcome via 'detectOutcome'.
-runTestRunnerIO :: (IOE :> es, Reader ProjectRoot :> es) => Eff (TestRunner : es) a -> Eff es a
+runTestRunnerIO :: (Concurrent :> es, Delay :> es, IOE :> es, Reader ProjectRoot :> es, Reader Session :> es) => Eff (TestRunner : es) a -> Eff es a
 runTestRunnerIO act = do
     ProjectRoot projectRoot <- ask
     interpretWith_ act \case
         RunTestSuite target -> do
-            result <- trySync $ liftIO do
-                let config =
-                        setStdin (byteStringInput ":main\n:quit\n")
-                            $ setWorkingDir projectRoot
-                            $ proc "cabal" ["repl", toString target]
-                (_, out, err) <- readProcess config
-                pure (out, err)
+            Session {testTimeout} <- ask
+            let config =
+                    proc "cabal" ["repl", toString target]
+                        & setStdin (byteStringInput ":main\n:quit\n")
+                        & setWorkingDir projectRoot
+                        & setStdout byteStringOutput
+                        & setStderr byteStringOutput
+            result <- trySync $ withProcessTerm config \p -> do
+                let collectOutput = do
+                        out <- atomically (getStdout p)
+                        err <- atomically (getStderr p)
+                        pure (out <> err)
+                case testTimeout of
+                    secs | secs <= 0 -> Right <$> collectOutput
+                    secs ->
+                        withTimeout (fromIntegral secs :: Second) collectOutput >>= \case
+                            Left () -> pure (Left secs)
+                            Right combined -> pure (Right combined)
             pure $ case result of
                 Left ex ->
                     TestRunErrored $ TestRunError {target, message = show ex}
-                Right (out, err) ->
-                    let output = decodeUtf8 (BSL.toStrict out) <> decodeUtf8 (BSL.toStrict err)
+                Right (Left secs) ->
+                    TestRunErrored $ TestRunError {target, message = "Test suite timed out after " <> show secs <> "s"}
+                Right (Right combined) ->
+                    let output = decodeUtf8 (BSL.toStrict combined)
                     in  case detectOutcome output of
                             GhciCrashed msg ->
                                 TestRunErrored $ TestRunError {target, message = msg}
