@@ -5,9 +5,9 @@ module Tricorder.Runtime
     , runProjectRoot
     , RuntimeDir (..)
     , runRuntimeDir
+    , runRuntimeDirItem
     , SocketPath (..)
     , runSocketPath
-    , runSocketPathConst
     , LogPath (..)
     , runLogPath
     ) where
@@ -33,14 +33,7 @@ runSocketPath
     :: (Reader RuntimeDir :> es)
     => Eff (Reader SocketPath : es) a
     -> Eff es a
-runSocketPath act = do
-    RuntimeDir runtimeDir <- ask
-    let sock = runtimeDir </> "socket.sock"
-    runReader (SocketPath sock) act
-
-
-runSocketPathConst :: FilePath -> Eff (Reader SocketPath : es) a -> Eff es a
-runSocketPathConst = runReader . SocketPath
+runSocketPath = runRuntimeDirItem "socket.sock" SocketPath
 
 
 newtype RuntimeDir = RuntimeDir {getRuntimeDir :: FilePath}
@@ -61,6 +54,19 @@ runRuntimeDir act = do
     runReader (RuntimeDir dir) act
 
 
+runRuntimeDirItem
+    :: (Reader RuntimeDir :> es)
+    => FilePath
+    -- ^ Path segment to append to runtime dir.
+    -> (FilePath -> a)
+    -- ^ Constructor for the resulting type.
+    -> Eff (Reader a : es) b
+    -> Eff es b
+runRuntimeDirItem path mk act = do
+    RuntimeDir runtimeDir <- ask
+    runReader (mk $ runtimeDir </> path) act
+
+
 newtype ProjectRoot = ProjectRoot {getProjectRoot :: FilePath}
 
 
@@ -73,18 +79,14 @@ runProjectRoot act = do
 
 
 runPidFile :: (Reader RuntimeDir :> es) => Eff (Reader PidFile : es) a -> Eff es a
-runPidFile act = do
-    RuntimeDir runtimeDir <- ask
-    runReader (PidFile $ runtimeDir </> "daemon.pid") act
+runPidFile = runRuntimeDirItem "daemon.pid" PidFile
 
 
 newtype LogPath = LogPath {getLogPath :: FilePath}
 
 
 runLogPath :: (Reader RuntimeDir :> es) => Eff (Reader LogPath : es) a -> Eff es a
-runLogPath act = do
-    RuntimeDir runtimeDir <- ask
-    runReader (LogPath $ runtimeDir </> "daemon.log") act
+runLogPath = runRuntimeDirItem "daemon.log" LogPath
 
 
 -- | Polynomial hash of a file path, returned as a hex string.
