@@ -8,6 +8,8 @@ module Tricorder.Runtime
     , SocketPath (..)
     , runSocketPath
     , runSocketPathConst
+    , LogPath (..)
+    , runLogPath
     ) where
 
 import Effectful.Reader.Static (Reader, ask, runReader)
@@ -74,6 +76,15 @@ runPidFile :: (Reader RuntimeDir :> es) => Eff (Reader PidFile : es) a -> Eff es
 runPidFile act = do
     RuntimeDir runtimeDir <- ask
     runReader (PidFile $ runtimeDir </> "daemon.pid") act
+
+
+newtype LogPath = LogPath {getLogPath :: FilePath}
+
+
+runLogPath :: (Reader RuntimeDir :> es) => Eff (Reader LogPath : es) a -> Eff es a
+runLogPath act = do
+    RuntimeDir runtimeDir <- ask
+    runReader (LogPath $ runtimeDir </> "daemon.log") act
 
 
 -- | Polynomial hash of a file path, returned as a hex string.

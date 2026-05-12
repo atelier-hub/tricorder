@@ -131,7 +131,7 @@ testSTM = do
 --------------------------------------------------------------------------------
 
 emptyDaemonInfo :: DaemonInfo
-emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = Nothing, metricsPort = Nothing}
+emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = "", metricsPort = Nothing}
 
 
 buildingAt :: Int -> BuildState

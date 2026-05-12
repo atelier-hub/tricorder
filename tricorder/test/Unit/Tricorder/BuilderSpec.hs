@@ -503,6 +503,6 @@ emptyDaemonInfo =
         { targets = []
         , watchDirs = []
         , sockPath = ""
-        , logFile = Nothing
+        , logFile = ""
         , metricsPort = Nothing
         }

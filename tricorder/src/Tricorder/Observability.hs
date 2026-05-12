@@ -38,7 +38,6 @@ instance Default MetricsConfig where
 
 data Config = Config
     { metrics :: MetricsConfig
-    , logFile :: Maybe FilePath
     , tracing :: TracingConfig
     }
     deriving stock (Eq, Generic, Show)
@@ -46,7 +45,7 @@ data Config = Config
 
 
 instance Default Config where
-    def = Config {metrics = def, logFile = Nothing, tracing = def}
+    def = Config {metrics = def, tracing = def}
 
 
 component :: (Delay :> es, IOE :> es, Log :> es, Reader Config :> es) => Component es
