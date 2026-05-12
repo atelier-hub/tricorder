@@ -29,7 +29,7 @@ import Tricorder.Effects.GhciSession (runGhciSessionIO)
 import Tricorder.Effects.Logging (runLogging)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
-import Tricorder.Runtime (runProjectRoot, runRuntimeDir, runSocketPath)
+import Tricorder.Runtime (runLogPath, runProjectRoot, runRuntimeDir, runSocketPath)
 import Tricorder.Session (runSession)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
@@ -59,6 +59,7 @@ main =
         . runProjectRoot
         . runRuntimeDir
         . runSocketPath
+        . runLogPath
         . runLoadedConfig
         . runSession
         . runConfig @"observability" @Observability.Config

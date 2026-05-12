@@ -21,12 +21,11 @@ import Tricorder.Daemon (startDaemon, stopDaemon, waitForDaemon)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.UnixSocket (UnixSocket)
-import Tricorder.Runtime (PidFile (..), SocketPath (..))
+import Tricorder.Runtime (LogPath (..), PidFile (..), SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning, queryStatus)
 import Tricorder.UI (viewUi)
 
 import Atelier.Effects.Console qualified as Console
-import Tricorder.Observability qualified as Observability
 
 
 run
@@ -42,7 +41,7 @@ run
        , FileSystem :> es
        , IOE :> es
        , Reader Command :> es
-       , Reader Observability.Config :> es
+       , Reader LogPath :> es
        , Reader PidFile :> es
        , Reader SocketPath :> es
        , Timeout :> es
@@ -82,16 +81,17 @@ run =
                 showTests opts
         Log followMode -> do
             running <- isDaemonRunning
-            mLogFile <-
+            logFile <-
                 if running then do
                     SocketPath sp <- ask
                     result <- queryStatus sp
+                    LogPath fallback <- ask
                     pure $ case result of
                         Right state -> state.daemonInfo.logFile
-                        Left _ -> Nothing
+                        Left _ -> fallback
                 else
-                    asks @Observability.Config (.logFile)
-            showLog mLogFile followMode
+                    asks @LogPath (.getLogPath)
+            showLog logFile followMode
         UI -> do
             running <- isDaemonRunning
             unless running do

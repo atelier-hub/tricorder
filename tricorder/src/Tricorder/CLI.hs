@@ -153,17 +153,14 @@ showLog
        , Delay :> es
        , FileSystem :> es
        )
-    => Maybe FilePath -> FollowMode -> Eff es ()
-showLog mLogFile followMode = case mLogFile of
-    Nothing ->
-        Console.putStrLn "No log file configured. Add `log_file: /path/to/tricorder.log` to .tricorder.yaml"
-    Just path -> do
-        exists <- doesFileExist path
-        if not exists then
-            Console.putTextLn $ "Log file does not exist yet: " <> toText path
-        else case followMode of
-            Follow -> followFile path Console.putStr
-            NoFollow -> readFileLbs path >>= Console.putStr . BSL.toStrict
+    => FilePath -> FollowMode -> Eff es ()
+showLog path followMode = do
+    exists <- doesFileExist path
+    if not exists then
+        Console.putTextLn $ "Log file does not exist yet: " <> toText path
+    else case followMode of
+        Follow -> followFile path Console.putStr
+        NoFollow -> readFileLbs path >>= Console.putStr . BSL.toStrict
 
 
 showTests

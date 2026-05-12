@@ -157,10 +157,8 @@ viewMetrics (Just port) =
         ]
 
 
-viewLogFile :: Maybe FilePath -> Widget n
-viewLogFile = \case
-    Nothing -> emptyWidget
-    Just p -> hBoxSpaced 1 [emphasis $ txt "Log:", txt $ toText p]
+viewLogFile :: FilePath -> Widget n
+viewLogFile p = hBoxSpaced 1 [emphasis $ txt "Log:", txt $ toText p]
 
 
 viewSockPath :: FilePath -> Widget n
