@@ -51,6 +51,7 @@ data Session = Session
     , watchDirs :: [FilePath]
     , outputFile :: Maybe FilePath
     , replBuildDir :: FilePath
+    , testTimeout :: Int
     }
 
 
@@ -63,6 +64,7 @@ instance Default Session where
             , watchDirs = []
             , outputFile = Nothing
             , replBuildDir = "/tmp"
+            , testTimeout = 10
             }
 
 
@@ -73,6 +75,7 @@ data Config = Config
     , testTargets :: Maybe [Text]
     , outputFile :: Maybe FilePath
     , replBuildDir :: FilePath
+    , testTimeout :: Int
     }
     deriving stock (Eq, Generic, Show)
     deriving (FromJSON) via WithDefaults (QuietSnake Config)
@@ -87,6 +90,7 @@ instance Default Config where
             , testTargets = Nothing
             , outputFile = Just "build.json"
             , replBuildDir = "dist-newstyle/tricorder"
+            , testTimeout = 10
             }
 
 
@@ -228,5 +232,6 @@ runSession act = do
                 , testTargets
                 , outputFile = cfgFile.outputFile
                 , replBuildDir = cfgFile.replBuildDir
+                , testTimeout = cfgFile.testTimeout
                 }
     runReader cfg act

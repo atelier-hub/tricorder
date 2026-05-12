@@ -7,6 +7,7 @@ import Effectful.Prim.IORef (atomicModifyIORef, newIORef, readIORef)
 import Effectful.State.Static.Shared (evalState, execState, gets)
 import Test.Hspec
 
+import Effectful.Concurrent.Async qualified as Async
 import Effectful.Prim.IORef qualified as IORef
 
 import Atelier.Effects.Delay (mkTimers, runDelayWithControls)
@@ -19,6 +20,7 @@ import Atelier.Effects.Delay qualified as Delay
 spec_Delay :: Spec
 spec_Delay = do
     describe "runDelayWithControls" testRunDelayWithControls
+    describe "withTimeout" testWithTimeout
 
 
 testRunDelayWithControls :: Spec
@@ -207,3 +209,26 @@ testRunDelayWithControls = do
     runTest = runEff . runPrim . runConcurrent . Conc.runConc . evalState mkTimers . runDelayWithControls
     newRef = newIORef (0 :: Int)
     incRef ref = atomicModifyIORef ref $ (,()) . (+ 1)
+
+
+testWithTimeout :: Spec
+testWithTimeout = do
+    it "instant action returns Right" do
+        result <- runTest $ Delay.withTimeout (100 :: Microsecond) (pure ())
+        result `shouldBe` Right ()
+
+    it "action finishes before deadline returns Right" do
+        result <- runTest do
+            a <- Async.async $ Delay.withTimeout (100 :: Microsecond) (Delay.wait (10 :: Microsecond))
+            Delay.tickNext
+            Async.wait a
+        result `shouldBe` Right ()
+
+    it "deadline fires before action returns Left" do
+        result <- runTest do
+            a <- Async.async $ Delay.withTimeout (10 :: Microsecond) (Delay.wait (100 :: Microsecond))
+            Delay.tickNext
+            Async.wait a
+        result `shouldBe` Left ()
+  where
+    runTest = runEff . runPrim . runConcurrent . Conc.runConc . evalState mkTimers . runDelayWithControls

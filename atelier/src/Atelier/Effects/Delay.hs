@@ -2,6 +2,7 @@ module Atelier.Effects.Delay
     ( Delay
     , wait
     , every
+    , withTimeout
     , runDelay
     , runDelayNoOp
 
@@ -18,6 +19,7 @@ module Atelier.Effects.Delay
 import Data.Time.Units (TimeUnit, convertUnit, toMicroseconds)
 import Effectful (Effect, IOE)
 import Effectful.Concurrent (Concurrent, threadDelay)
+import Effectful.Concurrent.Async (race)
 import Effectful.Concurrent.MVar (newEmptyMVar, takeMVar)
 import Effectful.Dispatch.Dynamic (interpret_)
 import Effectful.State.Static.Shared (State, modifyM)
@@ -43,6 +45,16 @@ every :: (Delay :> es, TimeUnit t) => t -> Eff es () -> Eff es Void
 every delay action = forever do
     action
     wait delay
+
+
+-- | Race an action against a deadline. Returns 'Right' if the action
+-- completes first, 'Left' if the timeout fires first.
+withTimeout
+    :: (Concurrent :> es, Delay :> es, TimeUnit t)
+    => t
+    -> Eff es a
+    -> Eff es (Either () a)
+withTimeout duration = race (wait duration)
 
 
 runDelay :: (Concurrent :> es) => Eff (Delay : es) a -> Eff es a
