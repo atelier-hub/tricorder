@@ -119,11 +119,11 @@ detectCommand targets replBuildDir (ProjectRoot projectRoot) = do
 -- 1. @watch_dirs@ from config, if non-empty (used as-is relative to project root)
 -- 2. @hs-source-dirs@ inferred from cabal targets, if targets are set
 -- 3. Falls back to @["."]@ (project root) if neither is available
-resolveWatchDirs :: (FileSystem :> es) => ProjectRoot -> Config -> Eff es [FilePath]
-resolveWatchDirs projectRoot cfg =
+resolveWatchDirs :: (FileSystem :> es) => ProjectRoot -> Config -> [Text] -> Eff es [FilePath]
+resolveWatchDirs projectRoot cfg targets =
     case cfg.watchDirs of
         dirs@(_ : _) -> pure $ map (coerce projectRoot </>) dirs
-        [] -> resolveWatchDirsFromTargets cfg.targets projectRoot
+        [] -> resolveWatchDirsFromTargets targets projectRoot
 
 
 resolveWatchDirsFromTargets :: (FileSystem :> es) => [Text] -> ProjectRoot -> Eff es [FilePath]
@@ -218,7 +218,7 @@ runSession act = do
     let cfgFile = extractConfig @"session" @Config loadedCfg
     effectiveTargets <- resolveTargets projectRoot cfgFile.targets
     command <- resolveCommand projectRoot cfgFile
-    watchDirs <- resolveWatchDirs projectRoot cfgFile
+    watchDirs <- resolveWatchDirs projectRoot cfgFile effectiveTargets
     let testTargets = resolveTestTargets cfgFile effectiveTargets
         cfg =
             Session
