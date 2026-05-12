@@ -45,6 +45,7 @@ library
       Tricorder.TestOutput
       Tricorder.UI
       Tricorder.UI.Event
+      Tricorder.UI.Keys
       Tricorder.UI.Misc
       Tricorder.UI.State
       Tricorder.UI.View
@@ -83,6 +84,7 @@ library
     , base
     , brick
     , bytestring
+    , casing
     , containers
     , data-default
     , directory

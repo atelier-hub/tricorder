@@ -10,7 +10,7 @@ Like similar tools (`ghcid`, `ghciwatch`), it builds the code continuously on ev
 - **Sane defaults** - Running `tricorder start` should Just Work™ for most cabal-based Haskell projects.
   - Daemon restarts automatically when cabal files change
   - If customization is needed it can be provided at different levels via a `.tricorder.yaml` or CLI args.
-    - Optional config includes which cabal packages to watch, which exact command to use to enter a GHCi session, etc.
+    - Optional config includes which cabal packages to watch, which exact command to use to enter a GHCi session, [customizable key bindings](#custom-key-bindings), etc.
 - **Project context** - Tools like `tricorder source Some.Module` will attempt to find and provide the source code for a given dependency from disk, which allows exploring library APIs more easily.
 - **Machine-readable output** - Using `tricorder status --json` we can get build information in a format appropriate for programmatic usage.
 
@@ -18,6 +18,7 @@ Like similar tools (`ghcid`, `ghciwatch`), it builds the code continuously on ev
 
 > [!TIP]
 > Configure the binary cache to avoid building GHC from scratch:
+>
 > ```nix
 > nix.settings = {
 >   extra-substituters = [ "https://atelier.cachix.org" ];
@@ -67,6 +68,84 @@ programs.tricorder.enable = true;
 ```nix
 imports = [ inputs.tricorder.nixosModules.default ];
 programs.tricorder.enable = true;
+```
+
+## Custom Key Bindings
+
+You can specify custom key bindings for `tricorder ui`'s TUI in your
+`.tricorder.yaml` file.
+
+The format is as follows:
+
+```yaml
+keybindings:
+  <event>: <keybind>[, <keybind>, <keybind>, ...]
+```
+
+`keybindings` is an object whose keys are event names and whose values are
+strings of key bindings, each key binding in the string separated by a comma.
+
+The following event names are recognized:
+
+- `toggle_daemon_info_view`: Toggle displaying daemon info.
+- `quit`: Exit the TUI.
+- `scroll_up`: Scroll up in the diagnostic list.
+- `scroll_down`: Scroll down in the diagnostic list.
+- `toggle_help`: Toggle displaying the available key bindings. This includes
+  your custom key bindings.
+
+Key binds are specified in the format `<modifiers>-<key>`, where `<modifiers>`
+is an optional `-`-separated list of modifier keys, and `<key>` is any
+non-modifier key on your keyboard.
+
+Alternatively, the key bind can be `unbound`, which removes default key
+bindings for the given event.
+
+The following modifiers are recognized:
+
+- `s`, `shift`
+- `m`, `meta`
+- `a`, `alt`
+- `c`, `ctrl`, `control`
+
+The following non-modifier keys are recognized:
+
+- `f1`, `f2`, ...
+- `esc`
+- `backspace`
+- `enter`
+- `left`
+- `right`
+- `up`
+- `down`
+- `upleft`
+- `upright`
+- `downleft`
+- `downright`
+- `center`
+- `backtab`
+- `printscreen`
+- `pause`
+- `insert`
+- `home`
+- `pgup`
+- `del`
+- `end`
+- `pgdown`
+- `begin`
+- `menu`
+- `space`
+- `tab`
+- All letter, symbol and number keys.
+
+### Example
+
+```yaml
+keybindings:
+  quit: c-q
+  scroll_up: k, up
+  scroll_down: j, down
+  toggle_daemon_info_view: unbound
 ```
 
 ## Development

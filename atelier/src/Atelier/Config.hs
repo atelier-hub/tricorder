@@ -11,6 +11,7 @@ module Atelier.Config
 
 import Data.Aeson (FromJSON (..), Value (..))
 import Data.Default (Default (..))
+import Effectful.Exception (evaluate)
 import Effectful.Reader.Static (Reader, ask, runReader)
 import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
 
@@ -137,4 +138,5 @@ runConfig
     => Eff (Reader r : es) a -> Eff es a
 runConfig act = do
     loadedCfg <- ask
-    runReader (extractNestedConfig @key loadedCfg) act
+    cfg <- evaluate $ extractNestedConfig @key loadedCfg
+    runReader (cfg) act

@@ -77,6 +77,7 @@ library:
   - ansi-terminal
   - brick
   - bytestring
+  - casing
   - containers
   - data-default
   - directory
