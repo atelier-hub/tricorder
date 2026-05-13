@@ -27,15 +27,16 @@ import Tricorder.Effects.BuildStore (runBuildStore)
 import Tricorder.Effects.GhcPkg (runGhcPkgIO)
 import Tricorder.Effects.GhciSession (runGhciSession)
 import Tricorder.Effects.Logging (runLogging)
+import Tricorder.Effects.SessionStore (runSessionStore)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
 import Tricorder.Runtime (runLogPath, runProjectRoot, runRuntimeDir, runSocketPath)
-import Tricorder.Session (runSession)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
 import Atelier.Effects.Log qualified as Log
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
+import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.GhcPkg.Types qualified as GhcPkg
 import Tricorder.Observability qualified as Observability
 import Tricorder.Socket.Server qualified as SocketServer
@@ -53,7 +54,8 @@ main =
         . runConc
         . runClock
         . runDelay
-        . runDebounce
+        . runDebounce @FilePath
+        . runDebounce @Text
         . runFileWatcherIO
         . runFileSystemIO
         . runProjectRoot
@@ -65,12 +67,13 @@ main =
         . runSocketPath
         . runLogPath
         . runLoadedConfig
-        . runSession
         . runConfig @"observability" @Observability.Config
         . runConfig @"observability.tracing" @TracingConfig
         . runTracingFromConfig
-        . runReader @CacheConfig.Config def
         . runChan
+        . runPubSub @SessionStore.SessionStoreReloaded
+        . runSessionStore
+        . runReader @CacheConfig.Config def
         . runPubSub @Watcher.WatchedFile
         . runPubSub @Builder.NewLoadResult
         . runPubSub @BuildState.BuildResult
@@ -89,7 +92,6 @@ main =
         . runGhciSession
         . evalState (BuildId 1)
         . evalState @Builder.DiagnosticMap mempty
-        . runDebounce @Text
         $ do
             Log.info $ "Starting tricorder " <> Version.gitHash
             runSystem

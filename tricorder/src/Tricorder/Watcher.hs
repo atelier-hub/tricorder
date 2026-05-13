@@ -5,10 +5,12 @@ module Tricorder.Watcher
     , markWatchedFiles
     ) where
 
+import Effectful.Concurrent (Concurrent)
 import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (takeExtension, takeFileName)
 
 import Atelier.Component (Component (..), defaultComponent)
+import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.FileWatcher
     ( FileWatcher
@@ -26,11 +28,13 @@ import Tricorder.BuildState
     , SourceChangeDetected (..)
     )
 import Tricorder.Effects.BuildStore (BuildStore)
+import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
 import Atelier.Effects.Publishing qualified as Sub
 import Tricorder.Effects.BuildStore qualified as BuildStore
+import Tricorder.Effects.SessionStore qualified as SessionStore
 
 
 -- | Watcher component.
@@ -39,30 +43,24 @@ import Tricorder.Effects.BuildStore qualified as BuildStore
 -- or session restart accordingly.
 component
     :: ( BuildStore :> es
+       , Conc :> es
+       , Concurrent :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
        , Pub CabalChangeDetected :> es
        , Pub SourceChangeDetected :> es
        , Pub WatchedFile :> es
        , Reader ProjectRoot :> es
-       , Reader Session :> es
+       , SessionStore :> es
+       , Sub SessionStoreReloaded :> es
        , Sub WatchedFile :> es
        )
     => Component es
 component =
     defaultComponent
         { name = "Watcher"
-        , triggers = do
-            session <- ask @Session
-            projectRoot <- ask
-            let watches = sourceWatches session <> cabalWatches projectRoot
-            pure
-                [ watchFilePathsDebounced watches $ publish . WatchedFile
-                ]
-        , listeners =
-            pure
-                [ Sub.listen_ markWatchedFiles
-                ]
+        , triggers = pure [watchFiles]
+        , listeners = pure [Sub.listen_ markWatchedFiles]
         }
 
 
@@ -84,8 +82,46 @@ markWatchedFiles f = do
 newtype WatchedFile = WatchedFile {getWatchedFile :: FilePath}
 
 
-sourceWatches :: Session -> [Watch]
-sourceWatches = map (\d -> dirExt d ".hs" `excluding` containing "dist-newstyle") . (.watchDirs)
+data WatcherSession = WatcherSession
+    { watchDirs :: [FilePath]
+    }
+    deriving stock (Eq)
+
+
+withWatcherSession
+    :: ( Conc :> es
+       , Concurrent :> es
+       , SessionStore :> es
+       , Sub SessionStoreReloaded :> es
+       )
+    => Session
+    -> (SessionStore.Reloader es -> WatcherSession -> Eff es Void)
+    -> Eff es Void
+withWatcherSession =
+    SessionStore.withSubSession $ WatcherSession . (.watchDirs)
+
+
+watchFiles
+    :: ( Conc :> es
+       , Concurrent :> es
+       , Debounce FilePath :> es
+       , FileWatcher :> es
+       , Pub WatchedFile :> es
+       , Reader ProjectRoot :> es
+       , SessionStore :> es
+       , Sub SessionStoreReloaded :> es
+       )
+    => Eff es Void
+watchFiles = do
+    initialSession <- SessionStore.get
+    withWatcherSession initialSession $ \_ session -> do
+        projectRoot <- ask
+        let watches = sourceWatches session.watchDirs <> cabalWatches projectRoot
+        watchFilePathsDebounced watches $ publish . WatchedFile
+
+
+sourceWatches :: [FilePath] -> [Watch]
+sourceWatches = map (\d -> dirExt d ".hs" `excluding` containing "dist-newstyle")
 
 
 cabalWatches :: ProjectRoot -> [Watch]

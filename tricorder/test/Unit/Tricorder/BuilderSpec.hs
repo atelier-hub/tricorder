@@ -21,7 +21,6 @@ import Tricorder.BuildState
     , BuildPhase (..)
     , BuildResult (..)
     , BuildState (..)
-    , CabalChangeDetected (..)
     , DaemonInfo (..)
     , Diagnostic (..)
     , EnteredNewPhase (..)
@@ -32,24 +31,24 @@ import Tricorder.BuildState
     , TestRunCompletion (..)
     )
 import Tricorder.Builder
-    ( NewLoadResult (..)
+    ( BuilderSession (..)
+    , NewLoadResult (..)
     , compileLoadResultsIntoBuildResults
     , filterToWatchDirs
     , mergeDiagnostics
+    , onRestart
     , reloadOnSourceChange
     , requestTestRunsForNewBuildResults
-    , restartOnCabalChange
     , setNewPhase
     )
 import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), extractTitle)
 import Tricorder.Effects.TestRunner (runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Session (..))
 
 import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.BuildState qualified as BuildState
+import Tricorder.Builder qualified as Builder
 import Tricorder.Effects.BuildStore qualified as BuildStore
-import Tricorder.Session qualified as Session (Session (..))
 
 
 spec_Builder :: Spec
@@ -66,27 +65,19 @@ spec_Builder = do
 
 testRestartOnCabalChange :: Spec
 testRestartOnCabalChange = do
-    it "should signal the semaphore, exiting the current build loop" $ run do
-        sem <- Sem.new
-        _ <- runTest sem CabalChangeDetected
-        actual <- Sem.peek sem
-        liftIO $ actual `shouldBe` True
-
-    it "should publish that it is restarting the build process" $ run do
-        sem <- Sem.new
-        (phases, _) <- runTest sem CabalChangeDetected
-        liftIO $ phases `shouldBe` [EnteringNewPhase (BuildId 1) Restarting]
+    it "should publish that it is building" $ run do
+        (phases, _) <- runTest
+        liftIO $ phases `shouldBe` [EnteringNewPhase (BuildId 1) $ Building Nothing]
 
     it "should increment the build ID" $ run do
-        sem <- Sem.new
-        (_, buildId) <- runTest sem CabalChangeDetected
+        (_, buildId) <- runTest
         liftIO $ buildId `shouldBe` BuildId 2
   where
-    runTest sem =
+    runTest =
         runState (BuildId 1)
             . execWriter
-            . runPubWriter
-            . restartOnCabalChange sem
+            . runPubWriter @EnteringNewPhase
+            $ onRestart
 
     run = runEff . runConcurrent . runLogNoOp
 
@@ -211,9 +202,8 @@ testCompileLoadResultsIntoBuildResults = do
             . runWriter
             . runPubWriter
             . runReader (ProjectRoot "/")
-            . runReader @Session (def {Session.watchDirs = ["/src"]})
             . execState acc
-            . compileLoadResultsIntoBuildResults
+            . compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]})
 
 
 testRequestTestRunsForNewBuildResults :: Spec
@@ -262,11 +252,10 @@ testRequestTestRunsForNewBuildResults = do
         runEff
             . runLogNoOp
             . evalState (BuildId 1)
-            . runReader (def {testTargets})
             . execWriter
             . runPubWriter
             . runTestRunnerScripted script
-            . requestTestRunsForNewBuildResults
+            . requestTestRunsForNewBuildResults (def {testTargets})
 
     mkPhase = EnteringNewPhase (BuildId 1)
     mkTesting = mkPhase . Testing

@@ -30,9 +30,11 @@ import Effectful.Reader.Static (Reader, ask, runReader)
 import System.FilePath (makeRelative)
 
 import Atelier.Time (Millisecond)
+import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (LogPath (..), ProjectRoot (..), SocketPath (..))
 import Tricorder.Session (Session (..))
 
+import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.Observability qualified as Observability
 
 
@@ -57,12 +59,12 @@ runDaemonInfo
     :: ( Reader LogPath :> es
        , Reader Observability.Config :> es
        , Reader ProjectRoot :> es
-       , Reader Session :> es
        , Reader SocketPath :> es
+       , SessionStore :> es
        )
     => Eff (Reader DaemonInfo : es) a -> Eff es a
 runDaemonInfo act = do
-    session <- ask @Session
+    session <- SessionStore.get
     obsCfg <- ask @Observability.Config
     ProjectRoot projectRoot <- ask
     SocketPath sockPath <- ask

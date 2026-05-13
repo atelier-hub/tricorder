@@ -21,9 +21,24 @@ module Atelier.Effects.Conc
     )
 where
 
-import Effectful (Effect, IOE, Limit (..), Persistence (..), UnliftStrategy (..), raise, withEffToIO)
+import Effectful
+    ( Effect
+    , IOE
+    , Limit (..)
+    , Persistence (..)
+    , UnliftStrategy (..)
+    , raise
+    , withEffToIO
+    )
 import Effectful.Concurrent.STM (atomically, runConcurrent)
-import Effectful.Dispatch.Dynamic (EffectHandler, interpose, interpret, localLend, localUnlift, localUnliftIO)
+import Effectful.Dispatch.Dynamic
+    ( EffectHandler
+    , interpose
+    , interpret
+    , localLend
+    , localUnlift
+    , localUnliftIO
+    )
 import Effectful.TH (makeEffect)
 
 import Ki qualified
