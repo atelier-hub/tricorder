@@ -1,7 +1,7 @@
 module Tricorder.Session
     ( Session (..)
     , Config (..)
-    , runSession
+    , loadSession
     , resolveCommand
     , resolveTargets
     , allComponentTargets
@@ -32,7 +32,7 @@ import Distribution.Types.PackageName (unPackageName)
 import Distribution.Types.TestSuite (testBuildInfo)
 import Distribution.Types.UnqualComponentName (mkUnqualComponentName, unUnqualComponentName)
 import Distribution.Utils.Path (getSymbolicPath)
-import Effectful.Reader.Static (Reader, ask, runReader)
+import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (takeExtension, (</>))
 
 import Data.Text qualified as T
@@ -208,15 +208,13 @@ resolveTestTargets cfg targets = case cfg.testTargets of
     Nothing -> filter ("test:" `T.isPrefixOf`) targets
 
 
-runSession
+loadSession
     :: ( FileSystem :> es
-       , HasCallStack
        , Reader LoadedConfig :> es
        , Reader ProjectRoot :> es
        )
-    => Eff (Reader Session : es) a
-    -> Eff es a
-runSession act = do
+    => Eff es Session
+loadSession = do
     projectRoot <- ask @ProjectRoot
     loadedCfg <- ask
     let cfgFile = extractConfig @"session" @Config loadedCfg
@@ -224,14 +222,13 @@ runSession act = do
     command <- resolveCommand projectRoot cfgFile
     watchDirs <- resolveWatchDirs projectRoot cfgFile effectiveTargets
     let testTargets = resolveTestTargets cfgFile effectiveTargets
-        cfg =
-            Session
-                { targets = effectiveTargets
-                , command
-                , watchDirs
-                , testTargets
-                , outputFile = cfgFile.outputFile
-                , replBuildDir = cfgFile.replBuildDir
-                , testTimeout = cfgFile.testTimeout
-                }
-    runReader cfg act
+    pure
+        $ Session
+            { targets = effectiveTargets
+            , command
+            , watchDirs
+            , testTargets
+            , outputFile = cfgFile.outputFile
+            , replBuildDir = cfgFile.replBuildDir
+            , testTimeout = cfgFile.testTimeout
+            }

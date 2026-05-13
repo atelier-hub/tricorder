@@ -14,8 +14,8 @@ module Tricorder.Builder
     ) where
 
 import Data.Time (diffUTCTime)
-import Effectful.Concurrent.MVar (Concurrent)
-import Effectful.Reader.Static (Reader, ask, asks)
+import Effectful.Concurrent (Concurrent)
+import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, execState, get, put, state)
 import Relude.Extra.Tuple (dup)
 import System.FilePath (isAbsolute, (</>))
@@ -42,6 +42,7 @@ import Tricorder.BuildState
     )
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
+import Tricorder.Effects.SessionStore (ActiveSession, SessionStore, SessionStoreReloaded)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
@@ -53,6 +54,7 @@ import Atelier.Effects.Publishing qualified as Sub
 import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.GhciSession qualified as GhciSession
+import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.Effects.TestRunner qualified as TestRunner
 
 
@@ -74,13 +76,14 @@ component
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
-       , Reader Session :> es
+       , SessionStore :> es
        , State BuildId :> es
        , State DiagnosticMap :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
        , Sub EnteringNewPhase :> es
        , Sub NewLoadResult :> es
+       , Sub SessionStoreReloaded :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
@@ -88,19 +91,45 @@ component
 component =
     defaultComponent
         { name = "Builder"
-        , listeners = do
-            ProjectRoot projectRoot <- ask
-            session <- ask @Session
-            Log.debug $ "Builder.component: resolved command = " <> session.command
-            Log.debug $ "Builder.component: projectRoot = " <> toText projectRoot
-            builderCancelSem <- Sem.new
-            pure
-                [ Sub.listen_ compileLoadResultsIntoBuildResults
-                , Sub.listen_ requestTestRunsForNewBuildResults
-                , buildWithGhciOnChange builderCancelSem
-                , Sub.listen_ setNewPhase
-                ]
+        , listeners = pure [restartableListeners]
         }
+
+
+restartableListeners
+    :: ( BuildStore :> es
+       , Clock :> es
+       , Conc :> es
+       , Concurrent :> es
+       , GhciSession :> es
+       , Log :> es
+       , Pub BuildResult :> es
+       , Pub EnteredNewPhase :> es
+       , Pub EnteringNewPhase :> es
+       , Pub NewLoadResult :> es
+       , Reader ProjectRoot :> es
+       , SessionStore :> es
+       , State BuildId :> es
+       , State DiagnosticMap :> es
+       , Sub BuildResult :> es
+       , Sub CabalChangeDetected :> es
+       , Sub EnteringNewPhase :> es
+       , Sub NewLoadResult :> es
+       , Sub SessionStoreReloaded :> es
+       , Sub SourceChangeDetected :> es
+       , TestRunner :> es
+       )
+    => Eff es Void
+restartableListeners = SessionStore.withSession \activeSession -> do
+    ProjectRoot projectRoot <- ask
+    Log.debug $ "Builder.component: resolved command = " <> activeSession.session.command
+    Log.debug $ "Builder.component: projectRoot = " <> toText projectRoot
+    builderCancelSem <- Sem.new
+    Conc.scoped do
+        Conc.fork_ $ Sub.listen_ (compileLoadResultsIntoBuildResults activeSession.session)
+        Conc.fork_ $ Sub.listen_ (requestTestRunsForNewBuildResults activeSession.session)
+        Conc.fork_ $ buildWithGhciOnChange activeSession builderCancelSem
+        Conc.fork_ $ Sub.listen_ setNewPhase
+        void $ Sub.listenOnce_ @SessionStoreReloaded
 
 
 setNewPhase
@@ -122,37 +151,39 @@ buildWithGhciOnChange
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
-       , Reader Session :> es
-       , State (Map FilePath [Diagnostic]) :> es
        , State BuildId :> es
+       , State DiagnosticMap :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        )
-    => Semaphore -> Eff es Void
-buildWithGhciOnChange sem = forever do
+    => ActiveSession es
+    -> Semaphore
+    -> Eff es Void
+buildWithGhciOnChange activeSession sem = forever do
     put Map.empty
-    session <- ask @Session
     projectRoot <- ask
     BuildId n <- get
-    Log.info $ "Starting GHCi session #" <> show n <> ": " <> session.command
+    Log.info $ "Starting GHCi session #" <> show n <> ": " <> activeSession.session.command
 
     initialStartTime <- Clock.currentTime
-    GhciSession.withGhci session.command projectRoot \initialLoad reload -> do
+    GhciSession.withGhci activeSession.session.command projectRoot \initialLoad reload -> do
         initialEndTime <- Clock.currentTime
-        handleInitialBuild initialStartTime initialEndTime initialLoad
-        rebuildOnChange sem reload
+        handleInitialBuild activeSession.session initialStartTime initialEndTime initialLoad
+        rebuildOnChange activeSession sem reload
 
 
 handleInitialBuild
     :: ( Log :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
-       , Reader Session :> es
        , State BuildId :> es
        )
-    => UTCTime -> UTCTime -> LoadResult -> Eff es ()
-handleInitialBuild startTime endTime loadResult = do
-    session <- ask @Session
+    => Session
+    -> UTCTime
+    -> UTCTime
+    -> LoadResult
+    -> Eff es ()
+handleInitialBuild session startTime endTime loadResult = do
     ProjectRoot projectRoot <- ask
     BuildId n <- get
     let filteredMsgs = filterToWatchDirs projectRoot session.watchDirs loadResult.diagnostics
@@ -184,15 +215,17 @@ rebuildOnChange
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        )
-    => Semaphore -> (Eff es LoadResult) -> Eff es ()
-rebuildOnChange sem reload = do
-    Conc.scoped do
-        BuildId n <- get
-        Log.debug $ "Builder: waiting for dirty flag (build #" <> show n <> ")"
-        Conc.fork_ $ Sub.listen_ $ restartOnCabalChange sem
-        Conc.fork_ $ Sub.listen_ $ reloadOnSourceChange reload
-        -- TODO: Use this ref to cancel pending builds
-        Sem.wait sem
+    => ActiveSession es
+    -> Semaphore
+    -> Eff es LoadResult
+    -> Eff es ()
+rebuildOnChange activeSession sem reload = Conc.scoped do
+    BuildId n <- get
+    Log.debug $ "Builder: waiting for dirty flag (build #" <> show n <> ")"
+    Conc.fork_ $ Sub.listen_ $ restartOnCabalChange activeSession sem
+    Conc.fork_ $ Sub.listen_ $ reloadOnSourceChange reload
+    -- TODO: Use this ref to cancel pending builds
+    Sem.wait sem
 
 
 restartOnCabalChange
@@ -201,11 +234,18 @@ restartOnCabalChange
        , Pub EnteringNewPhase :> es
        , State BuildId :> es
        )
-    => Semaphore -> CabalChangeDetected -> Eff es ()
-restartOnCabalChange sem CabalChangeDetected = do
+    => ActiveSession es
+    -> Semaphore
+    -> CabalChangeDetected
+    -> Eff es ()
+restartOnCabalChange activeSession sem CabalChangeDetected = do
     Log.info "Cabal file changed; restarting GHCi session"
     buildId <- state (\b -> (b, b + 1))
     publish $ EnteringNewPhase buildId Restarting
+    -- NOTE: This `activeSession.reloadSession` will probably cause the whole
+    -- set of listeners, and the GHCi instance with them, to restart, but we
+    -- signal a restart here as well for completeness sake.
+    activeSession.reloadSession
     Sem.signal sem
 
 
@@ -216,7 +256,9 @@ reloadOnSourceChange
        , Pub NewLoadResult :> es
        , State BuildId :> es
        )
-    => Eff es LoadResult -> SourceChangeDetected -> Eff es ()
+    => Eff es LoadResult
+    -> SourceChangeDetected
+    -> Eff es ()
 reloadOnSourceChange reload SourceChangeDetected = do
     Log.debug $ "Builder: dirty flag set, reloading"
     buildId <- get
@@ -238,14 +280,13 @@ data NewLoadResult = NewLoadResult
 compileLoadResultsIntoBuildResults
     :: ( Pub BuildResult :> es
        , Reader ProjectRoot :> es
-       , Reader Session :> es
-       , State (Map FilePath [Diagnostic]) :> es
+       , State DiagnosticMap :> es
        )
-    => NewLoadResult -> Eff es ()
-compileLoadResultsIntoBuildResults NewLoadResult {startTime, endTime, loadResult} = do
+    => Session
+    -> NewLoadResult
+    -> Eff es ()
+compileLoadResultsIntoBuildResults session newLoadResult = do
     ProjectRoot projectRoot <- ask
-    watchDirs <- asks @Session (.watchDirs)
-
     let filteredResult =
             loadResult
                 { GhciSession.diagnostics =
@@ -262,18 +303,21 @@ compileLoadResultsIntoBuildResults NewLoadResult {startTime, endTime, loadResult
             , diagnostics = concat (Map.elems newAccumulated)
             , testRuns = []
             }
+  where
+    Session {watchDirs} = session
+    NewLoadResult {startTime, endTime, loadResult} = newLoadResult
 
 
 requestTestRunsForNewBuildResults
     :: ( Log :> es
        , Pub EnteringNewPhase :> es
-       , Reader Session :> es
        , State BuildId :> es
        , TestRunner :> es
        )
-    => BuildResult -> Eff es ()
-requestTestRunsForNewBuildResults partialResult = do
-    session <- ask @Session
+    => Session
+    -> BuildResult
+    -> Eff es ()
+requestTestRunsForNewBuildResults session partialResult = do
     buildId <- get
     testRuns <- runTestsIfClean session buildId partialResult
     publish $ EnteringNewPhase buildId $ Done partialResult {testRuns}
@@ -282,8 +326,14 @@ requestTestRunsForNewBuildResults partialResult = do
 -- Run all configured test suites if the build has no errors.
 -- Transitions to 'Testing' phase while suites are running.
 runTestsIfClean
-    :: (Log :> es, Pub EnteringNewPhase :> es, TestRunner :> es)
-    => Session -> BuildId -> BuildResult -> Eff es [TestRun]
+    :: ( Log :> es
+       , Pub EnteringNewPhase :> es
+       , TestRunner :> es
+       )
+    => Session
+    -> BuildId
+    -> BuildResult
+    -> Eff es [TestRun]
 runTestsIfClean (Session {testTargets}) bid partialResult
     | null testTargets || any (\d -> d.severity == SError) partialResult.diagnostics = pure []
     | otherwise = do
@@ -315,7 +365,7 @@ runTestsIfClean (Session {testTargets}) bid partialResult
 -- by any new diagnostics produced for them in this cycle. Files absent from
 -- 'compiledFiles' were skipped by incremental compilation and retain their
 -- previous diagnostics unchanged.
-mergeDiagnostics :: Map.Map FilePath [Diagnostic] -> LoadResult -> Map.Map FilePath [Diagnostic]
+mergeDiagnostics :: DiagnosticMap -> LoadResult -> DiagnosticMap
 mergeDiagnostics prev LoadResult {compiledFiles, diagnostics} =
     let cleared = foldr Map.delete prev compiledFiles
         newByFile = Map.fromListWith (++) [(d.file, [d]) | d <- diagnostics]
