@@ -1,6 +1,7 @@
 module Tricorder.Effects.GhciSession
     ( -- * Effect
       GhciSession
+    , Controls (..)
     , withGhci
 
       -- * Types
@@ -76,7 +77,13 @@ data GhciSession :: Effect where
     -- The handler is also provided an action to reload the GHCi session,
     -- returning new messages with module counts. The GHCi session is closed
     -- when the handler returns.
-    WithGhci :: Text -> ProjectRoot -> (LoadResult -> m LoadResult -> m a) -> GhciSession m a
+    WithGhci :: Text -> ProjectRoot -> (LoadResult -> Controls m -> m a) -> GhciSession m a
+
+
+data Controls m = Controls
+    { reload :: m LoadResult
+    , interrupt :: m ()
+    }
 
 
 makeEffect ''GhciSession
@@ -107,10 +114,18 @@ runGhciSessionIO = interpret $ \env -> \case
                 localUnlift env (ConcUnlift Persistent Unlimited) \unlift -> do
                     initialLoadResult <- liftIO $ collectResult ghci loads
                     unlift
-                        $ handler initialLoadResult
-                        $ lendIOE
-                        $ liftIO
-                        $ Ghcid.reload ghci >>= collectResult ghci
+                        $ handler
+                            initialLoadResult
+                            Controls
+                                { reload =
+                                    lendIOE
+                                        $ liftIO
+                                        $ Ghcid.reload ghci >>= collectResult ghci
+                                , interrupt =
+                                    lendIOE
+                                        $ liftIO
+                                        $ Ghcid.interrupt ghci
+                                }
 
 
 -- | Scripted interpreter for testing.
@@ -136,7 +151,13 @@ runGhciSessionScripted results = reinterpret (evalState results) $ \env ->
                 initial <- popResult
                 localSeqLift env \liftEff ->
                     localSeqUnlift env \unlift ->
-                        unlift $ handler initial (liftEff popResult)
+                        unlift
+                            $ handler
+                                initial
+                                Controls
+                                    { reload = liftEff popResult
+                                    , interrupt = pure ()
+                                    }
 
 
 stopGhciSilently :: Ghcid.Ghci -> IO ()

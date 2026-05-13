@@ -8,12 +8,7 @@ import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 import Data.Set qualified as Set
 
 import Tricorder.BuildState (Diagnostic (..), Severity (..))
-import Tricorder.Effects.GhciSession
-    ( GhciSession
-    , LoadResult (..)
-    , runGhciSessionScripted
-    , withGhci
-    )
+import Tricorder.Effects.GhciSession (Controls (..), GhciSession, LoadResult (..), runGhciSessionScripted, withGhci)
 import Tricorder.Runtime (ProjectRoot (..))
 
 
@@ -53,21 +48,21 @@ testScripted = do
             it "returns scripted messages" do
                 LoadResult {diagnostics = msgs} <-
                     runScripted [simpleResult [warnMsg], simpleResult [errMsg]]
-                        $ withGhci "cabal repl" (ProjectRoot "/") \_ reload -> reload
+                        $ withGhci "cabal repl" (ProjectRoot "/") \_ controls -> controls.reload
                 msgs `shouldBe` [errMsg]
 
             it "throws when scripted result is Left" do
                 result <-
                     runScripted [Left (toException boom)]
                         $ try @ErrorCall
-                        $ withGhci "cabal repl" (ProjectRoot "/") \_ reload -> reload
+                        $ withGhci "cabal repl" (ProjectRoot "/") \_ controls -> controls.reload
                 result `shouldBe` Left boom
 
     describe "sequencing" do
         it "consumes results in order across mixed operations" do
             (a, b) <- runScripted [simpleResult [errMsg], simpleResult [warnMsg]] do
-                withGhci "cabal repl" (ProjectRoot "/") \LoadResult {diagnostics = a} reload -> do
-                    LoadResult {diagnostics = b} <- reload
+                withGhci "cabal repl" (ProjectRoot "/") \LoadResult {diagnostics = a} controls -> do
+                    LoadResult {diagnostics = b} <- controls.reload
                     pure (a, b)
             a `shouldBe` [errMsg]
             b `shouldBe` [warnMsg]
