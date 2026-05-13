@@ -22,7 +22,7 @@ import Atelier.Effects.FileWatcher (runFileWatcherIO)
 import Atelier.Effects.Monitoring.Tracing (TracingConfig, runTracingFromConfig)
 import Atelier.Effects.Publishing (runPubSub)
 import Tricorder.BuildState (BuildId (..), runDaemonInfo)
-import Tricorder.Config (runLoadedConfig)
+import Tricorder.Config (restartOnConfigChange, runLoadedConfig)
 import Tricorder.Effects.BuildStore (runBuildStore)
 import Tricorder.Effects.GhcPkg (runGhcPkgIO)
 import Tricorder.Effects.GhciSession (runGhciSessionIO)
@@ -48,15 +48,18 @@ import Tricorder.Watcher qualified as Watcher
 main :: IO ()
 main =
     runEff
-        . runTimeout
         . runConcurrent
         . runConc
-        . runExit
         . runClock
         . runDelay
-        . runFile
+        . runDebounce
+        . runFileWatcherIO
         . runFileSystemIO
         . runProjectRoot
+        . restartOnConfigChange
+        . runTimeout
+        . runExit
+        . runFile
         . runRuntimeDir
         . runSocketPath
         . runLogPath
@@ -80,8 +83,6 @@ main =
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.ModuleName) @Text
         . runBuildStore
-        . runFileWatcherIO
-        . runDebounce
         . runGhcPkgIO
         . runUnixSocketIO
         . runGhciSessionIO
