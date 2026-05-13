@@ -10,12 +10,13 @@ import Control.Monad.State (modify)
 import Graphics.Vty qualified as Vty
 
 import Tricorder.BuildState (BuildState (..))
+import Tricorder.Socket.Client (Restarting (..))
 import Tricorder.UI.Keys (KeyEvent)
 import Tricorder.UI.State (Processed (..), State (..), Viewports (..))
 
 
 data Event
-    = NewBuildState BuildState
+    = NewBuildState (Either Restarting BuildState)
     | FailedBuild Text
 
 
@@ -27,7 +28,9 @@ handleEvent _ _ = pure ()
 
 handleAppEvent :: Event -> EventM Viewports State ()
 handleAppEvent = \case
-    NewBuildState bs ->
+    NewBuildState (Left Restarting) ->
+        modify \s -> s {buildState = Waiting}
+    NewBuildState (Right bs) ->
         modify \s -> s {buildState = Success bs}
     FailedBuild reason ->
         modify \s -> s {buildState = Failure reason}

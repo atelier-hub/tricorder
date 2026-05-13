@@ -2,7 +2,7 @@ module Tricorder.Socket.Client
     ( queryStatus
     , queryStatusWait
     , queryWatch
-    , WatchError (..)
+    , Restarting (..)
     , querySource
     , queryDiagnostic
     , requestShutdown
@@ -10,15 +10,18 @@ module Tricorder.Socket.Client
     ) where
 
 import Data.Aeson (decode, eitherDecode, encode)
-import Effectful.Error.Static (Error, throwError)
-import Effectful.Exception (catchJust)
+import Effectful (inject)
+import Effectful.Exception (catchJust, trySync)
 import Effectful.Reader.Static (Reader, ask)
+import Effectful.State.Static.Shared (evalState, get, modify, put)
 import System.IO.Error (isEOFError)
 
 import Data.ByteString.Lazy qualified as BSL
 
+import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.File (File)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Time (Millisecond)
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.Effects.UnixSocket (UnixSocket, withConnection)
 import Tricorder.GhcPkg.Types (ModuleName)
@@ -26,6 +29,7 @@ import Tricorder.Runtime (PidFile)
 import Tricorder.Socket.Protocol (ClientMessage (..), DiagnosticQuery (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleSourceResult)
 
+import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.File qualified as File
 import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.Version qualified as Version
@@ -51,29 +55,44 @@ queryStatusWait sockPath = withConnection sockPath \h -> do
     receiveState h
 
 
-data WatchError = SocketClosed
-    deriving stock (Show)
+data Restarting = Restarting
 
 
 -- | Connect and stream build updates, calling the handler after each completed build.
+-- Retries automatically when the connection is lost or the daemon is restarting.
 queryWatch
-    :: (Error WatchError :> es, File :> es, UnixSocket :> es)
+    :: forall es
+     . (Delay :> es, File :> es, UnixSocket :> es)
     => FilePath
-    -> (BuildState -> Eff es ())
+    -> (Either Restarting BuildState -> Eff es ())
     -> Eff es ()
-queryWatch sockPath handler = withConnection sockPath \h -> do
-    sendQuery h Watch
-    loop h
+queryWatch sockPath handler = evalState retryLimit retryLoop
   where
+    retryLimit = 3 :: Int
+    retryLoop = do
+        retries <- get @Int
+        if retries <= 0 then
+            pure ()
+        else do
+            void $ trySync $ withConnection sockPath \h -> sendQuery h Watch >> loop h
+            Delay.wait (500 :: Millisecond)
+            modify $ subtract 1
+            retryLoop
+
     loop h = do
-        line <-
+        mLine <-
             catchJust
                 (\e -> if isEOFError e then Just e else Nothing)
-                (File.hGetLine h)
-                (\_ -> throwError SocketClosed)
-        case decode (BSL.fromStrict (encodeUtf8 (toText line))) of
-            Nothing -> pure ()
-            Just state -> handler state >> loop h
+                (Just <$> File.hGetLine h)
+                (\_ -> pure Nothing)
+        case mLine of
+            Nothing -> inject $ handler (Left Restarting)
+            Just line ->
+                case decode (BSL.fromStrict (encodeUtf8 (toText line))) of
+                    Nothing -> pure ()
+                    Just state -> do
+                        put retryLimit
+                        inject (handler (Right state)) >> loop h
 
 
 -- | Look up the source for one or more modules via the daemon.
