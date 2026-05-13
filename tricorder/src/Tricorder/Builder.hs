@@ -14,7 +14,7 @@ module Tricorder.Builder
     ) where
 
 import Data.Time (diffUTCTime)
-import Effectful.Concurrent.MVar (Concurrent, MVar, newMVar, putMVar, takeMVar)
+import Effectful.Concurrent.MVar (Concurrent, MVar, newEmptyMVar, putMVar, takeMVar)
 import Effectful.Reader.Static (Reader, ask, asks)
 import Effectful.State.Static.Shared (State, execState, get, put, state)
 import Relude.Extra.Tuple (dup)
@@ -91,7 +91,7 @@ component =
             session <- ask @Session
             Log.debug $ "Builder.component: resolved command = " <> session.command
             Log.debug $ "Builder.component: projectRoot = " <> toText projectRoot
-            builderCancelRef <- newMVar ()
+            builderCancelRef <- newEmptyMVar
             pure
                 [ Sub.listen_ compileLoadResultsIntoBuildResults
                 , Sub.listen_ requestTestRunsForNewBuildResults
