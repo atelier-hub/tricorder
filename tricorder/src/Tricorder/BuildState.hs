@@ -210,6 +210,7 @@ data SourceChangeDetected = SourceChangeDetected
 data BuildStateRef = BuildStateRef
     { stateRef :: TVar BuildState
     , dirtyRef :: TVar (Maybe ChangeKind)
+    , waitersRef :: TVar Int
     }
 
 

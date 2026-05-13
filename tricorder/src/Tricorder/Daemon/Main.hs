@@ -88,6 +88,7 @@ main =
         . runGhciSessionIO
         . evalState (BuildId 1)
         . evalState @Builder.DiagnosticMap mempty
+        . runDebounce @Text
         $ do
             Log.info $ "Starting tricorder " <> Version.gitHash
             runSystem

@@ -14,7 +14,8 @@ module Tricorder.Builder
     ) where
 
 import Data.Time (diffUTCTime)
-import Effectful.Concurrent.MVar (Concurrent)
+import Effectful.Concurrent (Concurrent)
+import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask, asks)
 import Effectful.State.Static.Shared (State, execState, get, put, state)
 import Relude.Extra.Tuple (dup)
@@ -25,6 +26,7 @@ import Data.Map.Strict qualified as Map
 import Atelier.Component (Component (..), defaultComponent)
 import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.Debounce (Debounce, debounced)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
 import Atelier.Types.Semaphore (Semaphore)
@@ -67,6 +69,7 @@ component
        , Clock :> es
        , Conc :> es
        , Concurrent :> es
+       , Debounce Text :> es
        , GhciSession :> es
        , Log :> es
        , Pub BuildResult :> es
@@ -114,9 +117,11 @@ setNewPhase (EnteringNewPhase bid phase) = do
 
 
 buildWithGhciOnChange
-    :: ( Clock :> es
+    :: ( BuildStore :> es
+       , Clock :> es
        , Conc :> es
        , Concurrent :> es
+       , Debounce Text :> es
        , GhciSession :> es
        , Log :> es
        , Pub EnteringNewPhase :> es
@@ -137,10 +142,10 @@ buildWithGhciOnChange sem = forever do
     Log.info $ "Starting GHCi session #" <> show n <> ": " <> session.command
 
     initialStartTime <- Clock.currentTime
-    GhciSession.withGhci session.command projectRoot \initialLoad reload -> do
+    GhciSession.withGhci session.command projectRoot \initialLoad controls -> do
         initialEndTime <- Clock.currentTime
         handleInitialBuild initialStartTime initialEndTime initialLoad
-        rebuildOnChange sem reload
+        rebuildOnChange sem controls
 
 
 handleInitialBuild
@@ -174,9 +179,11 @@ handleInitialBuild startTime endTime loadResult = do
 
 
 rebuildOnChange
-    :: ( Clock :> es
+    :: ( BuildStore :> es
+       , Clock :> es
        , Conc :> es
        , Concurrent :> es
+       , Debounce Text :> es
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
@@ -184,14 +191,13 @@ rebuildOnChange
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        )
-    => Semaphore -> (Eff es LoadResult) -> Eff es ()
-rebuildOnChange sem reload = do
+    => Semaphore -> GhciSession.Controls (Eff es) -> Eff es ()
+rebuildOnChange sem controls = do
     Conc.scoped do
         BuildId n <- get
         Log.debug $ "Builder: waiting for dirty flag (build #" <> show n <> ")"
         Conc.fork_ $ Sub.listen_ $ restartOnCabalChange sem
-        Conc.fork_ $ Sub.listen_ $ reloadOnSourceChange reload
-        -- TODO: Use this ref to cancel pending builds
+        Conc.fork_ $ handleSourceChanges controls
         Sem.wait sem
 
 
@@ -209,22 +215,71 @@ restartOnCabalChange sem CabalChangeDetected = do
     Sem.signal sem
 
 
+handleSourceChanges
+    :: ( BuildStore :> es
+       , Clock :> es
+       , Conc :> es
+       , Concurrent :> es
+       , Debounce Text :> es
+       , Log :> es
+       , Pub EnteringNewPhase :> es
+       , Pub NewLoadResult :> es
+       , State BuildId :> es
+       , Sub SourceChangeDetected :> es
+       )
+    => GhciSession.Controls (Eff es) -> Eff es Void
+handleSourceChanges controls = forever $ Conc.scoped do
+    readyToBuildSem <- Sem.newSet
+    Conc.fork_ $ Sub.listen_ \ev ->
+        debounced 500 "source_change_reloader" $ reloadOnSourceChange readyToBuildSem controls ev
+    Conc.fork_ $ Sub.listen_ \_ -> interruptCurrentReload readyToBuildSem controls
+    Conc.awaitAll
+
+
+interruptCurrentReload
+    :: ( BuildStore :> es
+       , Concurrent :> es
+       , Log :> es
+       )
+    => Semaphore -> GhciSession.Controls (Eff es) -> Eff es ()
+interruptCurrentReload readyToBuildSem controls = do
+    isIdle <- Sem.peek readyToBuildSem
+    hasWaiters <- BuildStore.hasWaiters
+    unless (isIdle || hasWaiters)
+        $ bracket_
+            (Sem.unset readyToBuildSem)
+            (Sem.set readyToBuildSem)
+            do
+                Log.info "Change detected. Interrupting current GHCi build."
+                controls.interrupt
+
+
 reloadOnSourceChange
     :: ( Clock :> es
+       , Concurrent :> es
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , State BuildId :> es
        )
-    => Eff es LoadResult -> SourceChangeDetected -> Eff es ()
-reloadOnSourceChange reload SourceChangeDetected = do
+    => Semaphore -> GhciSession.Controls (Eff es) -> SourceChangeDetected -> Eff es ()
+reloadOnSourceChange readyToBuildSem controls SourceChangeDetected = do
     Log.debug $ "Builder: dirty flag set, reloading"
     buildId <- get
     publish $ EnteringNewPhase buildId $ Building Nothing
-    startTime <- Clock.currentTime
-    loadResult <- reload
-    endTime <- Clock.currentTime
-    publish $ NewLoadResult {startTime, endTime, loadResult}
+
+    res <- trySync $ Sem.withSemaphore readyToBuildSem do
+        startTime <- Clock.currentTime
+        res <- controls.reload
+        endTime <- Clock.currentTime
+        pure (startTime, endTime, res)
+
+    case res of
+        Left e -> do
+            now <- Clock.currentTime
+            Log.err $ show now <> " Reload errored: " <> show e
+        Right (startTime, endTime, loadResult) ->
+            publish $ NewLoadResult {startTime, endTime, loadResult}
 
 
 data NewLoadResult = NewLoadResult
