@@ -9,6 +9,7 @@ import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (takeExtension, takeFileName)
 
 import Atelier.Component (Component (..), defaultComponent)
+import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.FileWatcher
     ( FileWatcher
@@ -26,11 +27,14 @@ import Tricorder.BuildState
     , SourceChangeDetected (..)
     )
 import Tricorder.Effects.BuildStore (BuildStore)
+import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
+import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Publishing qualified as Sub
 import Tricorder.Effects.BuildStore qualified as BuildStore
+import Tricorder.Effects.SessionStore qualified as SessionStore
 
 
 -- | Watcher component.
@@ -39,26 +43,22 @@ import Tricorder.Effects.BuildStore qualified as BuildStore
 -- or session restart accordingly.
 component
     :: ( BuildStore :> es
+       , Conc :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
        , Pub CabalChangeDetected :> es
        , Pub SourceChangeDetected :> es
        , Pub WatchedFile :> es
        , Reader ProjectRoot :> es
-       , Reader Session :> es
+       , SessionStore :> es
+       , Sub SessionStoreReloaded :> es
        , Sub WatchedFile :> es
        )
     => Component es
 component =
     defaultComponent
         { name = "Watcher"
-        , triggers = do
-            session <- ask @Session
-            projectRoot <- ask
-            let watches = sourceWatches session <> cabalWatches projectRoot
-            pure
-                [ watchFilePathsDebounced watches $ publish . WatchedFile
-                ]
+        , triggers = pure [watchFiles]
         , listeners =
             pure
                 [ Sub.listen_ markWatchedFiles
@@ -82,6 +82,24 @@ markWatchedFiles f = do
 
 
 newtype WatchedFile = WatchedFile {getWatchedFile :: FilePath}
+
+
+watchFiles
+    :: ( Conc :> es
+       , Debounce FilePath :> es
+       , FileWatcher :> es
+       , Pub WatchedFile :> es
+       , Reader ProjectRoot :> es
+       , SessionStore :> es
+       , Sub SessionStoreReloaded :> es
+       )
+    => Eff es Void
+watchFiles = forever $ Conc.scoped do
+    session <- SessionStore.get
+    projectRoot <- ask
+    let watches = sourceWatches session <> cabalWatches projectRoot
+    Conc.fork_ $ watchFilePathsDebounced watches $ publish . WatchedFile
+    void $ Sub.listenOnce_ @SessionStoreReloaded
 
 
 sourceWatches :: Session -> [Watch]

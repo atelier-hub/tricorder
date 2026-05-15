@@ -30,9 +30,12 @@ import Data.Text qualified as T
 
 import Atelier.Effects.Delay (Delay, withTimeout)
 import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
+import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 import Tricorder.TestOutput (parseHspecOutput)
+
+import Tricorder.Effects.SessionStore qualified as SessionStore
 
 
 data TestRunner :: Effect where
@@ -47,12 +50,19 @@ makeEffect ''TestRunner
 -- | Production interpreter that spawns a short-lived @cabal repl test:\<name\>@
 -- process for each suite, feeds @:main\\n:quit\\n@ to stdin, captures combined
 -- stdout+stderr, and detects the outcome via 'detectOutcome'.
-runTestRunnerIO :: (Concurrent :> es, Delay :> es, IOE :> es, Reader ProjectRoot :> es, Reader Session :> es) => Eff (TestRunner : es) a -> Eff es a
+runTestRunnerIO
+    :: ( Concurrent :> es
+       , Delay :> es
+       , IOE :> es
+       , Reader ProjectRoot :> es
+       , SessionStore :> es
+       )
+    => Eff (TestRunner : es) a -> Eff es a
 runTestRunnerIO act = do
     ProjectRoot projectRoot <- ask
     interpretWith_ act \case
         RunTestSuite target -> do
-            Session {testTimeout} <- ask
+            Session {testTimeout} <- SessionStore.get
             let config =
                     proc "cabal" ["repl", toString target]
                         & setStdin (byteStringInput ":main\n:quit\n")

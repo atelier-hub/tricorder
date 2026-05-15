@@ -4,8 +4,9 @@ import Data.Default (def)
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian)
 import Effectful (runEff, runPureEff)
 import Effectful.Concurrent (runConcurrent)
+import Effectful.Dispatch.Dynamic (interpret_)
 import Effectful.Reader.Static (runReader)
-import Effectful.State.Static.Shared (evalState, execState, runState)
+import Effectful.State.Static.Shared (evalState, execState, modify, put, runState)
 import Effectful.Writer.Static.Shared (execWriter, runWriter)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList)
 
@@ -42,6 +43,7 @@ import Tricorder.Builder
     , setNewPhase
     )
 import Tricorder.Effects.GhciSession (LoadResult (..), extractTitle)
+import Tricorder.Effects.SessionStore (ActiveSession (..))
 import Tricorder.Effects.TestRunner (runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
@@ -49,6 +51,7 @@ import Tricorder.Session (Session (..))
 import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Effects.BuildStore qualified as BuildStore
+import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.Session qualified as Session (Session (..))
 
 
@@ -68,27 +71,41 @@ testRestartOnCabalChange :: Spec
 testRestartOnCabalChange = do
     it "should signal the semaphore, exiting the current build loop" $ run do
         sem <- Sem.new
-        _ <- runTest sem CabalChangeDetected
+        (_, reloads) <- runState 0 $ runTest activeSession sem CabalChangeDetected
         actual <- Sem.peek sem
-        liftIO $ actual `shouldBe` True
+        liftIO do
+            actual `shouldBe` True
+            reloads `shouldBe` 1
 
     it "should publish that it is restarting the build process" $ run do
         sem <- Sem.new
-        (phases, _) <- runTest sem CabalChangeDetected
-        liftIO $ phases `shouldBe` [EnteringNewPhase (BuildId 1) Restarting]
+        (((phases, _), reloaded), reloads) <- runState 0 $ runTest activeSession sem CabalChangeDetected
+        liftIO do
+            phases `shouldBe` [EnteringNewPhase (BuildId 1) Restarting]
+            reloaded `shouldBe` True
+            reloads `shouldBe` 1
 
     it "should increment the build ID" $ run do
         sem <- Sem.new
-        (_, buildId) <- runTest sem CabalChangeDetected
+        ((_, buildId), _) <- evalState 0 $ runTest activeSession sem CabalChangeDetected
         liftIO $ buildId `shouldBe` BuildId 2
   where
-    runTest sem =
-        runState (BuildId 1)
+    runTest as sem =
+        runState False
+            . interpret_ \case
+                SessionStore.Reload -> put True
+                _ -> error "runTest: Not implemented"
+            . runState (BuildId 1)
             . execWriter
             . runPubWriter
-            . restartOnCabalChange sem
+            . restartOnCabalChange as sem
 
     run = runEff . runConcurrent . runLogNoOp
+    activeSession =
+        ActiveSession
+            { session = error "mkActiveSession: no session"
+            , reloadSession = modify @Int (+ 1)
+            }
 
 
 testReloadOnSourceChange :: Spec
@@ -206,9 +223,8 @@ testCompileLoadResultsIntoBuildResults = do
             . runWriter
             . runPubWriter
             . runReader (ProjectRoot "/")
-            . runReader @Session (def {Session.watchDirs = ["/src"]})
             . execState acc
-            . compileLoadResultsIntoBuildResults
+            . compileLoadResultsIntoBuildResults (def {Session.watchDirs = ["/src"]})
 
 
 testRequestTestRunsForNewBuildResults :: Spec
@@ -257,11 +273,10 @@ testRequestTestRunsForNewBuildResults = do
         runEff
             . runLogNoOp
             . evalState (BuildId 1)
-            . runReader (def {testTargets})
             . execWriter
             . runPubWriter
             . runTestRunnerScripted script
-            . requestTestRunsForNewBuildResults
+            . requestTestRunsForNewBuildResults (def {testTargets})
 
     mkPhase = EnteringNewPhase (BuildId 1)
     mkTesting = mkPhase . Testing

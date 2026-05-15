@@ -3,6 +3,8 @@ module Atelier.Effects.Publishing
     , Sub
     , listen
     , listen_
+    , listenOnce
+    , listenOnce_
     , publish
     , runPubSub
     , runPubWriter
@@ -12,8 +14,11 @@ where
 import Data.Time (UTCTime)
 import Effectful (Effect)
 import Effectful.Dispatch.Dynamic (interpretWith, interpretWith_, interpret_, localSeqUnlift)
+import Effectful.Error.Static (runErrorNoCallStack, throwError)
 import Effectful.TH (makeEffect)
 import Effectful.Writer.Static.Shared (Writer, tell)
+
+import Text.Show qualified as S
 
 import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Clock (Clock)
@@ -38,6 +43,26 @@ makeEffect ''Sub
 
 listen_ :: (Sub event :> es) => (event -> Eff es ()) -> Eff es Void
 listen_ listener = listen $ \_timestamp event -> listener event
+
+
+-- | Wait for a single event and then return said event.
+listenOnce :: forall event es. (Sub event :> es) => Eff es (UTCTime, event)
+listenOnce = do
+    res <- runErrorNoCallStack
+        $ listen
+        $ \timestamp event -> throwError $ OnceEx (timestamp, event)
+    case res of
+        Left (OnceEx x) -> pure x
+        Right v -> absurd v
+
+
+-- | Same as 'listenOnce', but discards the timestamp.
+listenOnce_ :: (Sub event :> es) => Eff es event
+listenOnce_ = snd <$> listenOnce
+
+
+data OnceEx ev = OnceEx ev
+instance Show (OnceEx ev) where show _ = "OnceEx"
 
 
 -- | Internal wrapper for events with trace context
