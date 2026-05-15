@@ -14,7 +14,7 @@ module Tricorder.Builder
     ) where
 
 import Data.Time (diffUTCTime)
-import Effectful.Concurrent.MVar (Concurrent, MVar, newEmptyMVar, putMVar, takeMVar)
+import Effectful.Concurrent.MVar (Concurrent)
 import Effectful.Reader.Static (Reader, ask, asks)
 import Effectful.State.Static.Shared (State, execState, get, put, state)
 import Relude.Extra.Tuple (dup)
@@ -27,6 +27,7 @@ import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
+import Atelier.Types.Semaphore (Semaphore)
 import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)
@@ -49,6 +50,7 @@ import Atelier.Effects.Clock qualified as Clock
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Log qualified as Log
 import Atelier.Effects.Publishing qualified as Sub
+import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.GhciSession qualified as GhciSession
 import Tricorder.Effects.TestRunner qualified as TestRunner
@@ -91,11 +93,11 @@ component =
             session <- ask @Session
             Log.debug $ "Builder.component: resolved command = " <> session.command
             Log.debug $ "Builder.component: projectRoot = " <> toText projectRoot
-            builderCancelRef <- newEmptyMVar
+            builderCancelSem <- Sem.new
             pure
                 [ Sub.listen_ compileLoadResultsIntoBuildResults
                 , Sub.listen_ requestTestRunsForNewBuildResults
-                , buildWithGhciOnChange builderCancelRef
+                , buildWithGhciOnChange builderCancelSem
                 , Sub.listen_ setNewPhase
                 ]
         }
@@ -126,8 +128,8 @@ buildWithGhciOnChange
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        )
-    => MVar () -> Eff es Void
-buildWithGhciOnChange ref = forever do
+    => Semaphore -> Eff es Void
+buildWithGhciOnChange sem = forever do
     put Map.empty
     session <- ask @Session
     projectRoot <- ask
@@ -138,7 +140,7 @@ buildWithGhciOnChange ref = forever do
     GhciSession.withGhci session.command projectRoot \initialLoad reload -> do
         initialEndTime <- Clock.currentTime
         handleInitialBuild initialStartTime initialEndTime initialLoad
-        rebuildOnChange ref reload
+        rebuildOnChange sem reload
 
 
 handleInitialBuild
@@ -182,15 +184,15 @@ rebuildOnChange
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        )
-    => MVar () -> (Eff es LoadResult) -> Eff es ()
-rebuildOnChange ref reload = do
+    => Semaphore -> (Eff es LoadResult) -> Eff es ()
+rebuildOnChange sem reload = do
     Conc.scoped do
         BuildId n <- get
         Log.debug $ "Builder: waiting for dirty flag (build #" <> show n <> ")"
-        Conc.fork_ $ Sub.listen_ $ restartOnCabalChange ref
+        Conc.fork_ $ Sub.listen_ $ restartOnCabalChange sem
         Conc.fork_ $ Sub.listen_ $ reloadOnSourceChange reload
         -- TODO: Use this ref to cancel pending builds
-        takeMVar ref
+        Sem.wait sem
 
 
 restartOnCabalChange
@@ -199,12 +201,12 @@ restartOnCabalChange
        , Pub EnteringNewPhase :> es
        , State BuildId :> es
        )
-    => MVar () -> CabalChangeDetected -> Eff es ()
-restartOnCabalChange ref CabalChangeDetected = do
+    => Semaphore -> CabalChangeDetected -> Eff es ()
+restartOnCabalChange sem CabalChangeDetected = do
     Log.info "Cabal file changed; restarting GHCi session"
     buildId <- state (\b -> (b, b + 1))
     publish $ EnteringNewPhase buildId Restarting
-    putMVar ref ()
+    Sem.signal sem
 
 
 reloadOnSourceChange
