@@ -9,7 +9,6 @@ import Effectful.State.Static.Shared (evalState, execState, runState)
 import Effectful.Writer.Static.Shared (execWriter, runWriter)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList)
 
-import Control.Concurrent.MVar qualified as IO
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
@@ -42,11 +41,12 @@ import Tricorder.Builder
     , restartOnCabalChange
     , setNewPhase
     )
-import Tricorder.Effects.GhciSession (LoadResult (..), extractTitle)
+import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), extractTitle)
 import Tricorder.Effects.TestRunner (runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
+import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Session qualified as Session (Session (..))
@@ -66,44 +66,44 @@ spec_Builder = do
 
 testRestartOnCabalChange :: Spec
 testRestartOnCabalChange = do
-    it "should put the MVar, exiting the current build loop" do
-        ref <- IO.newEmptyMVar
-        _ <- runTest ref CabalChangeDetected
-        actual <- IO.tryTakeMVar ref
-        actual `shouldBe` Just ()
+    it "should signal the semaphore, exiting the current build loop" $ run do
+        sem <- Sem.new
+        _ <- runTest sem CabalChangeDetected
+        actual <- Sem.peek sem
+        liftIO $ actual `shouldBe` True
 
-    it "should publish that it is restarting the build process" do
-        ref <- IO.newEmptyMVar
-        (phases, _) <- runTest ref CabalChangeDetected
-        phases `shouldBe` [EnteringNewPhase (BuildId 1) Restarting]
+    it "should publish that it is restarting the build process" $ run do
+        sem <- Sem.new
+        (phases, _) <- runTest sem CabalChangeDetected
+        liftIO $ phases `shouldBe` [EnteringNewPhase (BuildId 1) Restarting]
 
-    it "should increment the build ID" do
-        ref <- IO.newEmptyMVar
-        (_, buildId) <- runTest ref CabalChangeDetected
-        buildId `shouldBe` BuildId 2
+    it "should increment the build ID" $ run do
+        sem <- Sem.new
+        (_, buildId) <- runTest sem CabalChangeDetected
+        liftIO $ buildId `shouldBe` BuildId 2
   where
-    runTest ref =
-        runEff
-            . runConcurrent
-            . runLogNoOp
-            . runState (BuildId 1)
+    runTest sem =
+        runState (BuildId 1)
             . execWriter
             . runPubWriter
-            . restartOnCabalChange ref
+            . restartOnCabalChange sem
+
+    run = runEff . runConcurrent . runLogNoOp
 
 
 testReloadOnSourceChange :: Spec
 testReloadOnSourceChange = do
     it "should publish that it is building" do
-        let (_, phases) = runTest loadResult
+        (_, phases) <- runTest loadResult
         phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Building Nothing]
 
     it "should publish NewLoadResult from the reload" do
-        let (newLoadResults, _) = runTest loadResult
+        (newLoadResults, _) <- runTest loadResult
         newLoadResults `shouldMatchList` [NewLoadResult epoch epoch loadResult]
   where
-    runTest lr =
-        runPureEff
+    runTest lr = do
+        runEff
+            . runConcurrent
             . runClockConst epoch
             . evalState (BuildId 1)
             . runLogNoOp
@@ -111,7 +111,11 @@ testReloadOnSourceChange = do
             . runPubWriter @EnteringNewPhase
             . execWriter
             . runPubWriter @NewLoadResult
-            $ reloadOnSourceChange (pure lr) SourceChangeDetected
+            $ do
+                sem <- Sem.newSet
+                reloadOnSourceChange sem (mkCtrls lr) SourceChangeDetected
+
+    mkCtrls lr = Controls {reload = pure lr, interrupt = pure ()}
 
     loadResult =
         LoadResult
