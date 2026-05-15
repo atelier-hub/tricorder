@@ -11,6 +11,9 @@ import Control.Concurrent.Async qualified as Async
 
 import Atelier.Effects.Cache.Singleflight (Singleflight, runSingleflight, updateCache, withCache)
 import Atelier.Effects.Monitoring.Tracing (Tracing, runTracingNoOp)
+import Atelier.Types.Semaphore (Semaphore)
+
+import Atelier.Types.Semaphore qualified as Sem
 
 
 -- | Test exception type
@@ -32,6 +35,10 @@ runSingleflightTest action =
         $ action
 
 
+runSem :: Eff '[Concurrent, IOE] a -> IO a
+runSem = runEff . runConcurrent
+
+
 -- | A computation that increments the execution counter and returns a value
 compute :: (State Int :> es) => Int -> Eff es Int
 compute value = do
@@ -40,9 +47,9 @@ compute value = do
 
 
 -- | A slow computation that increments the counter
-slowCompute :: (IOE :> es, State Int :> es) => Int -> Eff es Int
-slowCompute value = do
-    liftIO $ threadDelay 10000 -- 10ms
+slowCompute :: (Concurrent :> es, State Int :> es) => Semaphore -> Int -> Eff es Int
+slowCompute sem value = do
+    Sem.wait sem
     modify @Int (+ 1)
     pure value
 
@@ -80,8 +87,12 @@ spec_Singleflight = do
                 (results, execCount) <- runSingleflightTest $ do
                     withEffToIO (ConcUnlift Persistent Unlimited) $ \unlift -> do
                         -- Launch 10 concurrent requests for the same key
-                        asyncs <- replicateM 10 $ Async.async $ unlift $ withCache 1 (slowCompute 42)
-                        liftIO $ mapM Async.wait asyncs
+                        asyncs <- replicateM 10 do
+                            sem <- runSem Sem.newSet
+                            async <- Async.async $ unlift $ withCache 1 (slowCompute sem 42)
+                            pure (sem, async)
+                        traverse_ (runSem . Sem.unset) $ fst <$> asyncs
+                        traverse Async.wait $ snd <$> asyncs
                 all (== 42) results `shouldBe` True
                 length results `shouldBe` 10
                 execCount `shouldBe` 1
@@ -89,11 +100,13 @@ spec_Singleflight = do
             it "all concurrent waiters receive the same result" $ do
                 (results, execCount) <- runSingleflightTest $ do
                     withEffToIO (ConcUnlift Persistent Unlimited) $ \unlift -> do
+                        sem <- runSem Sem.new
                         -- Launch concurrent requests with different delays
-                        a1 <- Async.async $ unlift $ withCache 1 (slowCompute 99)
-                        liftIO $ threadDelay 1000 -- Ensure first request starts
+                        a1 <- Async.async $ unlift $ withCache 1 (slowCompute sem 99)
+                        threadDelay 1000 -- Ensure first request starts
                         a2 <- Async.async $ unlift $ withCache 1 (compute 99)
                         a3 <- Async.async $ unlift $ withCache 1 (compute 99)
+                        runSem $ Sem.signal sem -- Let first request continue
                         r1 <- liftIO $ Async.wait a1
                         r2 <- liftIO $ Async.wait a2
                         r3 <- liftIO $ Async.wait a3
@@ -114,9 +127,11 @@ spec_Singleflight = do
             it "different keys can run concurrently" $ do
                 (results, execCount) <- runSingleflightTest $ do
                     withEffToIO (ConcUnlift Persistent Unlimited) $ \unlift -> do
-                        a1 <- Async.async $ unlift $ withCache 1 (slowCompute 10)
-                        a2 <- Async.async $ unlift $ withCache 2 (slowCompute 20)
-                        a3 <- Async.async $ unlift $ withCache 3 (slowCompute 30)
+                        sem <- runSem Sem.newSet
+                        a1 <- Async.async $ unlift $ withCache 1 (slowCompute sem 10)
+                        a2 <- Async.async $ unlift $ withCache 2 (slowCompute sem 20)
+                        a3 <- Async.async $ unlift $ withCache 3 (slowCompute sem 30)
+                        runSem $ replicateM_ 3 $ Sem.signal sem
                         r1 <- liftIO $ Async.wait a1
                         r2 <- liftIO $ Async.wait a2
                         r3 <- liftIO $ Async.wait a3
@@ -157,8 +172,12 @@ spec_Singleflight = do
                 (results, execCount) <- runSingleflightTest $ do
                     withEffToIO (ConcUnlift Persistent Unlimited) $ \unlift -> do
                         -- Start one slow computation and many fast waiters
-                        asyncs <- replicateM 20 $ Async.async $ unlift $ withCache 1 (slowCompute 777)
-                        liftIO $ mapM Async.wait asyncs
+                        asyncs <- replicateM 20 do
+                            sem <- runSem Sem.new
+                            async <- Async.async $ unlift $ withCache 1 (slowCompute sem 777)
+                            pure (sem, async)
+                        traverse_ (runSem . Sem.signal) $ fst <$> asyncs
+                        traverse Async.wait $ snd <$> asyncs
                 all (== 777) results `shouldBe` True
                 length results `shouldBe` 20
                 execCount `shouldBe` 1
@@ -184,39 +203,45 @@ spec_Singleflight = do
             it "propagates exception to all concurrent waiters" $ do
                 let action = runSingleflightTest $ do
                         withEffToIO (ConcUnlift Persistent Unlimited) $ \unlift -> do
-                            a1 <- Async.async $ unlift $ withCache @Int @Int 1 (slowCompute 42 >> throwIO (TestException "concurrent-boom"))
-                            liftIO $ threadDelay 1000
+                            sem <- runSem Sem.new
+                            a1 <- Async.async $ unlift $ withCache @Int @Int 1 (slowCompute sem 42 >> throwIO (TestException "concurrent-boom"))
+                            threadDelay 1000
                             a2 <- Async.async $ unlift $ withCache @Int @Int 1 (compute 99)
-                            _ <- liftIO $ Async.wait a1
-                            liftIO $ Async.wait a2
+                            runSem $ Sem.signal sem
+                            _ <- Async.wait a1
+                            Async.wait a2
                 action `shouldThrow` (\(TestException msg) -> msg == "concurrent-boom")
 
         describe "UpdateCache on in-flight computation" $ do
             it "overrides result of in-flight computation" $ do
                 (result, execCount) <- runSingleflightTest $ do
                     withEffToIO (ConcUnlift Persistent Unlimited) $ \unlift -> do
+                        sem <- runSem Sem.new
                         -- Start slow computation
-                        a1 <- Async.async $ unlift $ withCache 1 (slowCompute 42)
-                        liftIO $ threadDelay 5000 -- Let it start
+                        a1 <- Async.async $ unlift $ withCache 1 (slowCompute sem 42)
+                        threadDelay 1000 -- Let it start
                         -- Update cache while computation is running
                         unlift $ updateCache [(1, 999)]
                         -- Both should get the updated value
-                        liftIO $ Async.wait a1
+                        runSem $ Sem.signal sem
+                        Async.wait a1
                 result `shouldBe` 999
                 execCount `shouldBe` 1
 
             it "waiting requests receive updated value" $ do
                 (results, execCount) <- runSingleflightTest $ do
                     withEffToIO (ConcUnlift Persistent Unlimited) $ \unlift -> do
+                        sem <- runSem Sem.new
                         -- Start slow computation and waiters
-                        a1 <- Async.async $ unlift $ withCache 1 (slowCompute 42)
-                        liftIO $ threadDelay 2000
+                        a1 <- Async.async $ unlift $ withCache 1 (slowCompute sem 42)
+                        threadDelay 1000
                         a2 <- Async.async $ unlift $ withCache 1 (compute 42)
-                        liftIO $ threadDelay 2000
+                        threadDelay 1000
                         -- Update while they're all waiting/running
                         unlift $ updateCache [(1, 888)]
-                        r1 <- liftIO $ Async.wait a1
-                        r2 <- liftIO $ Async.wait a2
+                        runSem $ Sem.signal sem
+                        r1 <- Async.wait a1
+                        r2 <- Async.wait a2
                         pure [r1, r2]
                 all (== 888) results `shouldBe` True
                 execCount `shouldBe` 1
