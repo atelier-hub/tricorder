@@ -3,6 +3,8 @@
 module Atelier.Effects.File
     ( File
     , withFile
+    , hClose
+    , hFlush
     , hGetLine
     , hPutLBs
     , hPutLBsLn
@@ -25,7 +27,7 @@ import Effectful.Dispatch.Static
 import Data.ByteString.Lazy.Char8 qualified as LB8
 import System.IO qualified as IO
 
-import Prelude hiding (hIsEOF, hSetBuffering, withFile)
+import Prelude hiding (hFlush, hIsEOF, hSetBuffering, withFile)
 
 
 -- | Operations concerning file handles.
@@ -39,6 +41,16 @@ data instance StaticRep File = File
 -- | Lifted `System.IO.withFile`:
 withFile :: (File :> es, HasCallStack) => FilePath -> IOMode -> (Handle -> Eff es a) -> Eff es a
 withFile fp m f = unsafeSeqUnliftIO \unlift -> IO.withFile fp m (unlift . f)
+
+
+-- | Lifted `System.IO.hClose`.
+hClose :: (File :> es, HasCallStack) => Handle -> Eff es ()
+hClose = unsafeEff_ . IO.hClose
+
+
+-- | Lifted `System.IO.hFlush`.
+hFlush :: (File :> es, HasCallStack) => Handle -> Eff es ()
+hFlush = unsafeEff_ . IO.hFlush
 
 
 -- | Lifted `System.IO.hGetLine`.

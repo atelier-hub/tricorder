@@ -29,6 +29,8 @@ library
       Tricorder.Effects.BrickChan
       Tricorder.Effects.BuildStore
       Tricorder.Effects.GhciSession
+      Tricorder.Effects.GhciSession.GhciParser
+      Tricorder.Effects.GhciSession.GhciProcess
       Tricorder.Effects.GhcPkg
       Tricorder.Effects.Logging
       Tricorder.Effects.TestRunner
@@ -93,7 +95,6 @@ library
     , effectful-plugin
     , effectful-th
     , filepath
-    , ghcid
     , hashable
     , mtl
     , network
@@ -453,6 +454,7 @@ test-suite tricorder-test
       Unit.Tricorder.BuildStateSpec
       Unit.Tricorder.BuildStoreSpec
       Unit.Tricorder.CLI.RenderSpec
+      Unit.Tricorder.Effects.GhciSession.GhciParserSpec
       Unit.Tricorder.Effects.GhciSessionSpec
       Unit.Tricorder.GhcPkgSpec
       Unit.Tricorder.SessionSpec
