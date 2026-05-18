@@ -152,6 +152,7 @@ library atelier
       Atelier.Types.HttpApiDataReadShow
       Atelier.Types.JsonReadShow
       Atelier.Types.QuietSnake
+      Atelier.Types.Semaphore
       Atelier.Types.WithDefaults
   other-modules:
       Paths_tricorder
@@ -393,6 +394,7 @@ test-suite atelier-test
       Unit.Atelier.Effects.LogSpec
       Unit.Atelier.Effects.PublishingSpec
       Unit.Atelier.Effects.TallySpec
+      Unit.Atelier.Types.SemaphoreSpec
       Unit.Atelier.Types.WithDefaultsSpec
       Paths_tricorder
   autogen-modules:
