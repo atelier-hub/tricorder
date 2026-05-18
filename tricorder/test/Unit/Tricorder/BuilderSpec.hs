@@ -41,7 +41,7 @@ import Tricorder.Builder
     , restartOnCabalChange
     , setNewPhase
     )
-import Tricorder.Effects.GhciSession (LoadResult (..), extractTitle)
+import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), extractTitle)
 import Tricorder.Effects.TestRunner (runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
@@ -94,15 +94,16 @@ testRestartOnCabalChange = do
 testReloadOnSourceChange :: Spec
 testReloadOnSourceChange = do
     it "should publish that it is building" do
-        let (_, phases) = runTest loadResult
+        (_, phases) <- runTest loadResult
         phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Building Nothing]
 
     it "should publish NewLoadResult from the reload" do
-        let (newLoadResults, _) = runTest loadResult
+        (newLoadResults, _) <- runTest loadResult
         newLoadResults `shouldMatchList` [NewLoadResult epoch epoch loadResult]
   where
-    runTest lr =
-        runPureEff
+    runTest lr = do
+        runEff
+            . runConcurrent
             . runClockConst epoch
             . evalState (BuildId 1)
             . runLogNoOp
@@ -110,7 +111,11 @@ testReloadOnSourceChange = do
             . runPubWriter @EnteringNewPhase
             . execWriter
             . runPubWriter @NewLoadResult
-            $ reloadOnSourceChange (pure lr) SourceChangeDetected
+            $ do
+                sem <- Sem.newSet
+                reloadOnSourceChange sem (mkCtrls lr) SourceChangeDetected
+
+    mkCtrls lr = Controls {reload = pure lr, interrupt = pure ()}
 
     loadResult =
         LoadResult
