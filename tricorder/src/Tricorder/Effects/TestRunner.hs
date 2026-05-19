@@ -32,7 +32,7 @@ import Atelier.Effects.Delay (Delay, withTimeout)
 import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
-import Tricorder.TestOutput (parseHspecOutput)
+import Tricorder.TestOutput (parseHspecDuration, parseHspecOutput)
 
 
 data TestRunner :: Effect where
@@ -87,6 +87,7 @@ runTestRunnerIO act = do
                                         , passed = outcome == GhciPassed
                                         , output
                                         , testCases = parseHspecOutput output
+                                        , durationMs = parseHspecDuration output
                                         }
 
 

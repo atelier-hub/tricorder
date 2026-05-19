@@ -105,6 +105,7 @@ data TestRunCompletion = TestRunCompletion
     , passed :: Bool
     , output :: Text
     , testCases :: [TestCase]
+    , durationMs :: Maybe Int
     }
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)

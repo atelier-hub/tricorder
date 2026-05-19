@@ -124,7 +124,7 @@ showStatus opts = do
         Console.putTextLn $ case tr of
             TestRunning t -> t <> "  running..."
             TestRunErrored e -> e.target <> "  error: " <> e.message
-            TestRunCompleted c -> c.target <> "  " <> if c.passed then "passed" else "failed"
+            TestRunCompleted c -> c.target <> "  " <> completionSummary c
         when (verbosity == Verbose) $ case tr of
             TestRunCompleted c ->
                 mapM_ (Console.putTextLn . ("  " <>)) (stripGhciNoise (T.lines c.output))
@@ -146,6 +146,22 @@ showStatus opts = do
                 "All good. " <> stats <> " " <> ts
             else
                 show errs <> " error(s), " <> show warns <> " warning(s) " <> stats <> " " <> ts
+
+
+completionSummary :: TestRunCompletion -> Text
+completionSummary c = statusText <> maybe "" (\ms -> " (" <> formatDuration ms <> ")") c.durationMs
+  where
+    statusText
+        | null c.testCases = if c.passed then "passed" else "failed"
+        | otherwise =
+            let total = length c.testCases
+                failedCount = length $ filter isFailedCase c.testCases
+            in  if failedCount == 0 then
+                    "passed (" <> show total <> ")"
+                else
+                    show failedCount <> "/" <> show total <> " failed"
+    isFailedCase (TestCase _ (TestCaseFailed _)) = True
+    isFailedCase _ = False
 
 
 showLog
@@ -215,7 +231,7 @@ showTests opts = do
         TestRunErrored e ->
             Console.putTextLn $ e.target <> "  error: " <> e.message
         TestRunCompleted c -> do
-            Console.putTextLn $ c.target <> "  " <> if c.passed then "passed" else "failed"
+            Console.putTextLn $ c.target <> "  " <> completionSummary c
             if opts.failedOnly then
                 if null c.testCases then do
                     Console.putTextLn "  (unrecognised test runner format — showing full output)"

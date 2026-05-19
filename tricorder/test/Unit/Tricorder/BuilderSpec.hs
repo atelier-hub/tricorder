@@ -289,6 +289,7 @@ testRequestTestRunsForNewBuildResults = do
                 , passed = True
                 , output = ""
                 , testCases = []
+                , durationMs = Nothing
                 }
 
 

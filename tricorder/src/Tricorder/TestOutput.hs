@@ -1,4 +1,4 @@
-module Tricorder.TestOutput (parseHspecOutput, stripGhciNoise) where
+module Tricorder.TestOutput (parseHspecOutput, parseHspecDuration, stripGhciNoise) where
 
 import Data.Text qualified as T
 
@@ -29,6 +29,21 @@ parseHspecOutput = go . T.lines
         T.strip $ T.dropEnd (T.length suffix) $ T.stripEnd l
 
     indentOf = T.length . T.takeWhile (== ' ')
+
+
+-- | Extract the test suite duration from hspec summary output.
+-- Matches non-indented summary lines ending with @"(Xs)"@,
+-- e.g. @"All 160 tests passed (0.33s)"@ or @"1 out of 177 tests failed (0.06s)"@.
+parseHspecDuration :: Text -> Maybe Int
+parseHspecDuration output =
+    listToMaybe $ mapMaybe extractMs (T.lines output)
+  where
+    extractMs line = do
+        guard $ not (T.isPrefixOf " " line)
+        guard $ T.isSuffixOf "s)" line
+        let numStr = T.takeWhileEnd (/= '(') (T.dropEnd 2 line)
+        secs <- readMaybe (T.unpack numStr) :: Maybe Double
+        pure $ round (secs * 1000)
 
 
 -- | Strip GHCi/cabal startup and shutdown noise from captured output lines.

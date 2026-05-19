@@ -275,15 +275,19 @@ viewTestRun (TestRunCompleted c) = hBox [txt c.target, txt "  ", viewCompletionS
 
 
 viewCompletionStatus :: TestRunCompletion -> Widget n
-viewCompletionStatus c
-    | null c.testCases = if c.passed then ok (txt "passed") else err (txt "failed")
-    | otherwise =
-        let total = length c.testCases
-            failed = length $ filter isCaseFailed c.testCases
-        in  if failed == 0 then
-                ok $ txt $ "passed (" <> show total <> ")"
-            else
-                err $ txt $ show failed <> "/" <> show total <> " failed"
+viewCompletionStatus c = case c.durationMs of
+    Nothing -> statusWidget
+    Just ms -> hBoxSpaced 1 [statusWidget, subtle $ viewDuration ms]
+  where
+    statusWidget
+        | null c.testCases = if c.passed then ok (txt "passed") else err (txt "failed")
+        | otherwise =
+            let total = length c.testCases
+                failed = length $ filter isCaseFailed c.testCases
+            in  if failed == 0 then
+                    ok $ txt $ "passed (" <> show total <> ")"
+                else
+                    err $ txt $ show failed <> "/" <> show total <> " failed"
 
 
 viewTimestamp :: TimeZone -> UTCTime -> Widget n
