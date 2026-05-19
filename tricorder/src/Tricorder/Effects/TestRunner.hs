@@ -13,24 +13,24 @@ module Tricorder.Effects.TestRunner
     ) where
 
 import Control.Exception (throwIO)
+import Data.Default (def)
 import Data.Time.Units (Second)
 import Effectful (Effect, IOE)
 import Effectful.Concurrent (Concurrent)
-import Effectful.Concurrent.STM (atomically)
 import Effectful.Dispatch.Dynamic (interpretWith_, reinterpret)
 import Effectful.Exception (trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, evalState, get, put)
 import Effectful.TH (makeEffect)
-import System.Process.Typed (byteStringInput, byteStringOutput, createPipe, getStderr, getStdout, proc, setStderr, setStdin, setStdout, setWorkingDir, withProcessTerm)
 
-import Data.ByteString.Lazy qualified as BSL
 import Data.List qualified as List
 import Data.Text qualified as T
-import Data.Text.IO qualified as TIO
 
+import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Delay (Delay, withTimeout)
+import Atelier.Effects.File (File)
 import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
+import Tricorder.Effects.GhciSession.GhciProcess (execGhci, withGhciProcess)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 import Tricorder.TestOutput (parseHspecDuration, parseHspecOutput)
@@ -48,49 +48,47 @@ makeEffect ''TestRunner
 -- | Production interpreter that spawns a short-lived @cabal repl test:\<name\>@
 -- process for each suite, feeds @:main\\n:quit\\n@ to stdin, captures combined
 -- stdout+stderr, and detects the outcome via 'detectOutcome'.
-runTestRunnerIO :: (Concurrent :> es, Delay :> es, IOE :> es, Reader ProjectRoot :> es, Reader Session :> es) => Eff (TestRunner : es) a -> Eff es a
+runTestRunnerIO
+    :: ( Conc :> es
+       , Concurrent :> es
+       , Delay :> es
+       , File :> es
+       , IOE :> es
+       , Reader ProjectRoot :> es
+       , Reader Session :> es
+       )
+    => Eff (TestRunner : es) a -> Eff es a
 runTestRunnerIO act = do
     ProjectRoot projectRoot <- ask
     interpretWith_ act \case
         RunTestSuite target -> do
             Session {testTimeout} <- ask
-            let config =
-                    proc "cabal" ["repl", toString target]
-                        & setStdin (byteStringInput testRunnerStdin)
-                        & setWorkingDir projectRoot
-                        & setStdout createPipe
-                        & setStderr byteStringOutput
-            result <- trySync $ withProcessTerm config \p -> do
-                compilationOutput <- liftIO $ drainUntilReady (getStdout p)
+            result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot \ghci _ -> do
                 case testTimeout of
-                    secs | secs <= 0 -> do
-                        testOutput <- liftIO $ TIO.hGetContents (getStdout p)
-                        err <- decodeUtf8 . BSL.toStrict <$> atomically (getStderr p)
-                        pure $ Right (compilationOutput <> testOutput <> err)
+                    secs | secs <= 0 -> Right <$> execGhci ghci ":main"
                     secs ->
-                        withTimeout (fromIntegral secs :: Second) (liftIO $ TIO.hGetContents (getStdout p)) >>= \case
+                        withTimeout (fromIntegral secs :: Second) (execGhci ghci ":main") >>= \case
                             Left () -> pure (Left secs)
-                            Right testOutput -> do
-                                err <- decodeUtf8 . BSL.toStrict <$> atomically (getStderr p)
-                                pure $ Right (compilationOutput <> testOutput <> err)
+                            Right ls -> pure (Right ls)
             pure $ case result of
                 Left ex ->
                     TestRunErrored $ TestRunError {target, message = show ex}
                 Right (Left secs) ->
                     TestRunErrored $ TestRunError {target, message = "Test suite timed out after " <> show secs <> "s"}
-                Right (Right output) ->
-                    case detectOutcome output of
-                        GhciCrashed msg ->
-                            TestRunErrored $ TestRunError {target, message = msg}
-                        outcome ->
-                            TestRunCompleted
-                                $ TestRunCompletion
-                                    { target
-                                    , passed = outcome == GhciPassed
-                                    , output
-                                    , testCases = parseHspecOutput output
-                                    , durationMs = parseHspecDuration output
-                                    }
+                Right (Right mainLines) ->
+                    let output = T.unlines mainLines
+                    in  case detectOutcome output of
+                            GhciCrashed msg ->
+                                TestRunErrored $ TestRunError {target, message = msg}
+                            outcome ->
+                                TestRunCompleted
+                                    $ TestRunCompletion
+                                        { target
+                                        , passed = outcome == GhciPassed
+                                        , output
+                                        , testCases = parseHspecOutput output
+                                        , durationMs = parseHspecDuration output
+                                        }
 
 
 -- | Scripted interpreter for testing.
@@ -112,39 +110,6 @@ runTestRunnerScripted results = reinterpret (evalState results) $ \_ ->
                 Right r : rest -> put rest >> pure r
     in  \case
             RunTestSuite _ -> popResult
-
-
--- ---------------------------------------------------------------------------
--- Internal helpers
-
--- | Sentinel marker emitted by GHCi after compilation, before ':main' runs.
-readyMarker :: Text
-readyMarker = "#~TRI-TEST-READY~#"
-
-
--- | Stdin fed to each cabal repl session: a sentinel expression followed by
--- ':main' and ':quit'. The sentinel fires after compilation completes, letting
--- 'drainUntilReady' separate the compilation phase from test execution.
-testRunnerStdin :: BSL.ByteString
-testRunnerStdin =
-    BSL.fromStrict
-        $ encodeUtf8
-        $ "putStrLn " <> toText (show @String (toString readyMarker)) <> "\n:main\n:quit\n"
-
-
--- | Read stdout until the ready marker line appears, accumulating all prior
--- output. The marker line itself is discarded.
-drainUntilReady :: Handle -> IO Text
-drainUntilReady h = do
-    hSetBuffering h LineBuffering
-    T.unlines . reverse <$> go []
-  where
-    go acc = do
-        line <- TIO.hGetLine h
-        if readyMarker `T.isInfixOf` line then
-            pure acc
-        else
-            go (line : acc)
 
 
 data GhciOutcome
