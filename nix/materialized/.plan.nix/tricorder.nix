@@ -50,7 +50,6 @@
           (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))
           (hsPkgs."effectful-th" or (errorHandler.buildDepError "effectful-th"))
           (hsPkgs."filepath" or (errorHandler.buildDepError "filepath"))
-          (hsPkgs."ghcid" or (errorHandler.buildDepError "ghcid"))
           (hsPkgs."hashable" or (errorHandler.buildDepError "hashable"))
           (hsPkgs."mtl" or (errorHandler.buildDepError "mtl"))
           (hsPkgs."network" or (errorHandler.buildDepError "network"))

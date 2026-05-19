@@ -84,7 +84,6 @@ library:
   - effectful
   - effectful-th
   - filepath
-  - ghcid
   - hashable
   - process
   - template-haskell

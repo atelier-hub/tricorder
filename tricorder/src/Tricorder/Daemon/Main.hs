@@ -25,7 +25,7 @@ import Tricorder.BuildState (BuildId (..), runDaemonInfo)
 import Tricorder.Config (restartOnConfigChange, runLoadedConfig)
 import Tricorder.Effects.BuildStore (runBuildStore)
 import Tricorder.Effects.GhcPkg (runGhcPkgIO)
-import Tricorder.Effects.GhciSession (runGhciSessionIO)
+import Tricorder.Effects.GhciSession (runGhciSession)
 import Tricorder.Effects.Logging (runLogging)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
@@ -85,7 +85,7 @@ main =
         . runBuildStore
         . runGhcPkgIO
         . runUnixSocketIO
-        . runGhciSessionIO
+        . runGhciSession
         . evalState (BuildId 1)
         . evalState @Builder.DiagnosticMap mempty
         . runDebounce @Text

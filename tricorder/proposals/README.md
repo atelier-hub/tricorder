@@ -6,3 +6,4 @@
 | [002](002-plugin-diagnostics/) | Plugin-Based Structured Diagnostics | Draft |
 | [003](003-source-lookup/) | Package Source Lookup | Draft |
 | [004](004-tests-after-build/) | Run Tests After Build | Draft |
+| [005](005-replace-ghcid/) | Custom GHCi Session Manager | Draft |
