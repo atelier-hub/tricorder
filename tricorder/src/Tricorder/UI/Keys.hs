@@ -53,7 +53,15 @@ import Data.Text qualified as T
 
 import Atelier.Effects.Console (Console)
 import Tricorder.UI.Misc (warn)
-import Tricorder.UI.State (State (..), Viewports (..), invertCollapsible)
+import Tricorder.UI.State
+    ( ActiveView (..)
+    , State (..)
+    , Viewports (..)
+    , currentView
+    , cycleTestView
+    , popView
+    , pushView
+    )
 
 import Atelier.Effects.Console qualified as Console
 
@@ -61,9 +69,11 @@ import Atelier.Effects.Console qualified as Console
 data KeyEvent
     = ToggleDaemonInfoView
     | Quit
+    | ExitView
     | ScrollUp
     | ScrollDown
     | ToggleHelp
+    | CycleTestView
     deriving stock (Bounded, Enum, Eq, Ord, Show)
 
 
@@ -84,19 +94,23 @@ keys =
     keyEvents
         [ ("toggle daemon info", ToggleDaemonInfoView)
         , ("quit", Quit)
+        , ("exit view", ExitView)
         , ("scroll up", ScrollUp)
         , ("scroll down", ScrollDown)
         , ("toggle help", ToggleHelp)
+        , ("cycle test view", CycleTestView)
         ]
 
 
 bindings :: [(KeyEvent, [Binding])]
 bindings =
     [ (ToggleDaemonInfoView, [bind 'g'])
-    , (Quit, [bind 'q', ctrl 'c', binding KEsc []])
+    , (Quit, [bind 'q', ctrl 'c'])
+    , (ExitView, [binding KEsc []])
     , (ScrollUp, [binding KUp []])
     , (ScrollDown, [binding KDown []])
     , (ToggleHelp, [bind 'h'])
+    , (CycleTestView, [bind 't'])
     ]
 
 
@@ -149,19 +163,44 @@ dispatcher cfg =
         $ keyDispatcher
             cfg
             [ onEvent ToggleDaemonInfoView "Toggle daemon info view" do
-                modify \s -> s {daemonInfoView = invertCollapsible s.daemonInfoView}
+                modify \s ->
+                    if currentView s == Just ViewDaemonInfo then
+                        popView s
+                    else
+                        pushView ViewDaemonInfo s
             , onEvent Quit "Exit" do
                 halt
-            , onEvent ScrollUp "Scroll diagnostic upwards" do
-                showingHelp <- gets (.showHelp)
-                unless showingHelp
-                    $ vScrollBy (viewportScroll DiagnosticViewport) (-1)
-            , onEvent ScrollDown "Scroll diagnostic downwards" do
-                showingHelp <- gets (.showHelp)
-                unless showingHelp
-                    $ vScrollBy (viewportScroll DiagnosticViewport) 1
+            , onEvent ExitView "Exit or go back" do
+                stack <- gets (.viewStack)
+                if null stack then halt else modify popView
+            , onEvent ScrollUp "Scroll up" do
+                av <- gets currentView
+                unless (av == Just ViewHelp) do
+                    let vp = case av of
+                            Just (ViewTestResults _) -> TestViewport
+                            _ -> DiagnosticViewport
+                    vScrollBy (viewportScroll vp) (-1)
+            , onEvent ScrollDown "Scroll down" do
+                av <- gets currentView
+                unless (av == Just ViewHelp) do
+                    let vp = case av of
+                            Just (ViewTestResults _) -> TestViewport
+                            _ -> DiagnosticViewport
+                    vScrollBy (viewportScroll vp) 1
             , onEvent ToggleHelp "Toggle help" do
-                modify \s -> s {showHelp = not s.showHelp}
+                modify \s ->
+                    if currentView s == Just ViewHelp then
+                        popView s
+                    else
+                        pushView ViewHelp s
+            , onEvent CycleTestView "Cycle test results view" do
+                modify \s -> case currentView s of
+                    Just (ViewTestResults tv) ->
+                        if tv == maxBound then
+                            popView s
+                        else
+                            pushView (ViewTestResults (cycleTestView tv)) (popView s)
+                    _ -> pushView (ViewTestResults minBound) s
             ]
   where
     stringify =

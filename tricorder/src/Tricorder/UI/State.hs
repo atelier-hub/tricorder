@@ -3,8 +3,12 @@ module Tricorder.UI.State
     , State (..)
     , Processed (..)
     , init
-    , Collapsible (..)
-    , invertCollapsible
+    , ActiveView (..)
+    , TestView (..)
+    , currentView
+    , pushView
+    , popView
+    , cycleTestView
     ) where
 
 import Atelier.Effects.Clock (Clock, TimeZone)
@@ -17,14 +21,14 @@ import Atelier.Effects.Clock qualified as Clock
 data Viewports
     = MainViewport
     | DiagnosticViewport
+    | TestViewport
     deriving stock (Eq, Ord, Show)
 
 
 data State = State
     { buildState :: Processed Text BuildState
     , timeZone :: TimeZone
-    , daemonInfoView :: Collapsible
-    , showHelp :: Bool
+    , viewStack :: [ActiveView]
     }
 
 
@@ -34,15 +38,31 @@ data Processed e a
     | Success a
 
 
-data Collapsible
-    = Expanded
-    | Collapsed
+data ActiveView
+    = ViewHelp
+    | ViewDaemonInfo
+    | ViewTestResults TestView
     deriving stock (Eq)
 
 
-invertCollapsible :: Collapsible -> Collapsible
-invertCollapsible Expanded = Collapsed
-invertCollapsible Collapsed = Expanded
+data TestView = TestViewFailOnly | TestViewFull
+    deriving stock (Bounded, Enum, Eq)
+
+
+currentView :: State -> Maybe ActiveView
+currentView = viaNonEmpty head . (.viewStack)
+
+
+pushView :: ActiveView -> State -> State
+pushView v s = s {viewStack = v : s.viewStack}
+
+
+popView :: State -> State
+popView s = s {viewStack = drop 1 s.viewStack}
+
+
+cycleTestView :: TestView -> TestView
+cycleTestView v = if v == maxBound then minBound else succ v
 
 
 init :: (Clock :> es) => Eff es State
@@ -52,6 +72,5 @@ init = do
         State
             { buildState = Waiting
             , timeZone = tz
-            , daemonInfoView = Collapsed
-            , showHelp = False
+            , viewStack = []
             }

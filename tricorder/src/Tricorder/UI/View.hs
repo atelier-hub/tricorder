@@ -37,13 +37,16 @@ import Tricorder.BuildState
     , DaemonInfo (..)
     , Diagnostic (..)
     , Severity (..)
+    , TestCase (..)
+    , TestCaseOutcome (..)
     , TestRun (..)
     , TestRunCompletion (..)
     , TestRunError (..)
     )
+import Tricorder.TestOutput (stripGhciNoise)
 import Tricorder.UI.Keys (KeyEvent, viewKeybindings)
 import Tricorder.UI.Misc (emphasis, err, hBoxSpaced, ok, subtle, vBoxSpaced, warn)
-import Tricorder.UI.State (Collapsible (..), Processed (..), State (..), Viewports (..))
+import Tricorder.UI.State (ActiveView (..), Processed (..), State (..), TestView (..), Viewports (..), currentView)
 
 import Tricorder.UI.Keys qualified as Keys
 import Tricorder.Version qualified as Version
@@ -51,24 +54,27 @@ import Tricorder.Version qualified as Version
 
 view :: KeyConfig KeyEvent -> State -> [Widget Viewports]
 view kc ws =
-    [ if ws.showHelp then
-        viewHelp kc
-      else case ws.buildState of
-        Waiting ->
-            vBoxSpaced
-                1
-                [ txt "Waiting for build..."
-                , viewHint
-                ]
-        Failure reason ->
-            vBoxSpaced
-                1
-                [ txt $ "Error when contacting daemon: " <> reason
-                , viewHint
-                ]
-        Success bs ->
-            viewBuildState ws bs
+    [ case currentView ws of
+        Just ViewHelp ->
+            viewHelp kc
+        Just ViewDaemonInfo ->
+            withBuildState ws (viewDaemonInfoPanel ws.timeZone)
+        Just (ViewTestResults tv) ->
+            withBuildState ws (viewTestResultsPanel ws.timeZone tv)
+        Nothing ->
+            withBuildState ws (viewDefaultPanel ws.timeZone)
     ]
+
+
+withBuildState :: State -> (BuildState -> Widget Viewports) -> Widget Viewports
+withBuildState ws render =
+    case ws.buildState of
+        Waiting ->
+            vBoxSpaced 1 [txt "Waiting for build...", viewHint]
+        Failure reason ->
+            vBoxSpaced 1 [txt $ "Error when contacting daemon: " <> reason, viewHint]
+        Success bs ->
+            render bs
 
 
 viewHelp :: KeyConfig KeyEvent -> Widget n
@@ -83,24 +89,26 @@ viewHelp kc =
     handlers = (.khHandler) . snd <$> keyDispatcherToList (Keys.dispatcher kc)
 
 
-viewBuildState :: State -> BuildState -> Widget Viewports
-viewBuildState state bs =
+viewDefaultPanel :: TimeZone -> BuildState -> Widget Viewports
+viewDefaultPanel tz bs = vBoxSpaced 1 [viewBuildPhase tz bs.phase, viewHint]
+
+
+viewDaemonInfoPanel :: TimeZone -> BuildState -> Widget Viewports
+viewDaemonInfoPanel tz bs =
     vBoxSpaced
         1
-        [ viewBuildPhase state.timeZone bs.phase
-        , viewDaemonInfo state bs.daemonInfo
+        [ viewBuildPhaseLine tz bs.phase
+        , padBottom (Pad 1) $ viewExpandedDaemonInfo bs.daemonInfo
+        , viewHint
         ]
 
 
-viewDaemonInfo :: State -> DaemonInfo -> Widget n
-viewDaemonInfo state di =
-    vBox
-        [ case state.daemonInfoView of
-            Expanded ->
-                padBottom (Pad 1)
-                    $ viewExpandedDaemonInfo di
-            Collapsed ->
-                emptyWidget
+viewTestResultsPanel :: TimeZone -> TestView -> BuildState -> Widget Viewports
+viewTestResultsPanel tz tv bs =
+    vBoxSpaced
+        1
+        [ viewBuildPhaseLine tz bs.phase
+        , viewTestPanel tv (phaseTestRuns bs.phase)
         , viewHint
         ]
 
@@ -263,8 +271,19 @@ viewTestRuns runs = vBox $ viewTestRun <$> runs
 viewTestRun :: TestRun -> Widget n
 viewTestRun (TestRunning t) = hBox [txt t, txt "  ", warn $ txt "running..."]
 viewTestRun (TestRunErrored e) = hBox [txt e.target, txt "  ", err $ txt "error: ", txt e.message]
-viewTestRun (TestRunCompleted c) =
-    hBox [txt c.target, txt "  ", if c.passed then ok (txt "passed") else err (txt "failed")]
+viewTestRun (TestRunCompleted c) = hBox [txt c.target, txt "  ", viewCompletionStatus c]
+
+
+viewCompletionStatus :: TestRunCompletion -> Widget n
+viewCompletionStatus c
+    | null c.testCases = if c.passed then ok (txt "passed") else err (txt "failed")
+    | otherwise =
+        let total = length c.testCases
+            failed = length $ filter isCaseFailed c.testCases
+        in  if failed == 0 then
+                ok $ txt $ "passed (" <> show total <> ")"
+            else
+                err $ txt $ show failed <> "/" <> show total <> " failed"
 
 
 viewTimestamp :: TimeZone -> UTCTime -> Widget n
@@ -282,3 +301,117 @@ formatDuration ms =
         show ms <> "ms"
     else
         show (ms `div` 1000) <> "." <> show ((ms `mod` 1000) `div` 100) <> "s"
+
+
+-- | Single-line build status with no scrollable diagnostics list, used as a
+-- compact header when a secondary panel (test results, daemon info) is open.
+viewBuildPhaseLine :: TimeZone -> BuildPhase -> Widget n
+viewBuildPhaseLine tz = \case
+    Building Nothing -> warn $ txt "Building..."
+    Building (Just p) -> warn $ txt $ "Building (" <> show p.compiled <> "/" <> show p.total <> ")..."
+    Restarting -> warn $ txt "Restarting..."
+    Testing result -> viewBuildResultLine tz result
+    Done result -> viewBuildResultLine tz result
+
+
+viewBuildResultLine :: TimeZone -> BuildResult -> Widget n
+viewBuildResultLine tz result
+    | null result.diagnostics =
+        hBoxSpaced
+            1
+            [ ok $ txt "All good."
+            , viewBuildSummary result.moduleCount result.durationMs
+            , viewTimestamp tz result.completedAt
+            ]
+    | otherwise =
+        let errCount = length $ filter (\m -> m.severity == SError) result.diagnostics
+            warnCount = length $ filter (\m -> m.severity == SWarning) result.diagnostics
+            header =
+                if errCount > 0 then
+                    err $ txt $ show errCount <> " error(s), " <> show warnCount <> " warning(s)"
+                else
+                    warn $ txt $ show warnCount <> " warning(s)"
+        in  hBoxSpaced 1 [header, viewDuration result.durationMs, viewTimestamp tz result.completedAt]
+
+
+phaseTestRuns :: BuildPhase -> [TestRun]
+phaseTestRuns (Testing r) = r.testRuns
+phaseTestRuns (Done r) = r.testRuns
+phaseTestRuns _ = []
+
+
+viewTestPanel :: TestView -> [TestRun] -> Widget Viewports
+viewTestPanel _ [] = subtle $ txt "No test results."
+viewTestPanel TestViewFailOnly runs =
+    if null failedRuns then
+        vBoxSpaced
+            1
+            [ ok $ txt "All passed."
+            , padLeft (Pad 2) $ vBox $ subtle . txt . testRunTarget <$> runs
+            ]
+    else
+        scrollableRuns TestViewFailOnly failedRuns
+  where
+    failedRuns = filter isFailedRun runs
+viewTestPanel TestViewFull runs = scrollableRuns TestViewFull runs
+
+
+scrollableRuns :: TestView -> [TestRun] -> Widget Viewports
+scrollableRuns tv runs =
+    withClickableVScrollBars (\_ _ -> TestViewport)
+        $ withVScrollBarHandles
+        $ withVScrollBars OnRight
+        $ viewport TestViewport Vertical
+        $ vBox
+        $ viewTestRunDetail tv <$> runs
+
+
+viewTestRunDetail :: TestView -> TestRun -> Widget n
+viewTestRunDetail _ (TestRunning t) = hBox [txt t, txt "  ", warn $ txt "running..."]
+viewTestRunDetail _ (TestRunErrored e) = hBoxSpaced 1 [txt e.target, err $ txt "error:", txt e.message]
+viewTestRunDetail tv (TestRunCompleted c) =
+    vBox
+        [ hBox [txt c.target, txt "  ", viewCompletionStatus c]
+        , viewTestOutput tv c
+        ]
+
+
+viewTestOutput :: TestView -> TestRunCompletion -> Widget n
+viewTestOutput TestViewFull c =
+    padLeft (Pad 2) $ vBox $ txt <$> stripGhciNoise (T.lines c.output)
+viewTestOutput TestViewFailOnly c
+    | null c.testCases =
+        padLeft (Pad 2)
+            $ vBox
+                [ subtle $ txt "(unrecognised test runner — showing full output)"
+                , vBox $ txt <$> stripGhciNoise (T.lines c.output)
+                ]
+    | otherwise =
+        padLeft (Pad 2) $ vBox $ viewFailedCase <$> filter isCaseFailed c.testCases
+
+
+isFailedRun :: TestRun -> Bool
+isFailedRun (TestRunCompleted c) = not c.passed
+isFailedRun (TestRunErrored _) = True
+isFailedRun (TestRunning _) = False
+
+
+testRunTarget :: TestRun -> Text
+testRunTarget (TestRunning t) = t
+testRunTarget (TestRunErrored e) = e.target
+testRunTarget (TestRunCompleted c) = c.target
+
+
+isCaseFailed :: TestCase -> Bool
+isCaseFailed (TestCase _ (TestCaseFailed _)) = True
+isCaseFailed _ = False
+
+
+viewFailedCase :: TestCase -> Widget n
+viewFailedCase tc =
+    vBox
+        [ err $ txt tc.description
+        , case tc.outcome of
+            TestCaseFailed details -> padLeft (Pad 2) $ txtWrap details
+            TestCasePassed -> emptyWidget
+        ]
