@@ -314,7 +314,7 @@ compileLoadResultsIntoBuildResults NewLoadResult {startTime, endTime, loadResult
             { completedAt = endTime
             , durationMs = round (realToFrac (diffUTCTime endTime startTime) * 1000 :: Double) :: Int
             , moduleCount = loadResult.moduleCount
-            , diagnostics = concat (Map.elems newAccumulated)
+            , diagnostics = sortOn (\d -> (d.severity, d.file, d.line, d.col)) $ concat (Map.elems newAccumulated)
             , testRuns = []
             }
 
