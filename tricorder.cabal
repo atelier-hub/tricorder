@@ -96,6 +96,7 @@ library
     , effectful-th
     , filepath
     , hashable
+    , megaparsec
     , mtl
     , network
     , optparse-applicative

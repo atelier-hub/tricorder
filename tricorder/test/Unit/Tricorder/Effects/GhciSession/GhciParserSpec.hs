@@ -7,6 +7,7 @@ import Tricorder.Effects.GhciSession.GhciParser
     , GhciLoading (..)
     , GhciMessage (..)
     , GhciSeverity (..)
+    , Position (..)
     , parseReload
     , parseShowModules
     )
@@ -65,7 +66,7 @@ testErrors = do
     it "parses a single-line error" do
         let input = ["src/Foo.hs:10:5: error: Variable not in scope: foo"]
         parseReload input
-            `shouldBe` [GMessage GhciMessage {severity = GError, file = "src/Foo.hs", startPos = (10, 5), endPos = (10, 5), messageLines = ["src/Foo.hs:10:5: error: Variable not in scope: foo"]}]
+            `shouldBe` [GMessage GhciMessage {severity = GError, file = "src/Foo.hs", startPos = Position 10 5, endPos = Position 10 5, messageLines = ["src/Foo.hs:10:5: error: Variable not in scope: foo"]}]
 
     it "parses a warning with continuation lines" do
         let input =
@@ -78,8 +79,8 @@ testErrors = do
                             GhciMessage
                                 { severity = GWarning
                                 , file = "src/Bar.hs"
-                                , startPos = (20, 3)
-                                , endPos = (20, 3)
+                                , startPos = Position 20 3
+                                , endPos = Position 20 3
                                 , messageLines =
                                     [ "src/Bar.hs:20:3: warning: [-Wunused-imports]"
                                     , "    Redundant import: Data.List"
@@ -91,12 +92,17 @@ testErrors = do
     it "parses a span position (L:C-C2:)" do
         let input = ["src/Baz.hs:5:1-10: error: Parse error"]
         parseReload input
-            `shouldBe` [GMessage GhciMessage {severity = GError, file = "src/Baz.hs", startPos = (5, 1), endPos = (5, 10), messageLines = ["src/Baz.hs:5:1-10: error: Parse error"]}]
+            `shouldBe` [GMessage GhciMessage {severity = GError, file = "src/Baz.hs", startPos = Position 5 1, endPos = Position 5 10, messageLines = ["src/Baz.hs:5:1-10: error: Parse error"]}]
 
     it "parses a span position ((L1,C1)-(L2,C2):)" do
         let input = ["src/Qux.hs:(3,1)-(5,20): error: Multi-line error"]
         parseReload input
-            `shouldBe` [GMessage GhciMessage {severity = GError, file = "src/Qux.hs", startPos = (3, 1), endPos = (5, 20), messageLines = ["src/Qux.hs:(3,1)-(5,20): error: Multi-line error"]}]
+            `shouldBe` [GMessage GhciMessage {severity = GError, file = "src/Qux.hs", startPos = Position 3 1, endPos = Position 5 20, messageLines = ["src/Qux.hs:(3,1)-(5,20): error: Multi-line error"]}]
+
+    it "parses a span position with double-paren end ((L1,C1)-((L2,C2):)" do
+        let input = ["src/Qux.hs:(3,1)-((5,20): error: Multi-line error"]
+        parseReload input
+            `shouldBe` [GMessage GhciMessage {severity = GError, file = "src/Qux.hs", startPos = Position 3 1, endPos = Position 5 20, messageLines = ["src/Qux.hs:(3,1)-((5,20): error: Multi-line error"]}]
 
     it "parses source-display continuation lines (pipe format)" do
         let input =
@@ -111,8 +117,8 @@ testErrors = do
                             GhciMessage
                                 { severity = GError
                                 , file = "src/Foo.hs"
-                                , startPos = (10, 5)
-                                , endPos = (10, 5)
+                                , startPos = Position 10 5
+                                , endPos = Position 10 5
                                 , messageLines =
                                     [ "src/Foo.hs:10:5: error: Variable not in scope: foo"
                                     , "   |"
@@ -126,7 +132,12 @@ testErrors = do
     it "strips ANSI codes from header for matching but stores original in glMessage" do
         let ansiHeader = "\ESC[1msrc/Foo.hs:10:5:\ESC[0m \ESC[91merror:\ESC[0m Variable not in scope: foo"
         parseReload [ansiHeader]
-            `shouldBe` [GMessage GhciMessage {severity = GError, file = "src/Foo.hs", startPos = (10, 5), endPos = (10, 5), messageLines = [ansiHeader]}]
+            `shouldBe` [GMessage GhciMessage {severity = GError, file = "src/Foo.hs", startPos = Position 10 5, endPos = Position 10 5, messageLines = [ansiHeader]}]
+
+    it "parses a Windows drive-letter path in a diagnostic" do
+        let input = ["C:\\path\\file.hs:10:5: error: Variable not in scope: foo"]
+        parseReload input
+            `shouldBe` [GMessage GhciMessage {severity = GError, file = "C:\\path\\file.hs", startPos = Position 10 5, endPos = Position 10 5, messageLines = ["C:\\path\\file.hs:10:5: error: Variable not in scope: foo"]}]
 
     it "parses mixed Loading and Message items, discarding summary" do
         let input =
@@ -137,7 +148,7 @@ testErrors = do
                 ]
         parseReload input
             `shouldBe` [ GLoading GhciLoading {index = 1, total = 2, moduleName = "Lib", sourceFile = "src/Lib.hs"}
-                       , GMessage GhciMessage {severity = GError, file = "src/Lib.hs", startPos = (5, 1), endPos = (5, 1), messageLines = ["src/Lib.hs:5:1: error: Oops"]}
+                       , GMessage GhciMessage {severity = GError, file = "src/Lib.hs", startPos = Position 5 1, endPos = Position 5 1, messageLines = ["src/Lib.hs:5:1: error: Oops"]}
                        , GLoading GhciLoading {index = 2, total = 2, moduleName = "Main", sourceFile = "app/Main.hs"}
                        ]
 
@@ -159,8 +170,8 @@ testHideSourcePaths = do
                             GhciMessage
                                 { severity = GError
                                 , file = "src/Foo.hs"
-                                , startPos = (10, 5)
-                                , endPos = (10, 5)
+                                , startPos = Position 10 5
+                                , endPos = Position 10 5
                                 , messageLines =
                                     [ "src/Foo.hs:10:5: error: Variable not in scope: foo"
                                     , "    Perhaps you meant: 'bar'"
@@ -189,8 +200,8 @@ testNoLocationInfo = do
                             GhciMessage
                                 { severity = GError
                                 , file = "<no location info>"
-                                , startPos = (0, 0)
-                                , endPos = (0, 0)
+                                , startPos = Position 0 0
+                                , endPos = Position 0 0
                                 , messageLines =
                                     [ "<no location info>: error:"
                                     , "    Module `Tricorder.Missing' is not loaded."
@@ -200,7 +211,7 @@ testNoLocationInfo = do
 
     it "handles <no location info>: error: with no continuation" do
         parseReload ["<no location info>: error: some error"]
-            `shouldBe` [GMessage GhciMessage {severity = GError, file = "<no location info>", startPos = (0, 0), endPos = (0, 0), messageLines = ["<no location info>: error: some error"]}]
+            `shouldBe` [GMessage GhciMessage {severity = GError, file = "<no location info>", startPos = Position 0 0, endPos = Position 0 0, messageLines = ["<no location info>: error: some error"]}]
 
 
 --------------------------------------------------------------------------------
