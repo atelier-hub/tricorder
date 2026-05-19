@@ -68,6 +68,26 @@ spec_TestOutput = do
                            , TestCase {description = "also passes:", outcome = TestCasePassed}
                            ]
 
+        it "parses a passing test with a timing annotation" do
+            let output = "  slow test:                                          OK (0.05s)\n"
+            parseHspecOutput output
+                `shouldBe` [TestCase {description = "slow test:", outcome = TestCasePassed}]
+
+        it "parses a passing test with a millisecond annotation" do
+            let output = "  fast property:                                      OK (12ms)\n"
+            parseHspecOutput output
+                `shouldBe` [TestCase {description = "fast property:", outcome = TestCasePassed}]
+
+        it "parses a failing test with a timing annotation" do
+            let output = "  slow fail:                                          FAIL (0.03s)\n"
+            parseHspecOutput output
+                `shouldBe` [TestCase {description = "slow fail:", outcome = TestCaseFailed ""}]
+
+        it "does not strip a non-timing parenthetical in the description" do
+            let output = "  test (corner case):                                 OK\n"
+            parseHspecOutput output
+                `shouldBe` [TestCase {description = "test (corner case):", outcome = TestCasePassed}]
+
     describe "parseHspecDuration" do
         it "returns Nothing for empty output" do
             parseHspecDuration "" `shouldBe` Nothing
