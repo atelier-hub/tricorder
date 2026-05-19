@@ -4,6 +4,7 @@ module Tricorder.Effects.GhciSession.GhciParser
     , GhciMessage (..)
     , GhciSeverity (..)
     , LoadResult (..)
+    , Position (..)
     , collectResultCustom
     , parseReload
     , parseShowModules
@@ -14,12 +15,16 @@ module Tricorder.Effects.GhciSession.GhciParser
 
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
 import System.FilePath (isAbsolute, makeRelative, splitDirectories, (</>))
+import Text.Megaparsec
+import Text.Megaparsec.Char (char, string)
 
 import Data.List qualified as List
 import Data.Set qualified as Set
 import Data.Text qualified as T
+import Text.Megaparsec.Char.Lexer qualified as L
 
 import Tricorder.BuildState (Diagnostic, Severity (..))
+import Prelude hiding (many)
 
 import Tricorder.BuildState qualified as BuildState
 
@@ -41,14 +46,21 @@ data GhciLoading = GhciLoading
     deriving stock (Eq, Show)
 
 
+-- | A source position (1-based line and column). @(0, 0)@ when unavailable.
+data Position = Position
+    { line :: Int
+    , col :: Int
+    }
+    deriving stock (Eq, Show)
+
+
 -- | Payload for a compiler diagnostic (error or warning).
 data GhciMessage = GhciMessage
     { severity :: GhciSeverity
     , file :: FilePath
-    , startPos :: (Int, Int)
-    -- ^ (line, col), 1-based; (0,0) when unavailable
-    , endPos :: (Int, Int)
-    -- ^ equals startPos when no span
+    , startPos :: Position
+    , endPos :: Position
+    -- ^ equals 'startPos' when no span
     , messageLines :: [Text]
     -- ^ raw lines (with any ANSI), header first
     }
@@ -74,6 +86,280 @@ data LoadResult = LoadResult
     deriving stock (Eq, Show)
 
 
+-- ---------------------------------------------------------------------------
+-- LineStream: a Stream instance for [Text] where Token = Text
+-- ---------------------------------------------------------------------------
+
+-- | Wrapper so we can define Stream / VisualStream / TraversableStream for
+--   a list of 'Text' lines without orphan-instance conflicts.
+newtype LineStream = LineStream [Text]
+
+
+instance Stream LineStream where
+    type Token LineStream = Text
+    type Tokens LineStream = [Text]
+    tokenToChunk Proxy = pure
+    tokensToChunk Proxy = id
+    chunkToTokens Proxy = id
+    chunkLength Proxy = length
+    chunkEmpty Proxy = null
+    take1_ (LineStream []) = Nothing
+    take1_ (LineStream (t : ts)) = Just (t, LineStream ts)
+    takeN_ n (LineStream s)
+        | n <= 0 = Just ([], LineStream s)
+        | null s = Nothing
+        | otherwise = let (a, b) = splitAt n s in Just (a, LineStream b)
+    takeWhile_ p (LineStream s) =
+        let (a, b) = span p s in (a, LineStream b)
+
+
+-- ---------------------------------------------------------------------------
+-- Parser type aliases
+-- ---------------------------------------------------------------------------
+
+-- | Parser over a stream of 'Text' lines.
+type LineParser = Parsec Void LineStream
+
+
+-- | Parser over a single 'Text' value.
+type TextParser = Parsec Void Text
+
+
+-- ---------------------------------------------------------------------------
+-- Text-level sub-parsers (helpers for diagnostic header parsing)
+-- ---------------------------------------------------------------------------
+
+-- | Run a 'TextParser' on a 'Text' value, returning 'Nothing' on failure.
+runTP :: TextParser a -> Text -> Maybe a
+runTP p t = case parse p "" t of
+    Right x -> Just x
+    Left _ -> Nothing
+
+
+-- | Parse a GHCi position in one of the formats:
+--   @(L1,C1)-(L2,C2):@, @L:C:@, or @L:C-C2:@.
+-- Consumes the trailing colon.
+positionP :: TextParser (Position, Position)
+positionP = parenForm <|> simpleForm
+  where
+    parenForm = do
+        _ <- char '('
+        l1 <- L.decimal
+        _ <- char ','
+        c1 <- L.decimal
+        _ <- char ')'
+        _ <- char '-'
+        _ <- char '('
+        _ <- optional (char '(') -- some GHCi versions emit "(L1,C1)-((L2,C2):"
+        l2 <- L.decimal
+        _ <- char ','
+        c2 <- L.decimal
+        _ <- char ')'
+        _ <- char ':'
+        pure (Position l1 c1, Position l2 c2)
+    simpleForm = do
+        l <- L.decimal
+        _ <- char ':'
+        c <- L.decimal
+        choice
+            [ do
+                _ <- char ':'
+                pure (Position l c, Position l c)
+            , do
+                _ <- char '-'
+                c2 <- L.decimal
+                _ <- char ':'
+                pure (Position l c, Position l c2)
+            ]
+
+
+-- | Parse the full diagnostic header:
+--   @file:pos:@ or @drive:path:pos:@ for Windows.
+-- Returns @(file, startPos, endPos, textAfterColon)@.
+diagHeaderP :: TextParser (Text, Position, Position, Text)
+diagHeaderP = do
+    a <- takeWhile1P Nothing (/= ':')
+    _ <- char ':'
+    filePart <-
+        if T.length a == 1 && isAlpha (T.head a) then do
+            pathRest <- takeWhile1P Nothing (/= ':')
+            _ <- char ':'
+            pure (a <> ":" <> pathRest)
+        else
+            pure a
+    (sp, ep) <- positionP
+    afterPos <- getInput
+    pure (filePart, sp, ep, afterPos)
+
+
+-- ---------------------------------------------------------------------------
+-- Line-level helpers
+-- ---------------------------------------------------------------------------
+
+-- | Check if a line is a continuation of a diagnostic message body.
+isMessageBody :: Text -> Bool
+isMessageBody line =
+    " " `T.isPrefixOf` line
+        || "\t" `T.isPrefixOf` line
+        || case T.break (== '|') line of
+            (prefix, rest)
+                | not (T.null rest) ->
+                    T.all (\c -> isSpace c || isDigit c) prefix
+            _ -> False
+
+
+-- | Consume a line whose stripped form satisfies the predicate.
+-- Returns @(originalLine, strippedLine)@.
+satisfyStripped :: (Text -> Bool) -> LineParser (Text, Text)
+satisfyStripped p = token testLine mempty
+  where
+    testLine line =
+        let stripped = stripAnsi line
+        in  if p stripped then Just (line, stripped) else Nothing
+
+
+-- ---------------------------------------------------------------------------
+-- parseReload
+-- ---------------------------------------------------------------------------
+
+-- | Parse the output of @:reload@ from GHCi into structured items.
+parseReload :: [Text] -> [GhciLoad]
+parseReload ls =
+    case parse (catMaybes <$> many reloadItem <* eof) "" (LineStream ls) of
+        Right items -> items
+        Left _ -> []
+
+
+-- | Parse one item (or skip one line) from the reload output.
+reloadItem :: LineParser (Maybe GhciLoad)
+reloadItem =
+    choice
+        [ -- Pattern: "Loaded GHCi configuration from <path>"
+          fmap Just $ do
+            (_, stripped) <- satisfyStripped ("Loaded GHCi configuration from " `T.isPrefixOf`)
+            let file = toString $ T.drop (T.length "Loaded GHCi configuration from ") stripped
+            pure (GLoadConfig file)
+        , -- Pattern: "[N of M] Compiling ..."
+          do
+            (_, stripped) <- satisfyStripped ("[" `T.isPrefixOf`)
+            pure (runTP loadingLineP stripped)
+        , -- Pattern: summary lines "Ok, ..." / "Failed, ..." — discard
+          fmap (const Nothing)
+            $ satisfyStripped (\s -> "Ok, " `T.isPrefixOf` s || "Failed, " `T.isPrefixOf` s)
+        , -- Pattern: "<no location info>: error:"
+          fmap Just $ do
+            (origLine, _) <- satisfyStripped ("<no location info>: error:" `T.isPrefixOf`)
+            body <- many (satisfy isMessageBody)
+            pure
+                $ GMessage
+                    GhciMessage
+                        { severity = GError
+                        , file = "<no location info>"
+                        , startPos = Position 0 0
+                        , endPos = Position 0 0
+                        , messageLines = origLine : body
+                        }
+        , -- Pattern: diagnostic "file:pos:severity: ..."
+          do
+            (origLine, stripped) <-
+                satisfyStripped
+                    ( \s ->
+                        not (T.null s)
+                            && not (" " `T.isPrefixOf` s)
+                            && not ("\t" `T.isPrefixOf` s)
+                    )
+            case runTP diagHeaderP stripped of
+                Nothing -> pure Nothing
+                Just (fileT, sp, ep, afterPos) ->
+                    let lower = T.toLower (T.stripStart afterPos)
+                    in  case parseSeverity lower of
+                            Nothing -> pure Nothing
+                            Just sev -> do
+                                body <- many (satisfy isMessageBody)
+                                pure
+                                    $ Just
+                                    $ GMessage
+                                        GhciMessage
+                                            { severity = sev
+                                            , file = toString fileT
+                                            , startPos = sp
+                                            , endPos = ep
+                                            , messageLines = origLine : body
+                                            }
+        , -- Fallback: skip any other line
+          fmap (const Nothing) anySingle
+        ]
+
+
+-- | Parse a "[N of M] Compiling Mod ( file, ... )" loading line.
+loadingLineP :: TextParser GhciLoad
+loadingLineP = do
+    _ <- char '['
+    _ <- takeWhileP Nothing (== ' ')
+    n <- L.decimal
+    _ <- string " of "
+    m <- L.decimal
+    _ <- takeWhileP Nothing (== ' ')
+    _ <- char ']'
+    _ <- takeWhile1P Nothing (== ' ')
+    _ <- string "Compiling"
+    _ <- takeWhile1P Nothing (== ' ')
+    modName <- takeWhile1P Nothing (not . isSpace)
+    _ <- takeWhileP Nothing (/= '(')
+    _ <- char '('
+    _ <- takeWhileP Nothing (== ' ')
+    filePath <- takeWhile1P Nothing (\c -> c /= ',' && c /= ')')
+    pure
+        $ GLoading
+            GhciLoading
+                { index = n
+                , total = m
+                , moduleName = modName
+                , sourceFile = toString (T.stripEnd filePath)
+                }
+
+
+-- | Determine severity from the text after the position (lowercased, stripped).
+parseSeverity :: Text -> Maybe GhciSeverity
+parseSeverity lower
+    | "warning:" `T.isPrefixOf` lower = Just GWarning
+    | "error:" `T.isPrefixOf` lower = Just GError
+    | otherwise = Nothing
+
+
+-- ---------------------------------------------------------------------------
+-- parseShowModules
+-- ---------------------------------------------------------------------------
+
+-- | Parse the output of @:show modules@ into (module name, file path) pairs.
+parseShowModules :: [Text] -> [(Text, FilePath)]
+parseShowModules ls =
+    case parse (catMaybes <$> many showModuleLine <* eof) "" (LineStream ls) of
+        Right items -> items
+        Left _ -> []
+
+
+-- | Parse or skip one line of @:show modules@ output.
+showModuleLine :: LineParser (Maybe (Text, FilePath))
+showModuleLine = do
+    line <- anySingle
+    pure $ runTP showModuleLineP (stripAnsi line)
+
+
+showModuleLineP :: TextParser (Text, FilePath)
+showModuleLineP = do
+    modName <- takeWhile1P Nothing (not . isSpace)
+    _ <- takeWhileP Nothing (/= '(')
+    _ <- char '('
+    _ <- char ' '
+    filePath <- takeWhile1P Nothing (\c -> c /= ',' && c /= ')')
+    pure (modName, toString (T.stripEnd filePath))
+
+
+-- ---------------------------------------------------------------------------
+-- Pure utilities (unchanged)
+-- ---------------------------------------------------------------------------
+
 -- | Make an absolute path relative to the given base directory, prefixed with @"./"@.
 -- Paths already relative, or absolute paths outside @base@, are returned unchanged.
 toRelative :: FilePath -> FilePath -> FilePath
@@ -96,155 +382,6 @@ stripAnsi t = case T.uncons t of
     Just (c, rest) -> T.cons c (stripAnsi rest)
 
 
--- | Check if a line is a continuation of a diagnostic message body.
--- Applied to the raw (unstripped) line.
-isMessageBody :: Text -> Bool
-isMessageBody line =
-    " " `T.isPrefixOf` line
-        || "\t" `T.isPrefixOf` line
-        || case T.break (== '|') line of
-            (prefix, rest)
-                | not (T.null rest) ->
-                    T.all (\c -> isSpace c || isDigit c) prefix
-            _ -> False
-
-
--- | Parse the output of @:reload@ from GHCi into structured items.
--- ANSI codes are stripped for pattern matching; original lines are stored in 'glMessage'.
-parseReload :: [Text] -> [GhciLoad]
-parseReload = go
-  where
-    go [] = []
-    go (line : rest) =
-        let stripped = stripAnsi line
-        in  if
-                -- Pattern 3: GHCi config loaded
-                | "Loaded GHCi configuration from " `T.isPrefixOf` stripped ->
-                    let file = toString $ T.drop (T.length "Loaded GHCi configuration from ") stripped
-                    in  GLoadConfig file : go rest
-                -- Pattern 1: Loading line
-                | "[" `T.isPrefixOf` stripped ->
-                    case parseLoading stripped of
-                        Just item -> item : go rest
-                        Nothing -> go rest
-                -- Pattern 4: Summary lines (Ok/Failed)
-                | "Ok, " `T.isPrefixOf` stripped
-                    || "Failed, " `T.isPrefixOf` stripped ->
-                    go rest
-                -- Pattern 2a: <no location info>: error:
-                | "<no location info>: error:" `T.isPrefixOf` stripped ->
-                    let (body, remaining) = span isMessageBody rest
-                    in  GMessage GhciMessage {severity = GError, file = "<no location info>", startPos = (0, 0), endPos = (0, 0), messageLines = line : body}
-                            : go remaining
-                -- Pattern 2b: Diagnostic message (file:pos:severity)
-                | not (T.null stripped)
-                , not (" " `T.isPrefixOf` stripped)
-                , not ("\t" `T.isPrefixOf` stripped) ->
-                    case parseDiagnostic stripped line rest of
-                        Just (item, remaining) -> item : go remaining
-                        Nothing -> go rest
-                -- Everything else: discard
-                | otherwise -> go rest
-
-    -- Parse a "[N of M] Compiling ..." loading line.
-    parseLoading :: Text -> Maybe GhciLoad
-    parseLoading stripped = do
-        insideAndAfter <- T.stripPrefix "[" stripped
-        let (inside, after) = T.break (== ']') insideAndAfter
-        guard (not (T.null after))
-        let afterBracket = T.drop 1 after -- drop the ']'
-        case T.words inside of
-            [nTxt, "of", mTxt] -> do
-                n <- readMaybe @Int (toString nTxt)
-                m <- readMaybe @Int (toString mTxt)
-                let trimmed = T.stripStart afterBracket
-                guard ("Compiling" `T.isPrefixOf` trimmed)
-                let afterCompiling = T.drop (T.length "Compiling ") trimmed
-                let modName = T.takeWhile (not . isSpace) afterCompiling
-                guard (not (T.null modName))
-                let afterMod = T.dropWhile (/= '(') afterCompiling
-                guard (not (T.null afterMod))
-                let insideParen = T.drop 1 afterMod -- drop '('
-                let filePath = T.takeWhile (\c -> c /= ',' && c /= ')') insideParen
-                guard (not (T.null filePath))
-                let fileTrimmed = toString (T.stripStart filePath)
-                pure (GLoading GhciLoading {index = n, total = m, moduleName = modName, sourceFile = fileTrimmed})
-            _ -> Nothing
-
-    -- Parse a diagnostic message line (file:pos:severity:).
-    -- Returns the parsed item and the remaining lines (after consuming continuation lines).
-    parseDiagnostic :: Text -> Text -> [Text] -> Maybe (GhciLoad, [Text])
-    parseDiagnostic stripped originalLine rest = do
-        (file, afterFile) <- breakFileColon stripped
-        ((pos1, pos2), afterPos) <- parsePosition afterFile
-        let lower = T.toLower (T.stripStart afterPos)
-        sev <-
-            if "warning:" `T.isPrefixOf` lower then
-                Just GWarning
-            else
-                if "error:" `T.isPrefixOf` lower then
-                    Just GError
-                else
-                    Nothing
-        let (body, remaining) = span isMessageBody rest
-        pure (GMessage GhciMessage {severity = sev, file = toString file, startPos = pos1, endPos = pos2, messageLines = originalLine : body}, remaining)
-
-
--- | Parse a file path followed by a colon.
--- Handles Windows drive letters (e.g., @C:\\path\\file.hs:@).
-breakFileColon :: Text -> Maybe (Text, Text)
-breakFileColon s = case T.break (== ':') s of
-    (_, t) | T.null t -> Nothing
-    (a, colonAndB) ->
-        let b = T.drop 1 colonAndB
-        in  if T.length a == 1 && isAlpha (T.head a) then
-                -- Windows drive letter: consume one more ':'-delimited segment
-                case T.break (== ':') b of
-                    (_, t) | T.null t -> Nothing
-                    (pathRest, colonAndRest) ->
-                        Just (a <> ":" <> pathRest, T.drop 1 colonAndRest)
-            else
-                Just (a, b)
-
-
--- | Parse a position in one of the GHCi formats:
---   @L:C:@, @L:C-C2:@, or @(L1,C1)-(L2,C2):@
-parsePosition :: Text -> Maybe (((Int, Int), (Int, Int)), Text)
-parsePosition s
-    -- (L1,C1)-(L2,C2):
-    | "(" `T.isPrefixOf` s = do
-        let s1 = T.drop 1 s
-        (l1, s2) <- readInt s1
-        s3 <- T.stripPrefix "," s2
-        (c1, s4) <- readInt s3
-        s5 <- T.stripPrefix ")-((" s4 <|> T.stripPrefix ")-(" s4
-        (l2, s6) <- readInt s5
-        s7 <- T.stripPrefix "," s6
-        (c2, s8) <- readInt s7
-        s9 <- T.stripPrefix "):" s8
-        pure (((l1, c1), (l2, c2)), s9)
-    -- L:C: or L:C-C2:
-    | otherwise = do
-        (l, s1) <- readInt s
-        s2 <- T.stripPrefix ":" s1
-        (c, s3) <- readInt s2
-        case T.uncons s3 of
-            Just (':', rest) -> pure (((l, c), (l, c)), rest)
-            Just ('-', s4) -> do
-                (c2, s5) <- readInt s4
-                s6 <- T.stripPrefix ":" s5
-                pure (((l, c), (l, c2)), s6)
-            _ -> Nothing
-  where
-    readInt :: Text -> Maybe (Int, Text)
-    readInt t =
-        let (digits, rest) = T.span isDigit t
-        in  if T.null digits then
-                Nothing
-            else
-                readMaybe (toString digits) <&> (,rest)
-
-
 -- | Assemble a 'LoadResult' from a project root, parsed reload items, and
 -- the @:show modules@ output.
 collectResultCustom :: FilePath -> [GhciLoad] -> [(Text, FilePath)] -> LoadResult
@@ -265,47 +402,26 @@ toDiagnostics rel loads = mapMaybe toMsg loads
   where
     toMsg (GMessage m) | '<' : _ <- m.file = Nothing
     toMsg (GMessage m) =
-        let (l, c) = m.startPos
-            (el, ec) = m.endPos
-        in  Just
-                BuildState.Diagnostic
-                    { severity = case m.severity of
-                        GWarning -> SWarning
-                        GError -> SError
-                    , file = rel m.file
-                    , line = l
-                    , col = c
-                    , endLine = el
-                    , endCol = ec
-                    , title = extractTitle (map toString m.messageLines)
-                    , text = unlines (map toText m.messageLines)
-                    }
+        Just
+            BuildState.Diagnostic
+                { severity = case m.severity of
+                    GWarning -> SWarning
+                    GError -> SError
+                , file = rel m.file
+                , line = m.startPos.line
+                , col = m.startPos.col
+                , endLine = m.endPos.line
+                , endCol = m.endPos.col
+                , title = extractTitle (map toString m.messageLines)
+                , text = unlines (map toText m.messageLines)
+                }
     toMsg _ = Nothing
 
 
--- | Parse the output of @:show modules@ into (module name, file path) pairs.
-parseShowModules :: [Text] -> [(Text, FilePath)]
-parseShowModules = mapMaybe parseLine
-  where
-    parseLine line =
-        let stripped = stripAnsi line
-        in  case T.breakOn "( " stripped of
-                (_, rest) | T.null rest -> Nothing
-                (left, right) ->
-                    let modName = T.takeWhile (not . isSpace) (T.stripStart left)
-                        afterParen = T.drop 2 right -- drop "( "
-                        filePath = T.takeWhile (/= ',') afterParen
-                        fileTrimmed = toString (T.stripStart filePath)
-                    in  if T.null modName || null fileTrimmed then
-                            Nothing
-                        else
-                            Just (modName, fileTrimmed)
-
-
--- | Extract a short human-readable title from ghcid's @loadMessage@.
+-- | Extract a short human-readable title from GHCi message lines.
 --
--- ghcid always places the GHCi header line (@"file:line:col: severity: rest"@) as
--- the first element of @loadMessage@.  The human-readable text is either:
+-- The header line (@"file:line:col: severity: rest"@) is the first element.
+-- The human-readable text is either:
 --
 --   * Inline, after @"error:"@ \/ @"warning:"@ in the header (old GHC style), or
 --   * On subsequent indented lines (new GHC style, when header ends with a
@@ -318,9 +434,6 @@ extractTitle [] = ""
 extractTitle (header : body) =
     fromMaybe (firstBodyLine body) (inlineFromHeader (toString (stripAnsi (toText header))))
   where
-    -- Try to extract inline message content from the header.
-    -- Returns Nothing when the content after the severity keyword is empty
-    -- or consists only of diagnostic codes like "[GHC-83865]" or "[-Wfoo]".
     inlineFromHeader :: String -> Maybe Text
     inlineFromHeader h =
         let lower = map toLower h
@@ -330,14 +443,11 @@ extractTitle (header : body) =
                     let content = stripDiagCodes (dropWhile isSpace rest)
                     in  if null content then Nothing else Just (toText content)
 
-    -- Return the suffix of 'original' starting just after 'needle',
-    -- where 'needle' is located by searching 'haystack' (same-length strings).
     headerAfter :: String -> String -> String -> Maybe String
     headerAfter needle haystack original =
         fmap (\i -> drop (i + length needle) original)
             $ List.findIndex (needle `List.isPrefixOf`) (List.tails haystack)
 
-    -- Strip leading @[...]@ diagnostic code blocks (e.g. "[GHC-83865]", "[-Wfoo]").
     stripDiagCodes :: String -> String
     stripDiagCodes s = case dropWhile isSpace s of
         '[' : rest ->
@@ -345,7 +455,6 @@ extractTitle (header : body) =
             in  stripDiagCodes after
         other -> other
 
-    -- Find the first body line that is not a source-display line.
     firstBodyLine :: [String] -> Text
     firstBodyLine xs =
         case [ t
@@ -357,8 +466,6 @@ extractTitle (header : body) =
             (t : _) -> toText t
             [] -> ""
 
-    -- Source-display lines have the form @"   | ..."@ or @"42 | ..."@,
-    -- or are caret/tilde underlines (@"   ^^^^"@).
     isSourceLine :: String -> Bool
     isSourceLine s = case dropWhile (\c -> isDigit c || c == ' ') s of
         ('|' : _) -> True

@@ -87,6 +87,7 @@ library:
   - hashable
   - process
   - template-haskell
+  - megaparsec
   - mtl
   - network
   - optparse-applicative

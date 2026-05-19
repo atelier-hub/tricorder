@@ -51,6 +51,7 @@
           (hsPkgs."effectful-th" or (errorHandler.buildDepError "effectful-th"))
           (hsPkgs."filepath" or (errorHandler.buildDepError "filepath"))
           (hsPkgs."hashable" or (errorHandler.buildDepError "hashable"))
+          (hsPkgs."megaparsec" or (errorHandler.buildDepError "megaparsec"))
           (hsPkgs."mtl" or (errorHandler.buildDepError "mtl"))
           (hsPkgs."network" or (errorHandler.buildDepError "network"))
           (hsPkgs."optparse-applicative" or (errorHandler.buildDepError "optparse-applicative"))
