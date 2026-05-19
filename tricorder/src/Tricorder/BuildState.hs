@@ -170,7 +170,7 @@ data Diagnostic = Diagnostic
 
 
 data Severity = SError | SWarning
-    deriving stock (Eq, Show)
+    deriving stock (Eq, Ord, Show)
 
 
 instance FromJSON Severity where
