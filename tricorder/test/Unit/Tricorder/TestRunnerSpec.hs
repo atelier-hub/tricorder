@@ -122,7 +122,7 @@ passingRun =
             , passed = True
             , output = "2 examples, 0 failures\n"
             , testCases = []
-            , durationMs = Nothing
+            , duration = Nothing
             }
 
 
@@ -134,7 +134,7 @@ failingRun =
             , passed = False
             , output = "1 example, 1 failure\n"
             , testCases = []
-            , durationMs = Nothing
+            , duration = Nothing
             }
 
 

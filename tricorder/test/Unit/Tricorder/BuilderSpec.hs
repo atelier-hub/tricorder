@@ -163,7 +163,7 @@ testCompileLoadResultsIntoBuildResults = do
                                 , diagnostics = []
                                 }
                         }
-        fmap (.durationMs) r `shouldMatchList` [10_000]
+        fmap (.duration) r `shouldMatchList` [10_000]
     it "merges with existing results" do
         let (m, _) =
                 runTest (Map.fromList [(errMsg.file, [errMsg])])
@@ -199,7 +199,7 @@ testCompileLoadResultsIntoBuildResults = do
             expected =
                 BuildResult
                     { completedAt = addUTCTime 10 epoch
-                    , durationMs = 10_000
+                    , duration = 10_000
                     , moduleCount = 2
                     , diagnostics = [warnMsg]
                     , testRuns = []
@@ -276,7 +276,7 @@ testRequestTestRunsForNewBuildResults = do
     expected =
         BuildResult
             { completedAt = addUTCTime 10 epoch
-            , durationMs = 10_000
+            , duration = 10_000
             , moduleCount = 2
             , diagnostics = [warnMsg]
             , testRuns = []
@@ -289,7 +289,7 @@ testRequestTestRunsForNewBuildResults = do
                 , passed = True
                 , output = ""
                 , testCases = []
-                , durationMs = Nothing
+                , duration = Nothing
                 }
 
 

@@ -29,6 +29,7 @@ import System.FilePath (isAbsolute)
 import Data.Text qualified as T
 
 import Atelier.Effects.Clock (TimeZone)
+import Atelier.Time (Millisecond, toMicroseconds)
 import Tricorder.BuildState
     ( BuildPhase (..)
     , BuildProgress (..)
@@ -208,7 +209,7 @@ viewBuildResult tz result
         hBoxSpaced
             1
             [ ok $ txt "All good."
-            , viewBuildSummary result.moduleCount result.durationMs
+            , viewBuildSummary result.moduleCount result.duration
             , viewTimestamp tz result.completedAt
             ]
     | otherwise =
@@ -225,7 +226,7 @@ viewBuildResult tz result
                 [ hBoxSpaced
                     1
                     [ header
-                    , viewDuration result.durationMs
+                    , viewDuration result.duration
                     , viewTimestamp tz result.completedAt
                     ]
                 , withClickableVScrollBars (\_ _ -> DiagnosticViewport)
@@ -259,8 +260,8 @@ severityToAttrName SError = attrName "error"
 severityToAttrName SWarning = attrName "warning"
 
 
-viewDuration :: Int -> Widget n
-viewDuration ms = txt $ "(" <> formatDuration ms <> ")"
+viewDuration :: Millisecond -> Widget n
+viewDuration d = txt $ "(" <> formatDuration d <> ")"
 
 
 viewTestRuns :: [TestRun] -> Widget n
@@ -275,9 +276,9 @@ viewTestRun (TestRunCompleted c) = hBox [txt c.target, txt "  ", viewCompletionS
 
 
 viewCompletionStatus :: TestRunCompletion -> Widget n
-viewCompletionStatus c = case c.durationMs of
+viewCompletionStatus c = case c.duration of
     Nothing -> statusWidget
-    Just ms -> hBoxSpaced 1 [statusWidget, subtle $ viewDuration ms]
+    Just d -> hBoxSpaced 1 [statusWidget, subtle $ viewDuration d]
   where
     statusWidget
         | null c.testCases = if c.passed then ok (txt "passed") else err (txt "failed")
@@ -294,17 +295,18 @@ viewTimestamp :: TimeZone -> UTCTime -> Widget n
 viewTimestamp tz t = txt $ "— " <> toText (formatTime defaultTimeLocale "%H:%M:%S" $ utcToLocalTime tz t)
 
 
-viewBuildSummary :: Int -> Int -> Widget n
-viewBuildSummary moduleCount durationMs =
-    txt $ "(" <> show moduleCount <> " modules, " <> formatDuration durationMs <> ")"
+viewBuildSummary :: Int -> Millisecond -> Widget n
+viewBuildSummary moduleCount duration =
+    txt $ "(" <> show moduleCount <> " modules, " <> formatDuration duration <> ")"
 
 
-formatDuration :: Int -> Text
-formatDuration ms =
-    if ms < 1000 then
-        show ms <> "ms"
-    else
-        show (ms `div` 1000) <> "." <> show ((ms `mod` 1000) `div` 100) <> "s"
+formatDuration :: Millisecond -> Text
+formatDuration d =
+    let ms = toMicroseconds d `div` 1000
+    in  if ms < 1000 then
+            show ms <> "ms"
+        else
+            show (ms `div` 1000) <> "." <> show ((ms `mod` 1000) `div` 100) <> "s"
 
 
 -- | Single-line build status with no scrollable diagnostics list, used as a
@@ -324,7 +326,7 @@ viewBuildResultLine tz result
         hBoxSpaced
             1
             [ ok $ txt "All good."
-            , viewBuildSummary result.moduleCount result.durationMs
+            , viewBuildSummary result.moduleCount result.duration
             , viewTimestamp tz result.completedAt
             ]
     | otherwise =
@@ -335,7 +337,7 @@ viewBuildResultLine tz result
                     err $ txt $ show errCount <> " error(s), " <> show warnCount <> " warning(s)"
                 else
                     warn $ txt $ show warnCount <> " warning(s)"
-        in  hBoxSpaced 1 [header, viewDuration result.durationMs, viewTimestamp tz result.completedAt]
+        in  hBoxSpaced 1 [header, viewDuration result.duration, viewTimestamp tz result.completedAt]
 
 
 phaseTestRuns :: BuildPhase -> [TestRun]

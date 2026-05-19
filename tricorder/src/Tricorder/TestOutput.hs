@@ -4,6 +4,7 @@ import Data.Char (isDigit)
 
 import Data.Text qualified as T
 
+import Atelier.Time (Millisecond, fromMicroseconds)
 import Tricorder.BuildState (TestCase (..), TestCaseOutcome (..))
 
 
@@ -60,7 +61,7 @@ stripTimingAnnotation t
 -- | Extract the test suite duration from hspec summary output.
 -- Matches non-indented summary lines ending with @"(Xs)"@,
 -- e.g. @"All 160 tests passed (0.33s)"@ or @"1 out of 177 tests failed (0.06s)"@.
-parseHspecDuration :: Text -> Maybe Int
+parseHspecDuration :: Text -> Maybe Millisecond
 parseHspecDuration output =
     listToMaybe $ mapMaybe extractMs (T.lines output)
   where
@@ -69,7 +70,7 @@ parseHspecDuration output =
         guard $ T.isSuffixOf "s)" line
         let numStr = T.takeWhileEnd (/= '(') (T.dropEnd 2 line)
         secs <- readMaybe (T.unpack numStr) :: Maybe Double
-        pure $ round (secs * 1000)
+        pure $ fromMicroseconds (round (secs * 1_000_000))
 
 
 -- | Strip GHCi/cabal startup and shutdown noise from captured output lines.

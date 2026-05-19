@@ -141,7 +141,7 @@ showStatus opts = do
         let errs = length $ filter ((== SError) . (.severity)) r.diagnostics
             warns = length $ filter ((== SWarning) . (.severity)) r.diagnostics
             ts = toText $ "— " <> formatTime defaultTimeLocale "%H:%M:%S" (utcToLocalTime tz r.completedAt)
-            stats = toText $ "(" <> show r.moduleCount <> " modules, " <> formatDuration r.durationMs <> ")"
+            stats = toText $ "(" <> show r.moduleCount <> " modules, " <> formatDuration r.duration <> ")"
         in  if null r.diagnostics then
                 "All good. " <> stats <> " " <> ts
             else
@@ -149,7 +149,7 @@ showStatus opts = do
 
 
 completionSummary :: TestRunCompletion -> Text
-completionSummary c = statusText <> maybe "" (\ms -> " (" <> formatDuration ms <> ")") c.durationMs
+completionSummary c = statusText <> maybe "" (\d -> " (" <> formatDuration d <> ")") c.duration
   where
     statusText
         | null c.testCases = if c.passed then "passed" else "failed"

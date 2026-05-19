@@ -87,7 +87,7 @@ runTestRunnerIO act = do
                                         , passed = outcome == GhciPassed
                                         , output
                                         , testCases = parseHspecOutput output
-                                        , durationMs = parseHspecDuration output
+                                        , duration = parseHspecDuration output
                                         }
 
 
