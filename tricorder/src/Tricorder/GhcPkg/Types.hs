@@ -1,6 +1,7 @@
 module Tricorder.GhcPkg.Types
     ( ModuleName (..)
     , PackageId (..)
+    , SourceQuery (..)
     ) where
 
 import Data.Aeson (FromJSON, ToJSON)
@@ -14,3 +15,12 @@ newtype ModuleName = ModuleName {unModuleName :: Text}
 -- | A @ghc-pkg@ package identifier, e.g. @"containers-0.6.8"@.
 newtype PackageId = PackageId {unPackageId :: Text}
     deriving newtype (Eq, FromJSON, Hashable, IsString, Ord, Show, ToJSON)
+
+
+-- | A query for module source: optionally scoped to a single top-level binding.
+data SourceQuery = SourceQuery
+    { moduleName :: ModuleName
+    , function :: Maybe Text -- Nothing = whole module, Just fn = single binding
+    }
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass (FromJSON, Hashable, ToJSON)

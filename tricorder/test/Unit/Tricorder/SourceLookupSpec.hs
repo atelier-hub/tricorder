@@ -11,8 +11,8 @@ import Atelier.Effects.Cache (Cache, runCacheForever)
 import Atelier.Effects.FileSystem (FileSystem (..))
 import Atelier.Effects.Log (Log, runLogNoOp)
 import Tricorder.Effects.GhcPkg (GhcPkg, GhcPkgScript (..), runGhcPkgScripted)
-import Tricorder.GhcPkg.Types (ModuleName, PackageId)
-import Tricorder.SourceLookup (ModuleSourceResult (..), lookupModuleSource)
+import Tricorder.GhcPkg.Types (ModuleName, PackageId, SourceQuery (..))
+import Tricorder.SourceLookup (ModuleSourceResult (..), ReExport, lookupModuleSource)
 
 
 spec_SourceLookup :: Spec
@@ -29,8 +29,8 @@ testLookupModuleSource = do
                 , NextGetHaddockHtml (Just "/haddock/pkg")
                 ]
                 (Map.singleton "/haddock/pkg/src/Foo.html" sampleHtml)
-                (lookupModuleSource "Foo")
-        result `shouldBe` SourceFound "Foo" "module Foo where"
+                (lookupModuleSource (wholeModule "Foo"))
+        result `shouldBe` SourceFound (wholeModule "Foo") "module Foo where" []
 
     it "returns SourceFound on second call without re-querying GhcPkg (cache hit)" do
         -- Only one NextFindModule and one NextGetHaddockHtml in the script.
@@ -41,19 +41,19 @@ testLookupModuleSource = do
             ]
             (Map.singleton "/haddock/pkg/src/Foo.html" sampleHtml)
             $ do
-                r1 <- lookupModuleSource "Foo"
-                r2 <- lookupModuleSource "Foo"
+                r1 <- lookupModuleSource (wholeModule "Foo")
+                r2 <- lookupModuleSource (wholeModule "Foo")
                 pure (r1, r2)
-        r1 `shouldBe` SourceFound "Foo" "module Foo where"
-        r2 `shouldBe` SourceFound "Foo" "module Foo where"
+        r1 `shouldBe` SourceFound (wholeModule "Foo") "module Foo where" []
+        r2 `shouldBe` SourceFound (wholeModule "Foo") "module Foo where" []
 
     it "returns SourceNotFound when findModule returns Nothing" do
         result <-
             runTest
                 [NextFindModule Nothing]
                 Map.empty
-                (lookupModuleSource "Unknown")
-        result `shouldBe` SourceNotFound "Unknown"
+                (lookupModuleSource (wholeModule "Unknown"))
+        result `shouldBe` SourceNotFound (wholeModule "Unknown")
 
     it "returns SourceNoHaddock when getHaddockHtml returns Nothing" do
         result <-
@@ -62,8 +62,8 @@ testLookupModuleSource = do
                 , NextGetHaddockHtml Nothing
                 ]
                 Map.empty
-                (lookupModuleSource "Foo")
-        result `shouldBe` SourceNoHaddock "Foo" "no-docs-1.0"
+                (lookupModuleSource (wholeModule "Foo"))
+        result `shouldBe` SourceNoHaddock (wholeModule "Foo") "no-docs-1.0"
 
     it "returns SourceNoHaddock when the html file does not exist" do
         result <-
@@ -72,8 +72,8 @@ testLookupModuleSource = do
                 , NextGetHaddockHtml (Just "/haddock/pkg")
                 ]
                 Map.empty
-                (lookupModuleSource "Foo")
-        result `shouldBe` SourceNoHaddock "Foo" "pkg-1.0"
+                (lookupModuleSource (wholeModule "Foo"))
+        result `shouldBe` SourceNoHaddock (wholeModule "Foo") "pkg-1.0"
 
     it "handles two different module names independently" do
         (r1, r2) <- runTest
@@ -88,11 +88,11 @@ testLookupModuleSource = do
                 ]
             )
             $ do
-                r1 <- lookupModuleSource "Foo"
-                r2 <- lookupModuleSource "Bar"
+                r1 <- lookupModuleSource (wholeModule "Foo")
+                r2 <- lookupModuleSource (wholeModule "Bar")
                 pure (r1, r2)
-        r1 `shouldBe` SourceFound "Foo" "module Foo where"
-        r2 `shouldBe` SourceFound "Bar" "module Bar where"
+        r1 `shouldBe` SourceFound (wholeModule "Foo") "module Foo where" []
+        r2 `shouldBe` SourceFound (wholeModule "Bar") "module Bar where" []
 
 
 --------------------------------------------------------------------------------
@@ -105,6 +105,11 @@ sampleHtml = "<html><body><pre id=\"src\"><span>module</span> Foo <span>where</s
 
 barHtml :: LByteString
 barHtml = "<html><body><pre id=\"src\"><span>module</span> Bar <span>where</span></pre></body></html>"
+
+
+-- | Helper: a whole-module query (no function filter).
+wholeModule :: ModuleName -> SourceQuery
+wholeModule m = SourceQuery {moduleName = m, function = Nothing}
 
 
 --------------------------------------------------------------------------------
@@ -121,7 +126,7 @@ runFileSystemScripted files = interpret_ \case
 runTest
     :: [GhcPkgScript]
     -> Map FilePath LByteString
-    -> Eff '[Cache ModuleName PackageId, Cache (PackageId, ModuleName) Text, FileSystem, GhcPkg, Log, Concurrent, IOE] a
+    -> Eff '[Cache ModuleName PackageId, Cache (PackageId, SourceQuery) (Text, [ReExport]), FileSystem, GhcPkg, Log, Concurrent, IOE] a
     -> IO a
 runTest pkgScript files action =
     runEff
@@ -129,6 +134,6 @@ runTest pkgScript files action =
         . runLogNoOp
         . runGhcPkgScripted pkgScript
         . runFileSystemScripted files
-        . runCacheForever @(PackageId, ModuleName) @Text
+        . runCacheForever @(PackageId, SourceQuery) @(Text, [ReExport])
         . runCacheForever @ModuleName @PackageId
         $ action

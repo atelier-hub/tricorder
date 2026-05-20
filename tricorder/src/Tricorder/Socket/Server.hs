@@ -26,9 +26,10 @@ import Tricorder.Effects.UnixSocket
     , removeSocketFile
     , sendLine
     )
+import Tricorder.GhcPkg.Types (SourceQuery (..))
 import Tricorder.Runtime (SocketPath (..))
 import Tricorder.Socket.Protocol (ClientMessage (..), DiagnosticQuery (..), ErrorResponse (..), Query (..), StatusQuery (..))
-import Tricorder.SourceLookup (ModuleName, PackageId, lookupModuleSource)
+import Tricorder.SourceLookup (ModuleName, PackageId, ReExport, lookupModuleSource)
 import Tricorder.Version (VersionMismatch (..), checkVersion)
 
 import Atelier.Effects.Conc qualified as Conc
@@ -44,7 +45,7 @@ data SocketRemoved = SocketRemoved
 -- Listens on a Unix socket and responds to status/watch/source queries.
 component
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
+       , Cache (PackageId, SourceQuery) (Text, [ReExport]) :> es
        , Cache ModuleName PackageId :> es
        , Conc :> es
        , Delay :> es
@@ -68,7 +69,7 @@ component =
 
 acceptTrigger
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
+       , Cache (PackageId, SourceQuery) (Text, [ReExport]) :> es
        , Cache ModuleName PackageId :> es
        , Conc :> es
        , Delay :> es
@@ -91,7 +92,7 @@ acceptTrigger = do
 
 handleConnection
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
+       , Cache (PackageId, SourceQuery) (Text, [ReExport]) :> es
        , Cache ModuleName PackageId :> es
        , Delay :> es
        , Exit :> es
@@ -117,7 +118,7 @@ handleConnection h = do
 
 dispatch
     :: ( BuildStore :> es
-       , Cache (PackageId, ModuleName) Text :> es
+       , Cache (PackageId, SourceQuery) (Text, [ReExport]) :> es
        , Cache ModuleName PackageId :> es
        , Delay :> es
        , Exit :> es
@@ -210,18 +211,18 @@ respondDiagnostic idx h = do
 
 -- | Look up source for each requested module and send the results as a JSON array.
 respondSource
-    :: ( Cache (PackageId, ModuleName) Text :> es
+    :: ( Cache (PackageId, SourceQuery) (Text, [ReExport]) :> es
        , Cache ModuleName PackageId :> es
        , FileSystem :> es
        , GhcPkg :> es
        , Log :> es
        , UnixSocket :> es
        )
-    => [ModuleName]
+    => [SourceQuery]
     -> Handle
     -> Eff es ()
-respondSource moduleNames h = do
-    results <- mapM lookupModuleSource moduleNames
+respondSource queries h = do
+    results <- mapM lookupModuleSource queries
     sendJson h results
 
 

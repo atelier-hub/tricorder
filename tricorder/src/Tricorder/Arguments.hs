@@ -15,9 +15,11 @@ import Effectful.Reader.Static (Reader, runReader)
 import Options.Applicative
     ( Parser
     , ParserInfo
+    , ReadM
     , argument
     , auto
     , command
+    , eitherReader
     , execParser
     , flag
     , fullDesc
@@ -32,10 +34,11 @@ import Options.Applicative
     , option
     , progDesc
     , short
-    , str
     )
 
-import Tricorder.GhcPkg.Types (ModuleName (..))
+import Data.Text qualified as T
+
+import Tricorder.GhcPkg.Types (ModuleName (..), SourceQuery (..))
 
 import Tricorder.Version qualified as Version
 
@@ -85,7 +88,7 @@ data Command
     | Test TestOptions
     | UI
     | Log FollowMode
-    | Source [ModuleName]
+    | Source [SourceQuery]
 
 
 runArguments :: (IOE :> es) => Eff (Reader Command : es) a -> Eff es a
@@ -190,5 +193,15 @@ testParser =
 
 sourceParser :: Parser Command
 sourceParser =
-    Source
-        <$> some (argument (fromString <$> str) (metavar "MODULE" <> help "Dotted module name, e.g. Data.Map.Strict"))
+    Source <$> some (argument queryReader (metavar "MODULE[#FUNCTION]" <> help "Module or Module#function"))
+
+
+queryReader :: ReadM SourceQuery
+queryReader = eitherReader $ \s ->
+    let t = toText s
+        (m, rest) = T.break (== '#') t
+    in  Right
+            $ SourceQuery
+                { moduleName = ModuleName m
+                , function = if T.null rest then Nothing else Just (T.tail rest)
+                }
