@@ -66,6 +66,7 @@ import Tricorder.UI.State
 import Atelier.Effects.Console qualified as Console
 
 
+-- When adding a new event here, also list it in the README under "Custom Key Bindings".
 data KeyEvent
     = ToggleDaemonInfoView
     | Quit
