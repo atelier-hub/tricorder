@@ -3,7 +3,7 @@ module Unit.Tricorder.TestOutputSpec (spec_TestOutput) where
 import Test.Hspec
 
 import Tricorder.BuildState (TestCase (..), TestCaseOutcome (..))
-import Tricorder.TestOutput (parseHspecOutput, stripGhciNoise)
+import Tricorder.TestOutput (parseHspecDuration, parseHspecOutput, stripGhciNoise)
 
 
 spec_TestOutput :: Spec
@@ -67,6 +67,54 @@ spec_TestOutput = do
                            , TestCase {description = "fails:", outcome = TestCaseFailed "reason"}
                            , TestCase {description = "also passes:", outcome = TestCasePassed}
                            ]
+
+        it "parses a passing test with a timing annotation" do
+            let output = "  slow test:                                          OK (0.05s)\n"
+            parseHspecOutput output
+                `shouldBe` [TestCase {description = "slow test:", outcome = TestCasePassed}]
+
+        it "parses a passing test with a millisecond annotation" do
+            let output = "  fast property:                                      OK (12ms)\n"
+            parseHspecOutput output
+                `shouldBe` [TestCase {description = "fast property:", outcome = TestCasePassed}]
+
+        it "parses a failing test with a timing annotation" do
+            let output = "  slow fail:                                          FAIL (0.03s)\n"
+            parseHspecOutput output
+                `shouldBe` [TestCase {description = "slow fail:", outcome = TestCaseFailed ""}]
+
+        it "does not strip a non-timing parenthetical in the description" do
+            let output = "  test (corner case):                                 OK\n"
+            parseHspecOutput output
+                `shouldBe` [TestCase {description = "test (corner case):", outcome = TestCasePassed}]
+
+    describe "parseHspecDuration" do
+        it "returns Nothing for empty output" do
+            parseHspecDuration "" `shouldBe` Nothing
+
+        it "returns Nothing when no timing line is present" do
+            parseHspecDuration "2 examples, 0 failures\n" `shouldBe` Nothing
+
+        it "parses duration from passing summary line" do
+            parseHspecDuration "All 177 tests passed (0.05s)\n"
+                `shouldBe` Just 50
+
+        it "parses duration from failing summary line" do
+            parseHspecDuration "1 out of 177 tests failed (0.06s)\n"
+                `shouldBe` Just 60
+
+        it "does not match indented individual test timing lines" do
+            parseHspecDuration "      entry is evicted after cleanup thread fires past TTL:  OK (0.05s)\n"
+                `shouldBe` Nothing
+
+        it "parses duration embedded in full hspec output" do
+            let output =
+                    "  Suite\n"
+                        <> "    passes:                                          OK\n"
+                        <> "    slow test:                                       OK (0.05s)\n"
+                        <> "\n"
+                        <> "All 2 tests passed (0.5s)\n"
+            parseHspecDuration output `shouldBe` Just 500
 
     describe "stripGhciNoise" do
         it "passes through empty list" do

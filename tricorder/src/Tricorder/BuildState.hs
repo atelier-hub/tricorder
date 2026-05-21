@@ -29,6 +29,7 @@ import Effectful.Concurrent.STM (TVar)
 import Effectful.Reader.Static (Reader, ask, runReader)
 import System.FilePath (makeRelative)
 
+import Atelier.Time (Millisecond)
 import Tricorder.Runtime (LogPath (..), ProjectRoot (..), SocketPath (..))
 import Tricorder.Session (Session (..))
 
@@ -105,6 +106,7 @@ data TestRunCompletion = TestRunCompletion
     , passed :: Bool
     , output :: Text
     , testCases :: [TestCase]
+    , duration :: Maybe Millisecond
     }
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
@@ -120,7 +122,7 @@ data TestRun
 
 data BuildResult = BuildResult
     { completedAt :: UTCTime
-    , durationMs :: Int
+    , duration :: Millisecond
     , moduleCount :: Int
     , diagnostics :: [Diagnostic]
     , testRuns :: [TestRun]

@@ -131,10 +131,12 @@ The following event names are recognized:
 
 - `toggle_daemon_info_view`: Toggle displaying daemon info.
 - `quit`: Exit the TUI.
+- `exit_view`: Exit the current view or go back.
 - `scroll_up`: Scroll up in the diagnostic list.
 - `scroll_down`: Scroll down in the diagnostic list.
 - `toggle_help`: Toggle displaying the available key bindings. This includes
   your custom key bindings.
+- `cycle_test_view`: Cycle through test results views.
 
 Key binds are specified in the format `<modifiers>-<key>`, where `<modifiers>`
 is an optional `-`-separated list of modifier keys, and `<key>` is any

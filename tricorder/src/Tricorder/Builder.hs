@@ -29,6 +29,7 @@ import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce, debounced)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
+import Atelier.Time (Millisecond, nominalDiffTime)
 import Atelier.Types.Semaphore (Semaphore)
 import Tricorder.BuildState
     ( BuildId (..)
@@ -312,7 +313,7 @@ compileLoadResultsIntoBuildResults NewLoadResult {startTime, endTime, loadResult
     publish
         BuildResult
             { completedAt = endTime
-            , durationMs = round (realToFrac (diffUTCTime endTime startTime) * 1000 :: Double) :: Int
+            , duration = nominalDiffTime (diffUTCTime endTime startTime) :: Millisecond
             , moduleCount = loadResult.moduleCount
             , diagnostics = sortOn (\d -> (d.severity, d.file, d.line, d.col)) $ concat (Map.elems newAccumulated)
             , testRuns = []
