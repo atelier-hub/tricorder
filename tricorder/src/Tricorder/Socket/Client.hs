@@ -24,7 +24,7 @@ import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Time (Millisecond)
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.Effects.UnixSocket (UnixSocket, withConnection)
-import Tricorder.GhcPkg.Types (ModuleName)
+import Tricorder.GhcPkg.Types (SourceQuery)
 import Tricorder.Runtime (PidFile)
 import Tricorder.Socket.Protocol (ClientMessage (..), DiagnosticQuery (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleSourceResult)
@@ -99,10 +99,10 @@ queryWatch sockPath handler = evalState retryLimit retryLoop
 querySource
     :: (File :> es, UnixSocket :> es)
     => FilePath
-    -> [ModuleName]
+    -> [SourceQuery]
     -> Eff es (Either Text [ModuleSourceResult])
-querySource sockPath moduleNames = withConnection sockPath \h -> do
-    sendQuery h (Source moduleNames)
+querySource sockPath queries = withConnection sockPath \h -> do
+    sendQuery h (Source queries)
     line <- File.hGetLine h
     case eitherDecode (BSL.fromStrict (encodeUtf8 (toText line))) of
         Left err -> pure $ Left (toText err)

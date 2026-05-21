@@ -7,6 +7,8 @@ module Tricorder.CLI.Render
     , renderSourceResults
     ) where
 
+import Data.Text qualified as T
+
 import Atelier.Effects.Console (Console)
 import Atelier.Time (Millisecond, toMicroseconds)
 import Tricorder.BuildState
@@ -14,7 +16,7 @@ import Tricorder.BuildState
     , Severity (..)
     )
 import Tricorder.GhcPkg.Types (ModuleName (..), PackageId (..))
-import Tricorder.SourceLookup (ModuleSourceResult (..))
+import Tricorder.SourceLookup (ModuleSourceResult (..), ReExport (..), SourceQuery (..))
 
 import Atelier.Effects.Console qualified as Console
 
@@ -54,19 +56,39 @@ diagnosticBlock d = diagnosticLine d <> "\n" <> d.text
 renderSourceResults :: (Console :> es) => [ModuleSourceResult] -> Eff es ()
 renderSourceResults results = mapM_ renderOne results
   where
-    renderOne (SourceFound modName src) = do
-        when (length results > 1) $ Console.putTextLn $ "-- " <> unModuleName modName
+    renderOne (SourceFound query src reExports) = do
+        when (length results > 1) $ Console.putTextLn $ header query
         Console.putText src
+        unless (null reExports || isJust query.function)
+            $ Console.putTextLn
+            $ "\n-- Re-exports: " <> T.intercalate ", " (map renderReExport reExports)
         when (length results > 1) $ Console.putStrLn ""
-    renderOne (SourceNotFound modName) =
+    renderOne (SourceNotFound query) =
         Console.putTextLn
-            $ "Not found: " <> unModuleName modName <> " (module not in any installed package)"
-    renderOne (SourceNoHaddock modName pkgId) =
+            $ "Not found: "
+                <> unModuleName query.moduleName
+                <> " (module not in any installed package)"
+    renderOne (SourceNoHaddock query pkgId) =
         Console.putTextLn
             $ "No source available: "
-                <> unModuleName modName
+                <> unModuleName query.moduleName
                 <> " (package "
                 <> unPackageId pkgId
                 <> " was built without documentation; try `cabal get "
                 <> unPackageId pkgId
                 <> "`)"
+    renderOne (FunctionNotFound query) =
+        Console.putTextLn
+            $ "tricorder: "
+                <> unModuleName query.moduleName
+                <> "#"
+                <> fromMaybe "" query.function
+                <> ": function not found in module source"
+
+    header query =
+        "-- "
+            <> unModuleName query.moduleName
+            <> maybe "" ("#" <>) query.function
+
+    renderReExport (ReExportModule m) = "module " <> m
+    renderReExport (ReExportName name src) = name <> " (from " <> src <> ")"

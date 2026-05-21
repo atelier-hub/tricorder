@@ -45,7 +45,7 @@ import Tricorder.CLI.Render
     , renderSourceResults
     )
 import Tricorder.Effects.UnixSocket (UnixSocket)
-import Tricorder.GhcPkg.Types (ModuleName)
+import Tricorder.GhcPkg.Types (SourceQuery)
 import Tricorder.Runtime (SocketPath (..))
 import Tricorder.Socket.Client
     ( querySource
@@ -258,11 +258,11 @@ showSource
        , Reader SocketPath :> es
        , UnixSocket :> es
        )
-    => [ModuleName]
+    => [SourceQuery]
     -> Eff es ()
-showSource moduleNames = do
+showSource queries = do
     SocketPath sockPath <- ask
-    result <- querySource sockPath moduleNames
+    result <- querySource sockPath queries
     case result of
         Left err -> Console.putTextLn $ "Error: " <> err
         Right results -> renderSourceResults results

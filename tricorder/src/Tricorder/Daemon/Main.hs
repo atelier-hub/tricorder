@@ -39,6 +39,7 @@ import Tricorder.Builder qualified as Builder
 import Tricorder.GhcPkg.Types qualified as GhcPkg
 import Tricorder.Observability qualified as Observability
 import Tricorder.Socket.Server qualified as SocketServer
+import Tricorder.SourceLookup qualified as SourceLookup
 import Tricorder.Version qualified as Version
 import Tricorder.Watcher qualified as Watcher
 
@@ -81,7 +82,7 @@ main =
         . runLogging
         . runTestRunnerIO
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
-        . runCacheTtl @(GhcPkg.PackageId, GhcPkg.ModuleName) @Text
+        . runCacheTtl @(GhcPkg.PackageId, GhcPkg.SourceQuery) @(Text, [SourceLookup.ReExport])
         . runBuildStore
         . runGhcPkgIO
         . runUnixSocketIO

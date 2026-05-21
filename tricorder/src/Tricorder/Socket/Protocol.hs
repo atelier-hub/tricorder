@@ -8,7 +8,7 @@ module Tricorder.Socket.Protocol
 
 import Data.Aeson (FromJSON, ToJSON)
 
-import Tricorder.GhcPkg.Types (ModuleName)
+import Tricorder.GhcPkg.Types (SourceQuery)
 
 
 data StatusQuery = StatusQuery {awaitDone :: Bool}
@@ -24,7 +24,7 @@ newtype DiagnosticQuery = DiagnosticQuery {index :: Int}
 data Query
     = Status StatusQuery
     | Watch
-    | Source [ModuleName]
+    | Source [SourceQuery]
     | DiagnosticAt DiagnosticQuery
     | Quit
     deriving stock (Eq, Generic, Show)
