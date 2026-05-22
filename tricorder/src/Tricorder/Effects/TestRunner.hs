@@ -31,9 +31,12 @@ import Atelier.Effects.Delay (Delay, withTimeout)
 import Atelier.Effects.File (File)
 import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
 import Tricorder.Effects.GhciSession.GhciProcess (execGhci, withGhciProcess)
+import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 import Tricorder.TestOutput (parseHspecDuration, parseHspecOutput)
+
+import Tricorder.Effects.SessionStore qualified as SessionStore
 
 
 data TestRunner :: Effect where
@@ -55,14 +58,14 @@ runTestRunnerIO
        , File :> es
        , IOE :> es
        , Reader ProjectRoot :> es
-       , Reader Session :> es
+       , SessionStore :> es
        )
     => Eff (TestRunner : es) a -> Eff es a
 runTestRunnerIO act = do
     ProjectRoot projectRoot <- ask
     interpretWith_ act \case
         RunTestSuite target -> do
-            Session {testTimeout} <- ask
+            Session {testTimeout} <- SessionStore.get
             result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot \ghci _ -> do
                 case testTimeout of
                     secs | secs <= 0 -> Right <$> execGhci ghci ":main"

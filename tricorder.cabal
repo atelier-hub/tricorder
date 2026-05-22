@@ -33,6 +33,7 @@ library
       Tricorder.Effects.GhciSession.GhciProcess
       Tricorder.Effects.GhcPkg
       Tricorder.Effects.Logging
+      Tricorder.Effects.SessionStore
       Tricorder.Effects.TestRunner
       Tricorder.Effects.UnixSocket
       Tricorder.Events.FileChanged
@@ -146,6 +147,7 @@ library atelier
       Atelier.Effects.Posix.Daemons
       Atelier.Effects.Posix.IO
       Atelier.Effects.Publishing
+      Atelier.Effects.Stream
       Atelier.Effects.Tally
       Atelier.Effects.UUID
       Atelier.Exception
@@ -457,6 +459,7 @@ test-suite tricorder-test
       Unit.Tricorder.CLI.RenderSpec
       Unit.Tricorder.Effects.GhciSession.GhciParserSpec
       Unit.Tricorder.Effects.GhciSessionSpec
+      Unit.Tricorder.Effects.SessionStoreSpec
       Unit.Tricorder.GhcPkgSpec
       Unit.Tricorder.SessionSpec
       Unit.Tricorder.SocketSpec

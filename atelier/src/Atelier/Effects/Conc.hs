@@ -11,6 +11,8 @@ module Atelier.Effects.Conc
       -- * Scope
     , Scope (..)
     , scoped
+    , restartableForkWith
+    , restartableForkLoop
 
       -- * Interpreters
     , runConcBase
@@ -21,9 +23,24 @@ module Atelier.Effects.Conc
     )
 where
 
-import Effectful (Effect, IOE, Limit (..), Persistence (..), UnliftStrategy (..), raise, withEffToIO)
+import Effectful
+    ( Effect
+    , IOE
+    , Limit (..)
+    , Persistence (..)
+    , UnliftStrategy (..)
+    , raise
+    , withEffToIO
+    )
 import Effectful.Concurrent.STM (atomically, runConcurrent)
-import Effectful.Dispatch.Dynamic (EffectHandler, interpose, interpret, localLend, localUnlift, localUnliftIO)
+import Effectful.Dispatch.Dynamic
+    ( EffectHandler
+    , interpose
+    , interpret
+    , localLend
+    , localUnlift
+    , localUnliftIO
+    )
 import Effectful.TH (makeEffect)
 
 import Ki qualified
@@ -48,6 +65,29 @@ newtype Thread a = Thread (Ki.Thread a)
 
 
 makeEffect ''Conc
+
+
+-- | Forks an action in a loop, with a setup step that runs in the scope before
+-- each fork. Each time @signal@ returns, the current fork is cancelled, and
+-- setup and fork are run again. The setup result is passed to the forked
+-- action, structurally guaranteeing it completes before the fork starts.
+restartableForkWith :: (Conc :> es) => Eff es () -> Eff es r -> (r -> Eff es a) -> Eff es Void
+restartableForkWith signal setup action = forever $ scoped do
+    r <- setup
+    _ <- fork (action r)
+    signal
+
+
+-- | Like 'restartableForkWith', but threads a value across iterations: the
+-- signal returns the next @r@, which is passed to the next fork. The initial
+-- @r@ seeds the first fork.
+restartableForkLoop :: (Conc :> es) => r -> Eff es r -> (r -> Eff es a) -> Eff es Void
+restartableForkLoop initial signal action = go initial
+  where
+    go r = scoped do
+        _ <- fork (action r)
+        r' <- signal
+        go r'
 
 
 -- | Base interpreter: resolves 'Conc' operations using Ki.
