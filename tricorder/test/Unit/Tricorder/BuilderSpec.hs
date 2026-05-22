@@ -15,6 +15,7 @@ import Data.Set qualified as Set
 import Atelier.Effects.Clock (runClockConst)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.FileWatcher (FileEvent (..))
+import Atelier.Effects.Input (runInputConst)
 import Atelier.Effects.Log (runLogNoOp)
 import Atelier.Effects.Publishing (runPubWriter)
 import Tricorder.BuildState
@@ -180,7 +181,7 @@ testSetNewPhase = do
             . runDelay
             . runWriter
             . runPubWriter
-            . runReader emptyDaemonInfo
+            . runInputConst emptyDaemonInfo
             . BuildStore.runBuildStore
             $ do
                 setNewPhase $ EnteringNewPhase (BuildId 1) (Building Nothing)

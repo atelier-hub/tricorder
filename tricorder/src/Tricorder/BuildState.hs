@@ -10,6 +10,7 @@ module Tricorder.BuildState
     , TestCase (..)
     , TestCaseOutcome (..)
     , DaemonInfo (..)
+    , loadDaemonInfo
     , runDaemonInfo
     , Diagnostic (..)
     , Severity (..)
@@ -26,10 +27,11 @@ module Tricorder.BuildState
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Time (UTCTime)
 import Effectful.Concurrent.STM (TVar)
-import Effectful.Reader.Static (Reader, ask, runReader)
+import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (makeRelative)
 
 import Atelier.Effects.FileWatcher (FileEvent)
+import Atelier.Effects.Input (Input, runInputEff)
 import Atelier.Time (Millisecond)
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (LogPath (..), ProjectRoot (..), SocketPath (..))
@@ -56,6 +58,30 @@ data DaemonInfo = DaemonInfo
     deriving anyclass (FromJSON, ToJSON)
 
 
+loadDaemonInfo
+    :: ( Reader LogPath :> es
+       , Reader Observability.Config :> es
+       , Reader ProjectRoot :> es
+       , Reader SocketPath :> es
+       , SessionStore :> es
+       )
+    => Eff es DaemonInfo
+loadDaemonInfo = do
+    session <- SessionStore.get
+    obsCfg <- ask @Observability.Config
+    ProjectRoot projectRoot <- ask
+    SocketPath sockPath <- ask
+    LogPath logFile <- ask
+    pure
+        $ DaemonInfo
+            { targets = session.targets
+            , watchDirs = map (makeRelative projectRoot) session.watchDirs
+            , sockPath
+            , logFile
+            , metricsPort = if obsCfg.metrics.enabled then Just obsCfg.metrics.port else Nothing
+            }
+
+
 runDaemonInfo
     :: ( Reader LogPath :> es
        , Reader Observability.Config :> es
@@ -63,22 +89,8 @@ runDaemonInfo
        , Reader SocketPath :> es
        , SessionStore :> es
        )
-    => Eff (Reader DaemonInfo : es) a -> Eff es a
-runDaemonInfo act = do
-    session <- SessionStore.get
-    obsCfg <- ask @Observability.Config
-    ProjectRoot projectRoot <- ask
-    SocketPath sockPath <- ask
-    LogPath logFile <- ask
-    let daemonInfo =
-            DaemonInfo
-                { targets = session.targets
-                , watchDirs = map (makeRelative projectRoot) session.watchDirs
-                , sockPath
-                , logFile
-                , metricsPort = if obsCfg.metrics.enabled then Just obsCfg.metrics.port else Nothing
-                }
-    runReader daemonInfo act
+    => Eff (Input DaemonInfo : es) a -> Eff es a
+runDaemonInfo = runInputEff loadDaemonInfo
 
 
 data TestCaseOutcome

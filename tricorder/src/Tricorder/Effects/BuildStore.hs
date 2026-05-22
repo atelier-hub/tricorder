@@ -23,13 +23,21 @@ import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (TVar, atomically, modifyTVar, newTVar, readTVar, writeTVar)
 import Effectful.Dispatch.Dynamic (interpret_, reinterpret)
 import Effectful.Exception (bracket_)
-import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, evalState, get, modify, put)
 import Effectful.TH (makeEffect)
 
 import Atelier.Effects.Delay (Delay, wait)
+import Atelier.Effects.Input (Input, input)
 import Atelier.Time (Millisecond)
-import Tricorder.BuildState (BuildId, BuildPhase (..), BuildState (..), BuildStateRef (..), ChangeKind (..), DaemonInfo (..), initialBuildState)
+import Tricorder.BuildState
+    ( BuildId
+    , BuildPhase (..)
+    , BuildState (..)
+    , BuildStateRef (..)
+    , ChangeKind (..)
+    , DaemonInfo (..)
+    , initialBuildState
+    )
 
 
 data BuildStore :: Effect where
@@ -105,7 +113,12 @@ runBuildStoreSTM eff = do
 
 -- | Production interpreter that shares a 'BuildStateRef' TVar with writers
 -- (e.g. 'GhciSession'). Use this in the daemon instead of 'runBuildStoreSTM'.
-runBuildStoreRef :: (Concurrent :> es, Delay :> es) => BuildStateRef -> Eff (BuildStore : es) a -> Eff es a
+runBuildStoreRef
+    :: ( Concurrent :> es
+       , Delay :> es
+       , Input DaemonInfo :> es
+       )
+    => BuildStateRef -> Eff (BuildStore : es) a -> Eff es a
 runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef, waitersRef} =
     interpret_
         ( \case
@@ -118,7 +131,9 @@ runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef, waitersRef} =
                     (pollRef ref (not . isBuilding))
             WaitForNext bid -> pollRef ref \s -> not (isBuilding s) && s.buildId /= bid
             WaitForAnyChange prev -> pollRef ref (/= prev)
-            SetPhase bid phase -> atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase}
+            SetPhase bid phase -> do
+                daemonInfo <- input
+                atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase, daemonInfo}
             MarkDirty ck -> atomically (modifyTVar dirtyRef (max (Just ck)))
             WaitDirty -> pollDirtyRef dirtyRef
             HasWaiters -> fmap (> 0) $ atomically (readTVar waitersRef)
@@ -169,7 +184,7 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
     WaitUntilDone -> advance (not . isBuilding)
     WaitForNext bid -> advance \s -> not (isBuilding s) && s.buildId /= bid
     WaitForAnyChange prev -> advance (/= prev)
-    SetPhase bid phase ->
+    SetPhase bid phase -> do
         get >>= \case
             [] -> pure ()
             s : rest -> put (s {buildId = bid, phase = phase} : rest)
@@ -200,11 +215,11 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
 runBuildStore
     :: ( Concurrent :> es
        , Delay :> es
-       , Reader DaemonInfo :> es
+       , Input DaemonInfo :> es
        )
     => Eff (BuildStore : es) a -> Eff es a
 runBuildStore eff = do
-    di <- ask
+    di <- input
     ref <- atomically (newTVar (initialBuildState di))
     dirtyRef <- atomically (newTVar Nothing)
     waitersRef <- atomically (newTVar (0 :: Int))
