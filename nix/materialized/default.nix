@@ -219,6 +219,7 @@
         mtl-compat.revision = import ./cabal-files/mtl-compat.nix;
         mtl-compat.flags.two-point-one = false;
         mtl-compat.flags.two-point-two = false;
+        hfsevents.revision = import ./cabal-files/hfsevents.nix;
         tls.revision = import ./cabal-files/tls.nix;
         tls.flags.devel = false;
         bifunctors.revision = import ./cabal-files/bifunctors.nix;
@@ -260,7 +261,6 @@
         semigroupoids.flags.comonad = true;
         semigroupoids.flags.tagged = true;
         semigroupoids.flags.contravariant = true;
-        hinotify.revision = import ./cabal-files/hinotify.nix;
         byteorder.revision = import ./cabal-files/byteorder.nix;
         hspec-api.revision = import ./cabal-files/hspec-api.nix;
         hs-opentelemetry-propagator-datadog.revision = import ./cabal-files/hs-opentelemetry-propagator-datadog.nix;
@@ -712,6 +712,7 @@
           "atomic-primops".components.library.planned = lib.mkOverride 900 true;
           "th-lift-instances".components.library.planned = lib.mkOverride 900 true;
           "typed-process".components.library.planned = lib.mkOverride 900 true;
+          "hfsevents".components.library.planned = lib.mkOverride 900 true;
           "auto-update".components.library.planned = lib.mkOverride 900 true;
           "safe-exceptions".components.library.planned = lib.mkOverride 900 true;
           "StateVar".components.library.planned = lib.mkOverride 900 true;
@@ -859,7 +860,6 @@
           "process".components.library.planned = lib.mkOverride 900 true;
           "hs-opentelemetry-propagator-b3".components.library.planned = lib.mkOverride 900 true;
           "deferred-folds".components.library.planned = lib.mkOverride 900 true;
-          "hinotify".components.library.planned = lib.mkOverride 900 true;
           "warp".components.library.planned = lib.mkOverride 900 true;
           "vector".components.library.planned = lib.mkOverride 900 true;
           "contravariant".components.library.planned = lib.mkOverride 900 true;
