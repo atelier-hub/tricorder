@@ -5,6 +5,7 @@ import Data.Default (def)
 import Data.IORef (IORef)
 import Data.Time (UTCTime (..), fromGregorian)
 import Effectful (IOE, runEff)
+import Effectful.Concurrent (Concurrent, runConcurrent)
 import Effectful.Dispatch.Dynamic (interpret_)
 import Effectful.Error.Static (Error, runErrorNoCallStack, throwError)
 import Test.Hspec (Spec, describe, it, shouldBe)
@@ -89,6 +90,7 @@ type TestEs =
      , Chan
      , Clock
      , Tracing
+     , Concurrent
      , IOE
      ]
 
@@ -96,6 +98,7 @@ type TestEs =
 runFixed :: Session -> Eff TestEs a -> IO (Either StopSignal a)
 runFixed session =
     runEff
+        . runConcurrent
         . runTracingNoOp
         . runClockConst epoch
         . runChan
@@ -108,6 +111,7 @@ runFixed session =
 runFlagged :: IORef Bool -> Eff TestEs a -> IO (Either StopSignal a)
 runFlagged flag =
     runEff
+        . runConcurrent
         . runTracingNoOp
         . runClockConst epoch
         . runChan
@@ -120,6 +124,7 @@ runFlagged flag =
 runMutable :: IORef Session -> Eff TestEs a -> IO (Either StopSignal a)
 runMutable ref =
     runEff
+        . runConcurrent
         . runTracingNoOp
         . runClockConst epoch
         . runChan
