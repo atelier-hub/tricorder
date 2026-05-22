@@ -44,7 +44,7 @@
 
   outputs =
     { self, ... }@inputs:
-    inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (
+    inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (
       system:
       import ./nix/outputs.nix {
         inherit inputs system self;

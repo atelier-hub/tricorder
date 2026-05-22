@@ -9,7 +9,7 @@ pkgs.haskell-nix.cabalProject' {
   inherit compiler-nix-name;
 
   # Enable materialization for deterministic builds and better CI caching
-  materialized = ./materialized;
+  materialized = ./materialized + "/${pkgs.stdenv.hostPlatform.system}";
   checkMaterialization = true;
 
   # Add tmp-postgres from flake input
