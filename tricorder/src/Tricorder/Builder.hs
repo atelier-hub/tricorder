@@ -130,7 +130,6 @@ instance Default BuilderSession where
 -- passed function whenever those parts change.
 withBuilderSession
     :: ( Conc :> es
-       , Concurrent :> es
        , SessionStore :> es
        , Sub SessionStoreReloaded :> es
        )

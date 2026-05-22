@@ -11,6 +11,7 @@ module Atelier.Effects.Conc
       -- * Scope
     , Scope (..)
     , scoped
+    , restartableForkWith
 
       -- * Interpreters
     , runConcBase
@@ -63,6 +64,17 @@ newtype Thread a = Thread (Ki.Thread a)
 
 
 makeEffect ''Conc
+
+
+-- | Forks an action in a loop, with a setup step that runs in the scope before
+-- each fork. Each time @signal@ returns, the current fork is cancelled, and
+-- setup and fork are run again. The setup result is passed to the forked
+-- action, structurally guaranteeing it completes before the fork starts.
+restartableForkWith :: (Conc :> es) => Eff es () -> Eff es r -> (r -> Eff es a) -> Eff es Void
+restartableForkWith signal setup action = forever $ scoped do
+    r <- setup
+    _ <- fork (action r)
+    signal
 
 
 -- | Base interpreter: resolves 'Conc' operations using Ki.
