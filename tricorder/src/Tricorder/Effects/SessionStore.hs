@@ -11,7 +11,6 @@ module Tricorder.Effects.SessionStore
     ) where
 
 import Effectful (Effect, inject)
-import Effectful.Concurrent (Concurrent)
 import Effectful.Dispatch.Dynamic (interpret_, reinterpretWith_)
 import Effectful.Reader.Static (Reader)
 import Effectful.TH (makeEffect)
@@ -28,7 +27,6 @@ import Tricorder.Session (Session, loadSession)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Publishing qualified as Sub
-import Atelier.Types.Semaphore qualified as Sem
 
 
 data SessionStore :: Effect where
@@ -58,16 +56,9 @@ withSession
        )
     => (ActiveSession es -> Eff es a)
     -> Eff es Void
-withSession act = forever $ Conc.scoped do
-    session <- get
-    _ <-
-        Conc.fork
-            $ act
-            $ ActiveSession
-                { session
-                , reloader = Reloader rawReload
-                }
-    void $ Sub.listenOnce_ @SessionStoreReloaded
+withSession act =
+    Conc.restartableForkWith (void $ Sub.listenOnce_ @SessionStoreReloaded) get \session ->
+        act ActiveSession {session, reloader = Reloader rawReload}
 
 
 -- | Tracks the parts of 'Session' that the caller cares about, and restarts
@@ -76,7 +67,6 @@ withSession act = forever $ Conc.scoped do
 withSubSession
     :: forall subSession es a
      . ( Conc :> es
-       , Concurrent :> es
        , Eq subSession
        , SessionStore :> es
        , Sub SessionStoreReloaded :> es
@@ -86,28 +76,18 @@ withSubSession
     -> (Reloader es -> subSession -> Eff es a)
     -> Eff es Void
 withSubSession mkSubSession initialSession action =
-    State.evalState (mkSubSession initialSession) do
-        -- Used to signal the thread running the passed function to restart
-        -- the function.
-        restartSem <- Sem.new
-
-        Conc.fork_ $ withSession \activeSession -> do
-            let newSubSession = mkSubSession activeSession.session
-            oldSubSession <- State.get @subSession
-            when (newSubSession /= oldSubSession) do
-                State.put newSubSession
-                -- Sub session is changed. Signal the thread managing the
-                -- passed function to restart said function.
-                Sem.signal restartSem
-
-        -- Run the passed function and wait for the signal to restart.
-        forever $ Conc.scoped do
-            cfg <- State.get
-            _ <- Conc.fork $ inject $ action (Reloader rawReload) cfg
-            -- Passing this 'Sem.wait' ends the scope, killing all
-            -- associated threads, and restarts the passed function again,
-            -- fetching a new, fresh `subSession`.
-            Sem.wait restartSem
+    State.evalState (mkSubSession initialSession)
+        $ Conc.restartableForkWith awaitChange State.get \cfg ->
+            inject $ action (Reloader rawReload) cfg
+  where
+    awaitChange = do
+        SessionStoreReloaded newSession <- Sub.listenOnce_ @SessionStoreReloaded
+        let newSubSession = mkSubSession newSession
+        oldSubSession <- State.get @subSession
+        if newSubSession == oldSubSession then
+            awaitChange
+        else
+            State.put newSubSession
 
 
 data SessionStoreReloaded = SessionStoreReloaded Session

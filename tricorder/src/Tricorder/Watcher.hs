@@ -5,7 +5,6 @@ module Tricorder.Watcher
     , markWatchedFiles
     ) where
 
-import Effectful.Concurrent (Concurrent)
 import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (takeExtension, takeFileName)
 
@@ -44,7 +43,6 @@ import Tricorder.Effects.SessionStore qualified as SessionStore
 component
     :: ( BuildStore :> es
        , Conc :> es
-       , Concurrent :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
        , Pub CabalChangeDetected :> es
@@ -90,7 +88,6 @@ data WatcherSession = WatcherSession
 
 withWatcherSession
     :: ( Conc :> es
-       , Concurrent :> es
        , SessionStore :> es
        , Sub SessionStoreReloaded :> es
        )
@@ -103,7 +100,6 @@ withWatcherSession =
 
 watchFiles
     :: ( Conc :> es
-       , Concurrent :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
        , Pub WatchedFile :> es
