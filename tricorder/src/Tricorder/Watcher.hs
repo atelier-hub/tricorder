@@ -9,6 +9,7 @@ import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (takeExtension, takeFileName)
 
 import Atelier.Component (Component (..), defaultComponent)
+import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.FileWatcher
@@ -42,6 +43,7 @@ import Tricorder.Effects.SessionStore qualified as SessionStore
 -- or session restart accordingly.
 component
     :: ( BuildStore :> es
+       , Chan :> es
        , Conc :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
@@ -87,7 +89,8 @@ data WatcherSession = WatcherSession
 
 
 withWatcherSession
-    :: ( Conc :> es
+    :: ( Chan :> es
+       , Conc :> es
        , SessionStore :> es
        , Sub SessionStoreReloaded :> es
        )
@@ -99,7 +102,8 @@ withWatcherSession =
 
 
 watchFiles
-    :: ( Conc :> es
+    :: ( Chan :> es
+       , Conc :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
        , Pub WatchedFile :> es

@@ -10,7 +10,7 @@ module Tricorder.Effects.SessionStore
     , runSessionStoreConst
     ) where
 
-import Effectful (Effect, inject)
+import Effectful (Effect)
 import Effectful.Dispatch.Dynamic (interpret_, reinterpretWith_)
 import Effectful.Reader.Static (Reader)
 import Effectful.TH (makeEffect)
@@ -19,6 +19,7 @@ import Relude.Extra.Tuple (dup)
 import Effectful.State.Static.Shared qualified as State
 
 import Atelier.Config (LoadedConfig)
+import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
@@ -27,6 +28,7 @@ import Tricorder.Session (Session, loadSession)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Publishing qualified as Sub
+import Atelier.Effects.Stream qualified as Stream
 
 
 data SessionStore :: Effect where
@@ -66,7 +68,8 @@ withSession act =
 -- 'Eq' instance.
 withSubSession
     :: forall subSession es a
-     . ( Conc :> es
+     . ( Chan :> es
+       , Conc :> es
        , Eq subSession
        , SessionStore :> es
        , Sub SessionStoreReloaded :> es
@@ -76,18 +79,16 @@ withSubSession
     -> (Reloader es -> subSession -> Eff es a)
     -> Eff es Void
 withSubSession mkSubSession initialSession action =
-    State.evalState (mkSubSession initialSession)
-        $ Conc.restartableForkWith awaitChange State.get \cfg ->
-            inject $ action (Reloader rawReload) cfg
-  where
-    awaitChange = do
-        SessionStoreReloaded newSession <- Sub.listenOnce_ @SessionStoreReloaded
-        let newSubSession = mkSubSession newSession
-        oldSubSession <- State.get @subSession
-        if newSubSession == oldSubSession then
-            awaitChange
-        else
-            State.put newSubSession
+    Stream.fromEvents @SessionStoreReloaded \stream ->
+        let initialSubSession = mkSubSession initialSession
+            subStream =
+                Stream.changes
+                    initialSubSession
+                    (fmap (\(SessionStoreReloaded s) -> mkSubSession s) stream)
+        in  Conc.restartableForkLoop
+                initialSubSession
+                (Stream.next subStream)
+                \cfg -> action (Reloader rawReload) cfg
 
 
 data SessionStoreReloaded = SessionStoreReloaded Session

@@ -27,6 +27,7 @@ import System.FilePath (isAbsolute, (</>))
 import Data.Map.Strict qualified as Map
 
 import Atelier.Component (Component (..), defaultComponent)
+import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce, debounced)
@@ -72,6 +73,7 @@ type DiagnosticMap = Map FilePath [Diagnostic]
 -- from the watcher.
 component
     :: ( BuildStore :> es
+       , Chan :> es
        , Clock :> es
        , Conc :> es
        , Concurrent :> es
@@ -129,7 +131,8 @@ instance Default BuilderSession where
 -- | Tracks the parts of 'Session' that 'Builder' cares about, and restarts the
 -- passed function whenever those parts change.
 withBuilderSession
-    :: ( Conc :> es
+    :: ( Chan :> es
+       , Conc :> es
        , SessionStore :> es
        , Sub SessionStoreReloaded :> es
        )
