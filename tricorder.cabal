@@ -147,6 +147,7 @@ library atelier
       Atelier.Effects.Posix.Daemons
       Atelier.Effects.Posix.IO
       Atelier.Effects.Publishing
+      Atelier.Effects.Stream
       Atelier.Effects.Tally
       Atelier.Effects.UUID
       Atelier.Exception

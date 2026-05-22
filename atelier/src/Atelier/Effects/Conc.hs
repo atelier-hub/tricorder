@@ -12,6 +12,7 @@ module Atelier.Effects.Conc
     , Scope (..)
     , scoped
     , restartableForkWith
+    , restartableForkLoop
 
       -- * Interpreters
     , runConcBase
@@ -75,6 +76,18 @@ restartableForkWith signal setup action = forever $ scoped do
     r <- setup
     _ <- fork (action r)
     signal
+
+
+-- | Like 'restartableForkWith', but threads a value across iterations: the
+-- signal returns the next @r@, which is passed to the next fork. The initial
+-- @r@ seeds the first fork.
+restartableForkLoop :: (Conc :> es) => r -> Eff es r -> (r -> Eff es a) -> Eff es Void
+restartableForkLoop initial signal action = go initial
+  where
+    go r = scoped do
+        _ <- fork (action r)
+        r' <- signal
+        go r'
 
 
 -- | Base interpreter: resolves 'Conc' operations using Ki.
