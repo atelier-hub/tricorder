@@ -49,6 +49,10 @@ module Atelier.Effects.FileWatcher
     , excluding
     , containing
 
+      -- * File events
+    , FileEvent (..)
+    , mergeFileEvent
+
       -- * Effect
     , FileWatcher
     , watchFilePaths
@@ -77,9 +81,36 @@ import System.FSNotify (eventPath, watchTree, withManager)
 import System.FilePath (takeExtension)
 
 import Data.Text qualified as T
+import System.FSNotify qualified as FSN
 
 import Atelier.Effects.Conc (concStrat)
-import Atelier.Effects.Debounce (Debounce, debounced)
+import Atelier.Effects.Debounce (Debounce, debouncedWith)
+
+
+-- | The kind of filesystem change that triggered a watch callback.
+data FileEvent
+    = -- | A new file was created.
+      Added
+    | -- | An existing file was modified.
+      Modified
+    | -- | A file was deleted.
+      Removed
+    deriving stock (Eq, Show)
+
+
+-- | Merge two 'FileEvent's for the same path within a debounce window.
+--
+-- Rules (old, new) → result:
+--
+-- * @(_, Removed)@ → @Removed@: deletion always wins.
+-- * @(Removed, Added)@ → @Added@: explicit re-creation after deletion.
+-- * @(Added, _)@ → @Added@: a create-then-write is still a creation.
+-- * Otherwise → the newer event.
+mergeFileEvent :: FileEvent -> FileEvent -> FileEvent
+mergeFileEvent _ Removed = Removed
+mergeFileEvent Removed Added = Added
+mergeFileEvent Added _ = Added
+mergeFileEvent _ event = event
 
 
 -- | Specification of a directory to watch recursively, with a file predicate.
@@ -131,11 +162,11 @@ containing fragment f = fragment `T.isInfixOf` toText f
 
 data FileWatcher :: Effect where
     -- | Watch the given directories for changes, calling the callback with
-    -- each matching file path. Registers the minimal set of OS watchers needed
-    -- to cover all entries (deduplication by path prefix). The callback is
-    -- invoked at most once per raw filesystem event regardless of how many
-    -- entries match. Never returns.
-    WatchFilePaths :: [Watch] -> (FilePath -> m a) -> FileWatcher m Void
+    -- each matching file path and the kind of change that occurred. Registers
+    -- the minimal set of OS watchers needed to cover all entries (deduplication
+    -- by path prefix). The callback is invoked at most once per raw filesystem
+    -- event regardless of how many entries match. Never returns.
+    WatchFilePaths :: [Watch] -> (FilePath -> FileEvent -> m a) -> FileWatcher m Void
 
 
 makeEffect ''FileWatcher
@@ -147,10 +178,11 @@ makeEffect ''FileWatcher
 watchFilePathsDebounced
     :: (Debounce FilePath :> es, FileWatcher :> es)
     => [Watch]
-    -> (FilePath -> Eff es ())
+    -> (FilePath -> FileEvent -> Eff es ())
     -> Eff es Void
 watchFilePathsDebounced watches callback =
-    watchFilePaths watches \path -> debounced 100 path (callback path)
+    watchFilePaths watches \path event ->
+        debouncedWith 100 mergeFileEvent path event (callback path)
 
 
 -- | Production interpreter backed by fsnotify.
@@ -163,26 +195,37 @@ runFileWatcherIO eff = interpretWith eff \env -> \case
             withManager \mgr -> do
                 let dedupedDirs = deduplicateDirs [p | Watch p _ <- absWatches]
                 for_ dedupedDirs \d ->
-                    watchTree mgr d (matchesAny absWatches . eventPath) \event ->
-                        void $ unliftIO $ callback (eventPath event)
+                    watchTree mgr d (matchesAny absWatches . eventPath) \fsEvent ->
+                        void $ unliftIO $ callback (eventPath fsEvent) (toFileEvent fsEvent)
                 forever $ threadDelay 1_000_000
 
 
 -- | Scripted interpreter for testing.
--- Delivers all scripted paths to the callback in order, then blocks
+-- Delivers all scripted events to the callback in order, then blocks
 -- indefinitely — matching the blocking semantics of 'runFileWatcherIO'.
--- The 'Watch' specification is ignored; the caller controls what paths are fed in.
-runFileWatcherScripted :: (Concurrent :> es) => [FilePath] -> Eff (FileWatcher : es) a -> Eff es a
-runFileWatcherScripted paths = reinterpret (evalState paths) \env -> \case
+-- The 'Watch' specification is ignored; the caller controls what events are fed in.
+runFileWatcherScripted :: (Concurrent :> es) => [(FilePath, FileEvent)] -> Eff (FileWatcher : es) a -> Eff es a
+runFileWatcherScripted events = reinterpret (evalState events) \env -> \case
     WatchFilePaths _ callback ->
         localSeqUnlift env \unlift -> do
-            paths' <- get
+            events' <- get
             put []
-            for_ paths' (unlift . callback)
+            for_ events' \(path, fileEvent) -> unlift $ callback path fileEvent
             atomically retry
 
 
 -- Helpers
+
+toFileEvent :: FSN.Event -> FileEvent
+toFileEvent = \case
+    FSN.Added {} -> Added
+    FSN.Modified {} -> Modified
+    FSN.ModifiedAttributes {} -> Modified
+    FSN.CloseWrite {} -> Modified
+    FSN.Removed {} -> Removed
+    FSN.WatchedDirectoryRemoved {} -> Removed
+    FSN.Unknown {} -> Modified
+
 
 -- | Remove dirs that are proper subdirectories of another dir in the list.
 deduplicateDirs :: [FilePath] -> [FilePath]

@@ -9,6 +9,7 @@ import Effectful.Writer.Static.Shared (runWriter)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList)
 
 import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Publishing (runPubWriter)
 import Tricorder.BuildState
     ( CabalChangeDetected (..)
@@ -50,7 +51,7 @@ testMarkWatchedFiles = do
             . runPubWriter @CabalChangeDetected
             . mockBuildStore
             . markWatchedFiles
-            . WatchedFile
+            . (`WatchedFile` Modified)
     mockBuildStore :: Eff (BuildStore : es) a -> Eff es (Maybe ChangeKind)
     mockBuildStore = reinterpret_ (execState Nothing) \case
         MarkDirty ck -> put $ Just ck

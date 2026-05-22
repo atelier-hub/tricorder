@@ -13,7 +13,8 @@ import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.FileWatcher
-    ( FileWatcher
+    ( FileEvent
+    , FileWatcher
     , Watch
     , containing
     , dirExt
@@ -76,10 +77,13 @@ markWatchedFiles f = do
         CabalChange -> publish CabalChangeDetected
         SourceChange -> publish SourceChangeDetected
   where
-    change = changeKindFor . getWatchedFile $ f
+    change = changeKindFor f.path
 
 
-newtype WatchedFile = WatchedFile {getWatchedFile :: FilePath}
+data WatchedFile = WatchedFile
+    { path :: FilePath
+    , event :: FileEvent
+    }
 
 
 data WatcherSession = WatcherSession
@@ -117,7 +121,7 @@ watchFiles = do
     withWatcherSession initialSession $ \_ session -> do
         projectRoot <- ask
         let watches = sourceWatches session.watchDirs <> cabalWatches projectRoot
-        watchFilePathsDebounced watches $ publish . WatchedFile
+        watchFilePathsDebounced watches \filePath fileEvent -> publish (WatchedFile filePath fileEvent)
 
 
 sourceWatches :: [FilePath] -> [Watch]

@@ -12,7 +12,7 @@ import Test.Hspec.Hedgehog (hedgehog)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 
-import Atelier.Effects.FileWatcher (FileWatcher, Watch, deduplicateDirs, dir, dirWhere, matchesAny, runFileWatcherScripted, watchFilePaths)
+import Atelier.Effects.FileWatcher (FileEvent (..), FileWatcher, Watch, deduplicateDirs, dir, dirWhere, matchesAny, runFileWatcherScripted, watchFilePaths)
 
 
 spec_FileWatcher :: Spec
@@ -94,8 +94,8 @@ collectPathsWith :: [Watch] -> [FilePath] -> IO [FilePath]
 collectPathsWith watches scripted = do
     ref <- newIORef []
     sem <- newQSem 0
-    tid <- forkIO $ void $ runScripted scripted $ watchFilePaths watches \p -> liftIO do
-        modifyIORef ref (<> [p])
+    tid <- forkIO $ void $ runScripted scripted $ watchFilePaths watches \filePath _fileEvent -> liftIO do
+        modifyIORef ref (<> [filePath])
         signalQSem sem
     replicateM_ (length scripted) (waitQSem sem)
     killThread tid
@@ -103,7 +103,7 @@ collectPathsWith watches scripted = do
 
 
 runScripted :: [FilePath] -> Eff '[FileWatcher, Concurrent, IOE] a -> IO a
-runScripted paths = runEff . runConcurrent . runFileWatcherScripted paths
+runScripted paths = runEff . runConcurrent . runFileWatcherScripted (map (,Modified) paths)
 
 
 --------------------------------------------------------------------------------
