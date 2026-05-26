@@ -7,6 +7,7 @@ module Atelier.Effects.Conc
     , await
     , awaitAll
     , forkTry
+    , race
 
       -- * Scope
     , Scope (..)
@@ -29,9 +30,10 @@ import Effectful
     , Limit (..)
     , Persistence (..)
     , UnliftStrategy (..)
-    , raise
+    , inject
     , withEffToIO
     )
+import Effectful.Concurrent.MVar (Concurrent, newEmptyMVar, putMVar, takeMVar)
 import Effectful.Concurrent.STM (atomically, runConcurrent)
 import Effectful.Dispatch.Dynamic
     ( EffectHandler
@@ -55,6 +57,9 @@ data Conc :: Effect where
     Await :: Thread a -> Conc m a
     AwaitAll :: Conc m ()
     ForkTry :: (Exception e) => m a -> Conc m (Thread (Either e a))
+    -- | Races two computations concurrently and returns the result of the
+    -- operation that finished first.
+    Race :: m a -> m b -> Conc m (Either a b)
     Scoped :: m a -> Conc m a
 
 
@@ -94,10 +99,10 @@ restartableForkLoop initial signal action = go initial
 --
 -- Does not handle trace context propagation. Use 'Atelier.Effects.Conc.Traced.runConc'
 -- for automatic span link propagation across forks.
-runConcBase :: forall es a. (IOE :> es) => Scope -> Eff (Conc : es) a -> Eff es a
+runConcBase :: forall es a. (Concurrent :> es, IOE :> es) => Scope -> Eff (Conc : es) a -> Eff es a
 runConcBase (Scope scope0) = interpret $ handler @es scope0
   where
-    handler :: forall es'. (IOE :> es') => Ki.Scope -> EffectHandler Conc es'
+    handler :: forall es'. (Concurrent :> es', IOE :> es') => Ki.Scope -> EffectHandler Conc es'
     handler scope env = \case
         Fork action ->
             localUnliftIO env concStrat \unlift ->
@@ -112,23 +117,37 @@ runConcBase (Scope scope0) = interpret $ handler @es scope0
             runConcurrent . atomically $ Ki.await thread
         AwaitAll ->
             runConcurrent . atomically $ Ki.awaitAll scope
+        Race ma mb ->
+            localLend @'[Concurrent] env concStrat \lend ->
+                localUnliftIO env concStrat \unlift ->
+                    Ki.scoped \raceScope -> do
+                        ref <- unlift $ inject $ lend newEmptyMVar
+                        void
+                            $ Ki.fork raceScope
+                            $ unlift
+                            $ lend . putMVar ref . Left =<< ma
+                        void
+                            $ Ki.fork raceScope
+                            $ unlift
+                            $ lend . putMVar ref . Right =<< mb
+                        unlift $ lend $ takeMVar ref
         Scoped m ->
             localUnlift env concStrat \unliftEff ->
-                localLend @'[IOE] env concStrat \lend ->
+                localLend @'[IOE, Concurrent] env concStrat \lend ->
                     withEffToIO concStrat \unliftIO ->
                         Ki.scoped \subScope ->
                             unliftIO
                                 . unliftEff
                                 . lend
                                 . interpose (handler subScope)
-                                . raise @IOE
+                                . inject
                                 $ m
 
 
 -- | Run 'Conc' in a new Ki scope without trace context propagation.
 --
 -- Suitable for tests and contexts where tracing is not needed.
-runConc :: (IOE :> es) => Eff (Conc : es) a -> Eff es a
+runConc :: (Concurrent :> es, IOE :> es) => Eff (Conc : es) a -> Eff es a
 runConc eff = withEffToIO concStrat $ \unlift ->
     Ki.scoped $ \scope ->
         unlift $ runConcBase (Scope scope) eff

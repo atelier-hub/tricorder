@@ -14,6 +14,7 @@ module Atelier.Effects.Conc.Traced
 where
 
 import Effectful (IOE, raise, withEffToIO)
+import Effectful.Concurrent (Concurrent)
 import Effectful.Dispatch.Dynamic (interpose, localLend, localUnlift, passthrough)
 import Effectful.Reader.Static (Reader, asks)
 
@@ -27,7 +28,7 @@ import Atelier.Effects.Monitoring.Tracing qualified as Tracing
 
 
 -- | Run 'Conc' effect with automatic trace context propagation in a new scope.
-runConc :: (IOE :> es, Tracing :> es) => Eff (Conc : es) a -> Eff es a
+runConc :: (Concurrent :> es, IOE :> es, Tracing :> es) => Eff (Conc : es) a -> Eff es a
 runConc eff = withEffToIO concStrat $ \unlift ->
     Ki.scoped $ \scope ->
         unlift $ runConcTraced (Scope scope) eff
@@ -37,7 +38,13 @@ runConc eff = withEffToIO concStrat $ \unlift ->
 --
 -- If tracing is enabled, uses 'runConc' for automatic span link propagation.
 -- If tracing is disabled, falls back to 'Conc.runConc' to skip the overhead.
-runConcByConfig :: (IOE :> es, Reader TracingConfig :> es, Tracing :> es) => Eff (Conc : es) a -> Eff es a
+runConcByConfig
+    :: ( Concurrent :> es
+       , IOE :> es
+       , Reader TracingConfig :> es
+       , Tracing :> es
+       )
+    => Eff (Conc : es) a -> Eff es a
 runConcByConfig eff = do
     tracingEnabled <- asks @TracingConfig (.enabled)
     if tracingEnabled then runConc eff else Conc.runConc eff
@@ -48,7 +55,12 @@ runConcByConfig eff = do
 -- All fork variants ('fork', 'fork_', 'forkTry') use span links, i.e. forked
 -- threads start a fresh trace whose root spans carry a link back to the
 -- originating span.
-runConcTraced :: (IOE :> es, Tracing :> es) => Scope -> Eff (Conc : es) a -> Eff es a
+runConcTraced
+    :: ( Concurrent :> es
+       , IOE :> es
+       , Tracing :> es
+       )
+    => Scope -> Eff (Conc : es) a -> Eff es a
 runConcTraced scope = runConcBase scope . withConcTracingLinks
 
 
