@@ -9,6 +9,7 @@ module Tricorder.Effects.GhciSession.GhciParser
     , collectResultCustom
     , parseReload
     , parseShowModules
+    , parseShowTargets
     , stripAnsi
     , extractTitle
     , toAbsolute
@@ -95,7 +96,13 @@ data LoadResult = LoadResult
     -- Used by the session layer to decide which files' previous diagnostics to replace vs. retain.
     , loadedModules :: Map FilePath LoadedModule
     -- ^ Map from canonical absolute path to module metadata, derived from @:show modules@ output.
-    -- Acts as the source of truth for what GHCi currently knows.
+    -- Lists only modules that compiled successfully this cycle — GHCi drops
+    -- failed-compile modules from @:show modules@.
+    , targetNames :: [Text]
+    -- ^ Raw entries from @:show targets@ — typically dotted module names in
+    -- @cabal repl --enable-multi-repl@. Unlike 'loadedModules', this list
+    -- survives failed compiles, so the Builder uses it (joined with carried-over
+    -- name↔path knowledge) as the source of truth for which files GHCi tracks.
     , diagnostics :: [Diagnostic]
     }
     deriving stock (Eq, Show)
@@ -372,6 +379,24 @@ showModuleLineP = do
 
 
 -- ---------------------------------------------------------------------------
+-- parseShowTargets
+-- ---------------------------------------------------------------------------
+
+-- | Parse the output of @:show targets@.
+--
+-- Each line names one target. In @cabal repl --enable-multi-repl@ these are
+-- dotted module names (e.g. @"Foo.Bar"@); in plain @ghci@ sessions they can
+-- also be file paths. A leading @*@ marks the active interactive target and
+-- is stripped. Blank lines are skipped.
+parseShowTargets :: [Text] -> [Text]
+parseShowTargets = mapMaybe parseLine
+  where
+    parseLine raw =
+        let cleaned = T.strip (T.dropWhile (== '*') (T.strip (stripAnsi raw)))
+        in  if T.null cleaned then Nothing else Just cleaned
+
+
+-- ---------------------------------------------------------------------------
 -- Pure utilities (unchanged)
 -- ---------------------------------------------------------------------------
 
@@ -405,10 +430,10 @@ stripAnsi t = case T.uncons t of
     Just (c, rest) -> T.cons c (stripAnsi rest)
 
 
--- | Assemble a 'LoadResult' from a project root, parsed reload items, and
--- the @:show modules@ output.
-collectResultCustom :: FilePath -> [GhciLoad] -> [(Text, FilePath)] -> LoadResult
-collectResultCustom projectRoot loads modules =
+-- | Assemble a 'LoadResult' from a project root, parsed reload items, the
+-- @:show modules@ output, and the @:show targets@ output.
+collectResultCustom :: FilePath -> [GhciLoad] -> [(Text, FilePath)] -> [Text] -> LoadResult
+collectResultCustom projectRoot loads modules targets =
     let rel = toRelative projectRoot
         abs' = toAbsolute projectRoot
         compiledFiles = case [l.sourceFile | GLoading l <- loads] of
@@ -422,6 +447,7 @@ collectResultCustom projectRoot loads modules =
             { moduleCount = length modules
             , compiledFiles
             , loadedModules = Map.fromList (map mkEntry modules)
+            , targetNames = targets
             , diagnostics = toDiagnostics rel loads
             }
 

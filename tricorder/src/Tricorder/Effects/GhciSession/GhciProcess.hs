@@ -52,6 +52,7 @@ import Tricorder.Effects.GhciSession.GhciParser
     , collectResultCustom
     , parseReload
     , parseShowModules
+    , parseShowTargets
     , stripAnsi
     )
 
@@ -341,7 +342,13 @@ collectGhciResult process lines' projectRoot onProgress = do
     let loads = parseReload lines'
     for_ [l | GLoading l <- loads] onProgress
     moduleLines <- execGhci process ":show modules"
-    pure $ collectResultCustom projectRoot loads (parseShowModules moduleLines)
+    targetLines <- execGhci process ":show targets"
+    pure
+        $ collectResultCustom
+            projectRoot
+            loads
+            (parseShowModules moduleLines)
+            (parseShowTargets targetLines)
 
 
 -- | Execute @:reload@ and return the assembled 'LoadResult', emitting a

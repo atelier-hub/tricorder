@@ -12,6 +12,7 @@ module Tricorder.Builder
     , handleInitialBuild
     , onRestart
     , reloadOnSourceChange
+    , resolveKnownTargets
     , setNewPhase
     ) where
 
@@ -20,11 +21,12 @@ import Data.Time (diffUTCTime)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
-import Effectful.State.Static.Shared (State, execState, get, put, state)
+import Effectful.State.Static.Shared (State, execState, get, modify, put, state)
 import Relude.Extra.Tuple (dup)
 import System.FilePath (isAbsolute, normalise, (</>))
 
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 
 import Atelier.Component (Component (..), defaultComponent)
 import Atelier.Effects.Chan (Chan)
@@ -243,7 +245,7 @@ buildWithGhciOnChange reloader config = forever do
     GhciSession.withGhci config.command projectRoot \initialLoad controls -> do
         initialEndTime <- Clock.currentTime
         handleInitialBuild config initialStartTime initialEndTime initialLoad
-        put @(Map FilePath LoadedModule) initialLoad.loadedModules
+        put @(Map FilePath LoadedModule) (resolveKnownTargets Map.empty initialLoad)
         rebuildOnChange reloader controls
 
 
@@ -382,27 +384,23 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
                     now <- Clock.currentTime
                     Log.err $ show now <> " Reload errored: " <> show e
                 Right (startTime, endTime, loadResult) -> do
-                    put loadResult.loadedModules
+                    modify @(Map FilePath LoadedModule) (\prev -> resolveKnownTargets prev loadResult)
                     publish $ NewLoadResult {startTime, endTime, loadResult}
   where
     -- Dispatch on (is the file currently loaded in GHCi?, FileEvent).
     --
-    -- `Added` and `Modified` always map to `:reload`, even when the file is
-    -- missing from the module map. GHCi drops failed-compile modules from
-    -- `:show modules`, so an `unknown` lookup conflates "file GHCi never saw"
-    -- with "file that failed last cycle". Dispatching `:add` in that state was
-    -- a no-op (the file is already a target) and left stale diagnostics in
-    -- place; `:reload` recovers cleanly. Note that most editors save atomically
-    -- (write temp + rename), so what looks like a Modified event actually
-    -- arrives as Added — both branches must do the right thing.
+    -- The module map is the source of truth for "is this file a tracked
+    -- target?" and it must be built from `:show targets` (which survives
+    -- failed compiles), not `:show modules` (which drops them). See
+    -- 'resolveKnownTargets' for how the map is maintained.
     dispatch = \case
         Just lm -> Just $ case event of
-            Added -> controls.reload
+            Added -> controls.reload -- re-adding a known file is just a reload
             Modified -> controls.reload
             Removed -> controls.unadd lm.moduleName
         Nothing -> case event of
-            Added -> Just controls.reload
-            Modified -> Just controls.reload
+            Added -> Just (controls.add fp)
+            Modified -> Just (controls.add fp) -- editor wrote a not-yet-loaded file
             Removed -> Nothing -- nothing to remove
 
 
@@ -507,6 +505,35 @@ mergeDiagnostics prev LoadResult {compiledFiles, diagnostics} =
     let cleared = foldr Map.delete prev compiledFiles
         newByFile = Map.fromListWith (++) [(d.file, [d]) | d <- diagnostics]
     in  Map.union newByFile cleared
+
+
+-- | Compute the next "known targets" map by joining this cycle's
+-- @:show modules@ (definitive path↔name mapping for successful loads) with
+-- the prior map (carryover for targets that failed to compile and are
+-- therefore absent from @:show modules@).
+--
+-- Targets that have never compiled successfully — so we have no entry for
+-- them in either source — are dropped here: with neither @:show modules@ nor
+-- prior knowledge we can't resolve their dotted name to a file path, and the
+-- dispatcher keys on file paths. They'll be picked up next cycle via the
+-- @unknown → :add@ branch.
+resolveKnownTargets
+    :: Map FilePath LoadedModule
+    -- ^ Previous known-targets map (carryover source).
+    -> LoadResult
+    -> Map FilePath LoadedModule
+resolveKnownTargets prev lr =
+    let primary = lr.loadedModules
+        primaryNames = Set.fromList [lm.moduleName | lm <- Map.elems primary]
+        prevByName = Map.fromList [(lm.moduleName, (path, lm)) | (path, lm) <- Map.toList prev]
+        carryover =
+            Map.fromList
+                [ (path, lm)
+                | name <- lr.targetNames
+                , not (Set.member name primaryNames)
+                , Just (path, lm) <- [Map.lookup name prevByName]
+                ]
+    in  Map.union primary carryover
 
 
 -- | Keep only diagnostics whose file is under one of the watched directories.
