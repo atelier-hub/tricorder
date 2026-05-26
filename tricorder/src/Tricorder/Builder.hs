@@ -386,16 +386,23 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
                     publish $ NewLoadResult {startTime, endTime, loadResult}
   where
     -- Dispatch on (is the file currently loaded in GHCi?, FileEvent).
-    -- The module map is the source of truth: GHCi's `:show modules` was the
-    -- last word on which files are tracked. The FileEvent is a hint.
+    --
+    -- `Added` and `Modified` always map to `:reload`, even when the file is
+    -- missing from the module map. GHCi drops failed-compile modules from
+    -- `:show modules`, so an `unknown` lookup conflates "file GHCi never saw"
+    -- with "file that failed last cycle". Dispatching `:add` in that state was
+    -- a no-op (the file is already a target) and left stale diagnostics in
+    -- place; `:reload` recovers cleanly. Note that most editors save atomically
+    -- (write temp + rename), so what looks like a Modified event actually
+    -- arrives as Added — both branches must do the right thing.
     dispatch = \case
         Just lm -> Just $ case event of
-            Added -> controls.reload -- re-adding a known file is just a reload
+            Added -> controls.reload
             Modified -> controls.reload
             Removed -> controls.unadd lm.moduleName
         Nothing -> case event of
-            Added -> Just (controls.add fp)
-            Modified -> Just (controls.add fp) -- editor wrote a not-yet-loaded file
+            Added -> Just controls.reload
+            Modified -> Just controls.reload
             Removed -> Nothing -- nothing to remove
 
 
