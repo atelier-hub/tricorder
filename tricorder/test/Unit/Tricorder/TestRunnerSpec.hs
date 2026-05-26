@@ -66,6 +66,28 @@ testDetectOutcome = do
             detectOutcome "*** Exception: Crashed  \n"
                 `shouldBe` GhciCrashed "Crashed"
 
+    describe "compile failure (no exception line, but GHC errors present)" do
+        it "flags ':main not in scope' as crashed" do
+            detectOutcome "<interactive>:1:1: error: [GHC-76037] Not in scope: 'main'\n"
+                `shouldBe` GhciCrashed
+                    "<interactive>:1:1: error: [GHC-76037] Not in scope: 'main'"
+
+        it "flags a source-file compile error as crashed" do
+            detectOutcome "src/Foo.hs:42:5: error: Variable not in scope: foo\n"
+                `shouldBe` GhciCrashed "src/Foo.hs:42:5: error: Variable not in scope: foo"
+
+        it "reports the first error line when multiple are present" do
+            detectOutcome
+                "src/Foo.hs:42:5: error: Variable not in scope: foo\nsrc/Bar.hs:10:1: error: Parse error\n"
+                `shouldBe` GhciCrashed "src/Foo.hs:42:5: error: Variable not in scope: foo"
+
+        it "prefers exit exception over compile-error heuristic when both appear" do
+            -- A real failing run could plausibly mention 'error:' in its
+            -- captured output (e.g. logged messages); the ExitFailure line
+            -- still wins.
+            detectOutcome "log: error: something happened\n*** Exception: ExitFailure 1\n"
+                `shouldBe` GhciFailed
+
 
 --------------------------------------------------------------------------------
 -- Scripted interpreter tests

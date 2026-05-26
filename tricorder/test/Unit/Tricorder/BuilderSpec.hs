@@ -101,20 +101,20 @@ testReloadOnSourceChange = do
                 results `shouldMatchList` [NewLoadResult epoch epoch addLr]
 
     describe "Added" do
-        it "calls controls.add when the file is not loaded" do
+        describe "when the file is not loaded" $ it "calls controls.add" do
             (results, _) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
             results `shouldMatchList` [NewLoadResult epoch epoch addLr]
 
-        it "calls controls.reload when the file is already loaded (re-add is a reload)" do
+        describe "when the file is already loaded" $ it "calls controls.reload (re-add is a reload)" do
             (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
             results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
     describe "Removed" do
-        it "calls controls.unadd when the file is loaded" do
+        describe "when the file is loaded" $ it "calls controls.unadd" do
             (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Removed)
             results `shouldMatchList` [NewLoadResult epoch epoch unaddLr]
 
-        it "is a no-op when the file is not loaded" do
+        describe "when the file is not loaded" $ it "is a no-op" do
             (results, phases) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/Unknown.hs" Removed)
             results `shouldMatchList` []
             phases `shouldMatchList` []
