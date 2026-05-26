@@ -75,7 +75,7 @@ markWatchedFiles f = do
     BuildStore.markDirty change
     case change of
         CabalChange -> publish CabalChangeDetected
-        SourceChange -> publish SourceChangeDetected
+        SourceChange -> publish (SourceChangeDetected f.path f.event)
   where
     change = changeKindFor f.path
 

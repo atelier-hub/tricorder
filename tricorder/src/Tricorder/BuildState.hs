@@ -29,6 +29,7 @@ import Effectful.Concurrent.STM (TVar)
 import Effectful.Reader.Static (Reader, ask, runReader)
 import System.FilePath (makeRelative)
 
+import Atelier.Effects.FileWatcher (FileEvent)
 import Atelier.Time (Millisecond)
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (LogPath (..), ProjectRoot (..), SocketPath (..))
@@ -207,7 +208,7 @@ data ChangeKind = SourceChange | CabalChange deriving stock (Eq, Ord, Show)
 
 data CabalChangeDetected = CabalChangeDetected
     deriving stock (Eq, Show)
-data SourceChangeDetected = SourceChangeDetected
+data SourceChangeDetected = SourceChangeDetected FilePath FileEvent
     deriving stock (Eq, Show)
 
 

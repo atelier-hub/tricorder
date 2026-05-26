@@ -5,6 +5,7 @@ import Effectful (IOE, runEff)
 import Effectful.Exception (try)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 
+import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
 import Tricorder.BuildState (Diagnostic (..), Severity (..))
@@ -114,7 +115,7 @@ warnMsg =
 
 -- | Convenience constructor: a scripted result with no compiled-file info.
 simpleResult :: [Diagnostic] -> Either SomeException LoadResult
-simpleResult msgs = Right LoadResult {moduleCount = 0, compiledFiles = Set.empty, diagnostics = msgs}
+simpleResult msgs = Right LoadResult {moduleCount = 0, compiledFiles = Set.empty, loadedModules = Map.empty, diagnostics = msgs}
 
 
 runScripted :: [Either SomeException LoadResult] -> Eff '[GhciSession, IOE] a -> IO a

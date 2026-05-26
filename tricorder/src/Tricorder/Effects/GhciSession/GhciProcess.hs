@@ -7,6 +7,8 @@ module Tricorder.Effects.GhciSession.GhciProcess
     , interruptGhci
     , collectGhciResult
     , reloadGhci
+    , addGhci
+    , unaddGhci
     ) where
 
 import Control.Concurrent.STM (TVar, readTVar, retry, writeTVar)
@@ -353,3 +355,31 @@ reloadGhci
 reloadGhci process projectRoot onProgress = do
     reloadLines <- execGhci process ":reload"
     collectGhciResult process reloadLines projectRoot onProgress
+
+
+-- | Execute @:add@ for the given file and return the assembled 'LoadResult',
+-- emitting a progress callback for each @[N of M] Compiling …@ line.
+addGhci
+    :: (Concurrent :> es, File :> es, IOE :> es)
+    => GhciProcess
+    -> FilePath -- the file to :add
+    -> FilePath -- projectRoot
+    -> (GhciLoading -> Eff es ())
+    -> Eff es LoadResult
+addGhci process filePath projectRoot onProgress = do
+    addLines <- execGhci process (":add " <> T.pack filePath)
+    collectGhciResult process addLines projectRoot onProgress
+
+
+-- | Execute @:unadd@ for the given module and return the assembled 'LoadResult',
+-- emitting a progress callback for each @[N of M] Compiling …@ line.
+unaddGhci
+    :: (Concurrent :> es, File :> es, IOE :> es)
+    => GhciProcess
+    -> Text -- the module name to :unadd
+    -> FilePath -- projectRoot
+    -> (GhciLoading -> Eff es ())
+    -> Eff es LoadResult
+unaddGhci process moduleName projectRoot onProgress = do
+    unaddLines <- execGhci process (":unadd " <> moduleName)
+    collectGhciResult process unaddLines projectRoot onProgress

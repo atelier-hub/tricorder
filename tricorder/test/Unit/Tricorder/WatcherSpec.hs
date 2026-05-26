@@ -34,7 +34,7 @@ testMarkWatchedFiles = do
 
     describe "with non-cabal file change" $ it "should publish SourceChangeDetected" do
         (_, sourceChanges) <- runTest "foo"
-        sourceChanges `shouldMatchList` [SourceChangeDetected]
+        sourceChanges `shouldMatchList` [SourceChangeDetected "foo" Modified]
 
     describe "with cabal file change" $ it "should publish CabalChangeDetected" do
         ((_, cabalChanges), _) <- runTest "foo.cabal"

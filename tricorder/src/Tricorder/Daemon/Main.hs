@@ -25,7 +25,7 @@ import Tricorder.BuildState (BuildId (..), runDaemonInfo)
 import Tricorder.Config (restartOnConfigChange, runLoadedConfig)
 import Tricorder.Effects.BuildStore (runBuildStore)
 import Tricorder.Effects.GhcPkg (runGhcPkgIO)
-import Tricorder.Effects.GhciSession (runGhciSession)
+import Tricorder.Effects.GhciSession (LoadedModule, runGhciSession)
 import Tricorder.Effects.Logging (runLogging)
 import Tricorder.Effects.SessionStore (runSessionStore)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
@@ -92,6 +92,7 @@ main =
         . runGhciSession
         . evalState (BuildId 1)
         . evalState @Builder.DiagnosticMap mempty
+        . evalState @(Map FilePath LoadedModule) mempty
         $ do
             Log.info $ "Starting tricorder " <> Version.gitHash
             runSystem
