@@ -27,8 +27,8 @@ import Tricorder.Runtime (ProjectRoot)
 import Tricorder.Session (Session, loadSession)
 
 import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.Iterator qualified as Iter
 import Atelier.Effects.Publishing qualified as Sub
-import Atelier.Effects.Stream qualified as Stream
 
 
 data SessionStore :: Effect where
@@ -79,15 +79,15 @@ withSubSession
     -> (Reloader es -> subSession -> Eff es a)
     -> Eff es Void
 withSubSession mkSubSession initialSession action =
-    Stream.fromEvents @SessionStoreReloaded \stream ->
+    Iter.fromEvents @SessionStoreReloaded \iter ->
         let initialSubSession = mkSubSession initialSession
-            subStream =
-                Stream.changes
+            subIter =
+                Iter.changes
                     initialSubSession
-                    (fmap (\(SessionStoreReloaded s) -> mkSubSession s) stream)
+                    (fmap (\(SessionStoreReloaded s) -> mkSubSession s) iter)
         in  Conc.restartableForkLoop
                 initialSubSession
-                (Stream.next subStream)
+                (Iter.next subIter)
                 \cfg -> action (Reloader rawReload) cfg
 
 
