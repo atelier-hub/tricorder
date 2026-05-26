@@ -96,16 +96,24 @@ testReloadOnSourceChange = do
                 results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
         describe "when the file is not loaded in GHCi" do
-            it "calls controls.add (the editor just wrote a new file)" do
+            -- Regression for stale-results bug: GHCi drops failed-compile
+            -- modules from `:show modules`, so a fixed file looks "unknown" to
+            -- the dispatcher. Dispatching `:add` in that state was a no-op and
+            -- left stale diagnostics in place. `Modified` must always reload.
+            it "calls controls.reload (recovers files that failed to compile last cycle)" do
                 (results, _) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/New.hs" Modified)
-                results `shouldMatchList` [NewLoadResult epoch epoch addLr]
+                results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
     describe "Added" do
-        describe "when the file is not loaded" $ it "calls controls.add" do
+        -- Atomic-save editors (vim, neovim, etc.) write via tmpfile+rename,
+        -- which fsnotify reports as Added even for an existing file. So this
+        -- branch needs the same failed-compile-recovery semantics as Modified:
+        -- always reload, never trust the module map for `unknown` lookups.
+        describe "when the file is not loaded" $ it "calls controls.reload" do
             (results, _) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
-            results `shouldMatchList` [NewLoadResult epoch epoch addLr]
+            results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
-        describe "when the file is already loaded" $ it "calls controls.reload (re-add is a reload)" do
+        describe "when the file is already loaded" $ it "calls controls.reload" do
             (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
             results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
