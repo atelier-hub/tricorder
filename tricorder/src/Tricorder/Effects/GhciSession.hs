@@ -6,6 +6,7 @@ module Tricorder.Effects.GhciSession
 
       -- * Types
     , LoadResult (..)
+    , LoadedModule (..)
 
       -- * Interpreters
     , runGhciSession
@@ -44,9 +45,10 @@ import Tricorder.Effects.BuildStore (BuildStore, getState, setPhase)
 import Tricorder.Effects.GhciSession.GhciParser
     ( GhciLoading (..)
     , LoadResult (..)
+    , LoadedModule (..)
     , extractTitle
     )
-import Tricorder.Effects.GhciSession.GhciProcess (collectGhciResult, interruptGhci, reloadGhci, withGhciProcess)
+import Tricorder.Effects.GhciSession.GhciProcess (addGhci, collectGhciResult, interruptGhci, reloadGhci, unaddGhci, withGhciProcess)
 import Tricorder.Runtime (ProjectRoot (..))
 
 
@@ -61,6 +63,8 @@ data GhciSession :: Effect where
 data Controls m = Controls
     { reload :: m LoadResult
     , interrupt :: m ()
+    , add :: FilePath -> m LoadResult
+    , unadd :: Text -> m LoadResult
     }
 
 
@@ -93,6 +97,8 @@ runGhciSessionScripted results = reinterpret (evalState results) $ \env ->
                                 Controls
                                     { reload = liftEff popResult
                                     , interrupt = pure ()
+                                    , add = \_ -> liftEff popResult
+                                    , unadd = \_ -> liftEff popResult
                                     }
 
 
@@ -112,4 +118,12 @@ runGhciSession = interpret $ \env -> \case
                                 $ BuildProgress {compiled = loading.index, total = loading.total}
                         doReload = liftEff $ reloadGhci process dir onProgress
                     initialResult <- unlift $ liftEff $ collectGhciResult process startupLines dir onProgress
-                    unlift $ handler initialResult Controls {reload = doReload, interrupt = liftEff (interruptGhci process)}
+                    unlift
+                        $ handler
+                            initialResult
+                            Controls
+                                { reload = doReload
+                                , interrupt = liftEff (interruptGhci process)
+                                , add = \fp -> liftEff $ addGhci process fp dir onProgress
+                                , unadd = \mn -> liftEff $ unaddGhci process mn dir onProgress
+                                }

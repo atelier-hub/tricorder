@@ -22,7 +22,7 @@ import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, execState, get, put, state)
 import Relude.Extra.Tuple (dup)
-import System.FilePath (isAbsolute, (</>))
+import System.FilePath (isAbsolute, normalise, (</>))
 
 import Data.Map.Strict qualified as Map
 
@@ -31,6 +31,7 @@ import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce, debounced)
+import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
 import Atelier.Time (Millisecond, nominalDiffTime)
@@ -48,7 +49,7 @@ import Tricorder.BuildState
     , TestRun (..)
     )
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
+import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..), LoadedModule (..))
 import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
@@ -86,6 +87,7 @@ component
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
        , SessionStore :> es
+       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        , State DiagnosticMap :> es
        , Sub BuildResult :> es
@@ -164,6 +166,7 @@ restartableListeners
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
+       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        , State DiagnosticMap :> es
        , Sub BuildResult :> es
@@ -220,6 +223,7 @@ buildWithGhciOnChange
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
+       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        , State DiagnosticMap :> es
        , Sub CabalChangeDetected :> es
@@ -229,7 +233,8 @@ buildWithGhciOnChange
     -> BuilderSession
     -> Eff es Void
 buildWithGhciOnChange reloader config = forever do
-    put Map.empty
+    put @DiagnosticMap Map.empty
+    put @(Map FilePath LoadedModule) Map.empty
     projectRoot <- ask
     BuildId n <- get
     Log.info $ "Starting GHCi session #" <> show n <> ": " <> config.command
@@ -238,6 +243,7 @@ buildWithGhciOnChange reloader config = forever do
     GhciSession.withGhci config.command projectRoot \initialLoad controls -> do
         initialEndTime <- Clock.currentTime
         handleInitialBuild config initialStartTime initialEndTime initialLoad
+        put @(Map FilePath LoadedModule) initialLoad.loadedModules
         rebuildOnChange reloader controls
 
 
@@ -282,6 +288,7 @@ rebuildOnChange
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
+       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
@@ -308,6 +315,7 @@ handleSourceChanges
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
+       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        , Sub SourceChangeDetected :> es
        )
@@ -344,26 +352,51 @@ reloadOnSourceChange
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
+       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        )
     => Semaphore -> GhciSession.Controls (Eff es) -> SourceChangeDetected -> Eff es ()
-reloadOnSourceChange readyToBuildSem controls SourceChangeDetected = do
-    Log.debug $ "Builder: dirty flag set, reloading"
-    buildId <- get
-    publish $ EnteringNewPhase buildId $ Building Nothing
+reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = do
+    Log.debug $ "Builder: source change detected " <> show event <> " " <> toText fp
+    moduleMap <- get @(Map FilePath LoadedModule)
+    let known = Map.lookup (normalise fp) moduleMap
+    case dispatch known of
+        Nothing ->
+            Log.debug
+                $ "Builder: no-op for "
+                    <> show event
+                    <> " of file not loaded in GHCi: "
+                    <> toText fp
+        Just action -> do
+            buildId <- get
+            publish $ EnteringNewPhase buildId $ Building Nothing
 
-    res <- trySync $ Sem.withSemaphore readyToBuildSem do
-        startTime <- Clock.currentTime
-        res <- controls.reload
-        endTime <- Clock.currentTime
-        pure (startTime, endTime, res)
+            res <- trySync $ Sem.withSemaphore readyToBuildSem do
+                startTime <- Clock.currentTime
+                res <- action
+                endTime <- Clock.currentTime
+                pure (startTime, endTime, res)
 
-    case res of
-        Left e -> do
-            now <- Clock.currentTime
-            Log.err $ show now <> " Reload errored: " <> show e
-        Right (startTime, endTime, loadResult) ->
-            publish $ NewLoadResult {startTime, endTime, loadResult}
+            case res of
+                Left e -> do
+                    now <- Clock.currentTime
+                    Log.err $ show now <> " Reload errored: " <> show e
+                Right (startTime, endTime, loadResult) -> do
+                    put loadResult.loadedModules
+                    publish $ NewLoadResult {startTime, endTime, loadResult}
+  where
+    -- Dispatch on (is the file currently loaded in GHCi?, FileEvent).
+    -- The module map is the source of truth: GHCi's `:show modules` was the
+    -- last word on which files are tracked. The FileEvent is a hint.
+    dispatch = \case
+        Just lm -> Just $ case event of
+            Added -> controls.reload -- re-adding a known file is just a reload
+            Modified -> controls.reload
+            Removed -> controls.unadd lm.moduleName
+        Nothing -> case event of
+            Added -> Just (controls.add fp)
+            Modified -> Just (controls.add fp) -- editor wrote a not-yet-loaded file
+            Removed -> Nothing -- nothing to remove
 
 
 data NewLoadResult = NewLoadResult

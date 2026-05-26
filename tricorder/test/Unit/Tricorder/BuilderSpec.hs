@@ -14,6 +14,7 @@ import Data.Set qualified as Set
 
 import Atelier.Effects.Clock (runClockConst)
 import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Log (runLogNoOp)
 import Atelier.Effects.Publishing (runPubWriter)
 import Tricorder.BuildState
@@ -41,7 +42,7 @@ import Tricorder.Builder
     , requestTestRunsForNewBuildResults
     , setNewPhase
     )
-import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), extractTitle)
+import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..), extractTitle)
 import Tricorder.Effects.TestRunner (runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
 
@@ -84,19 +85,46 @@ testRestartOnCabalChange = do
 
 testReloadOnSourceChange :: Spec
 testReloadOnSourceChange = do
-    it "should publish that it is building" do
-        (_, phases) <- runTest loadResult
-        phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Building Nothing]
+    describe "Modified" do
+        describe "when the file is loaded in GHCi" do
+            it "publishes that it is building" do
+                (_, phases) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
+                phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Building Nothing]
 
-    it "should publish NewLoadResult from the reload" do
-        (newLoadResults, _) <- runTest loadResult
-        newLoadResults `shouldMatchList` [NewLoadResult epoch epoch loadResult]
+            it "calls controls.reload" do
+                (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
+                results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
+
+        describe "when the file is not loaded in GHCi" do
+            it "calls controls.add (the editor just wrote a new file)" do
+                (results, _) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/New.hs" Modified)
+                results `shouldMatchList` [NewLoadResult epoch epoch addLr]
+
+    describe "Added" do
+        describe "when the file is not loaded" $ it "calls controls.add" do
+            (results, _) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
+            results `shouldMatchList` [NewLoadResult epoch epoch addLr]
+
+        describe "when the file is already loaded" $ it "calls controls.reload (re-add is a reload)" do
+            (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
+            results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
+
+    describe "Removed" do
+        describe "when the file is loaded" $ it "calls controls.unadd" do
+            (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Removed)
+            results `shouldMatchList` [NewLoadResult epoch epoch unaddLr]
+
+        describe "when the file is not loaded" $ it "is a no-op" do
+            (results, phases) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/Unknown.hs" Removed)
+            results `shouldMatchList` []
+            phases `shouldMatchList` []
   where
-    runTest lr = do
+    runTest initialModuleMap ctrls event = do
         runEff
             . runConcurrent
             . runClockConst epoch
             . evalState (BuildId 1)
+            . evalState @(Map FilePath LoadedModule) initialModuleMap
             . runLogNoOp
             . runWriter
             . runPubWriter @EnteringNewPhase
@@ -104,16 +132,36 @@ testReloadOnSourceChange = do
             . runPubWriter @NewLoadResult
             $ do
                 sem <- Sem.newSet
-                reloadOnSourceChange sem (mkCtrls lr) SourceChangeDetected
+                reloadOnSourceChange sem ctrls event
 
-    mkCtrls lr = Controls {reload = pure lr, interrupt = pure ()}
+    distinctCtrls =
+        Controls
+            { reload = pure reloadLr
+            , interrupt = pure ()
+            , add = \_ -> pure addLr
+            , unadd = \_ -> pure unaddLr
+            }
 
-    loadResult =
+    knownFoo =
+        Map.fromList
+            [
+                ( "/abs/path/Foo.hs"
+                , LoadedModule {relPath = "./src/Foo.hs", moduleName = "MyModule"}
+                )
+            ]
+
+    -- Distinct LoadResults so tests can identify which control was invoked.
+    mkLr :: Int -> LoadResult
+    mkLr n =
         LoadResult
-            { moduleCount = 2
+            { moduleCount = n
             , compiledFiles = Set.singleton errMsg.file
+            , loadedModules = Map.empty
             , diagnostics = []
             }
+    reloadLr = mkLr 10
+    addLr = mkLr 20
+    unaddLr = mkLr 30
 
 
 testSetNewPhase :: Spec
@@ -151,6 +199,7 @@ testCompileLoadResultsIntoBuildResults = do
                             LoadResult
                                 { moduleCount = 2
                                 , compiledFiles = Set.singleton errMsg.file
+                                , loadedModules = Map.empty
                                 , diagnostics = []
                                 }
                         }
@@ -165,6 +214,7 @@ testCompileLoadResultsIntoBuildResults = do
                             LoadResult
                                 { moduleCount = 2
                                 , compiledFiles = Set.singleton warnMsg.file
+                                , loadedModules = Map.empty
                                 , diagnostics = [warnMsg]
                                 }
                         }
@@ -184,6 +234,7 @@ testCompileLoadResultsIntoBuildResults = do
                             LoadResult
                                 { moduleCount = 2
                                 , compiledFiles = Set.singleton warnMsg.file
+                                , loadedModules = Map.empty
                                 , diagnostics = [warnMsg]
                                 }
                         }
@@ -297,6 +348,7 @@ testMergeDiagnostics = do
                 LoadResult
                     { moduleCount = 2
                     , compiledFiles = Set.singleton errMsg.file
+                    , loadedModules = Map.empty
                     , diagnostics = []
                     }
         let merged = mergeDiagnostics prev result
@@ -308,6 +360,7 @@ testMergeDiagnostics = do
                 LoadResult
                     { moduleCount = 1
                     , compiledFiles = Set.singleton errMsg.file
+                    , loadedModules = Map.empty
                     , diagnostics = []
                     }
         let merged = mergeDiagnostics prev result
@@ -320,6 +373,7 @@ testMergeDiagnostics = do
                 LoadResult
                     { moduleCount = 1
                     , compiledFiles = Set.singleton errMsg.file
+                    , loadedModules = Map.empty
                     , diagnostics = [newErr]
                     }
         let merged = mergeDiagnostics prev result
@@ -330,6 +384,7 @@ testMergeDiagnostics = do
                 LoadResult
                     { moduleCount = 1
                     , compiledFiles = Set.singleton warnMsg.file
+                    , loadedModules = Map.empty
                     , diagnostics = [warnMsg]
                     }
         let merged = mergeDiagnostics Map.empty result

@@ -74,7 +74,7 @@ restartOnConfigChange act = do
 
         Conc.fork_ $ FileWatcher.watchFilePathsDebounced
             [FileWatcher.dirWhere projectRoot (configFileName `isSuffixOf`)]
-            \_ -> putMVar ref Nothing
+            \_ _ -> putMVar ref Nothing
 
         takeMVar ref
     case var of

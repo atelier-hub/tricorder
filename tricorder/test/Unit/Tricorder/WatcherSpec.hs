@@ -9,6 +9,7 @@ import Effectful.Writer.Static.Shared (runWriter)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList)
 
 import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Publishing (runPubWriter)
 import Tricorder.BuildState
     ( CabalChangeDetected (..)
@@ -33,7 +34,7 @@ testMarkWatchedFiles = do
 
     describe "with non-cabal file change" $ it "should publish SourceChangeDetected" do
         (_, sourceChanges) <- runTest "foo"
-        sourceChanges `shouldMatchList` [SourceChangeDetected]
+        sourceChanges `shouldMatchList` [SourceChangeDetected "foo" Modified]
 
     describe "with cabal file change" $ it "should publish CabalChangeDetected" do
         ((_, cabalChanges), _) <- runTest "foo.cabal"
@@ -50,7 +51,7 @@ testMarkWatchedFiles = do
             . runPubWriter @CabalChangeDetected
             . mockBuildStore
             . markWatchedFiles
-            . WatchedFile
+            . (`WatchedFile` Modified)
     mockBuildStore :: Eff (BuildStore : es) a -> Eff es (Maybe ChangeKind)
     mockBuildStore = reinterpret_ (execState Nothing) \case
         MarkDirty ck -> put $ Just ck

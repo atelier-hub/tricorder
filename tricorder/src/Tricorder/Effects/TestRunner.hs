@@ -128,11 +128,16 @@ data GhciOutcome
 -- 'System.Exit.exitWith' on completion. GHCi surfaces this as a line
 -- matching @*** Exception: ExitSuccess@ (pass) or
 -- @*** Exception: ExitFailure N@ (fail). Any other @*** Exception:@ line
--- means the runner crashed. Absence of an exception line is treated as pass.
+-- means the runner crashed.
+--
+-- When no exception line is present, the absence is ambiguous: either the
+-- test ran and printed nothing exit-related, or @:main@ never ran at all
+-- (e.g. the test target failed to compile, so @main@ is not in scope).
+-- A line containing @": error:"@ in the captured output is treated as the
+-- latter — a GHC compile/load error that prevented the suite from running.
 detectOutcome :: Text -> GhciOutcome
 detectOutcome output =
-    case List.find ("*** Exception: " `T.isPrefixOf`) (T.lines output) of
-        Nothing -> GhciPassed
+    case List.find ("*** Exception: " `T.isPrefixOf`) outputLines of
         Just line ->
             case T.stripPrefix "*** Exception: " line of
                 Nothing -> GhciPassed
@@ -145,3 +150,12 @@ detectOutcome output =
                                 GhciFailed
                             else
                                 GhciCrashed r
+        Nothing -> case List.find isCompileErrorLine outputLines of
+            Just errLine -> GhciCrashed (T.strip errLine)
+            Nothing -> GhciPassed
+  where
+    outputLines = T.lines output
+    -- GHC compile/load errors are formatted as
+    -- @<file-or-loc>:L:C: error: …@ (with at least one space after the colon).
+    -- The substring @": error:"@ is the canonical marker for these.
+    isCompileErrorLine line = ": error:" `T.isInfixOf` line

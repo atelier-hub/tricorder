@@ -2,20 +2,23 @@
 --
 -- == Overview
 --
--- @debounced key action@ schedules @action@ to run after the settle window,
--- but cancels it if another call with the same @key@ arrives before the
--- window expires. This coalesces rapid bursts (e.g. two inotify events for
--- the same file) into a single callback.
+-- 'debouncedWith' is the fundamental operation: it accumulates rapid successive
+-- calls with the same key using a merge function, then fires the callback once
+-- after the settle window with the merged result.
+--
+-- 'debounced' is a convenience wrapper for the common case where only timing
+-- matters and the last-registered action should fire.
 --
 -- == Example
 --
 -- @
--- watchFilePaths watches \path ->
---     debounced path (markDirty (changeKindFor path))
+-- watchFilePaths watches \path event ->
+--     debouncedWith 100 mergeFileEvent path event (handleChange path)
 -- @
 module Atelier.Effects.Debounce
     ( -- * Effect
       Debounce
+    , debouncedWith
     , debounced
 
       -- * Interpreters
@@ -23,6 +26,7 @@ module Atelier.Effects.Debounce
     , runDebounceNoOp
     ) where
 
+import Data.Dynamic (Dynamic, fromDynamic, toDyn)
 import Effectful (Effect)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (STM)
@@ -40,17 +44,33 @@ import Atelier.Effects.Delay qualified as Delay
 
 
 data Debounce key :: Effect where
-    -- | Schedule @action@ to run after the settle window unless a newer call
-    -- with the same @key@ arrives first.
-    Debounced :: Millisecond -> key -> m () -> Debounce key m ()
+    -- | Schedule @callback merged@ after the settle window. If another call
+    -- with the same @key@ arrives before the window expires, the two values are
+    -- combined with @merge old new@ and the timer resets. The callback fires at
+    -- most once per burst.
+    DebouncedWith
+        :: (Typeable value)
+        => Millisecond
+        -> (value -> value -> value)
+        -> key
+        -> value
+        -> (value -> m ())
+        -> Debounce key m ()
 
 
 makeEffect ''Debounce
 
 
+-- | Schedule @action@ to run after the settle window unless a newer call with
+-- the same @key@ arrives first. The last-registered action fires.
+debounced :: (Debounce key :> es) => Millisecond -> key -> Eff es () -> Eff es ()
+debounced settleMs key action = debouncedWith settleMs (\() () -> ()) key () (\() -> action)
+
+
 -- | Run the 'Debounce' effect.
 --
--- @settleMs@ is the quiet window — how long to wait for silence before firing.
+-- Each key maintains a generation counter. Rapid calls for the same key merge
+-- their values and reset the settle timer; only the last generation fires.
 runDebounce
     :: forall key es a
      . ( Conc :> es
@@ -61,28 +81,33 @@ runDebounce
     => Eff (Debounce key : es) a
     -> Eff es a
 runDebounce eff = do
-    counters <- STM.atomically (Map.new :: STM (Map.Map key Int))
+    state <- STM.atomically (Map.new :: STM (Map.Map key (Int, Maybe Dynamic)))
     interpretWith eff \env -> \case
-        Debounced settleMs key action ->
+        DebouncedWith settleMs merge key value callback ->
             localUnlift env concStrat \unlift -> do
                 n <- STM.atomically $ do
-                    current <- Map.lookup key counters
-                    let n = maybe 0 (+ 1) current
-                    Map.insert n key counters
+                    current <- Map.lookup key state
+                    let n = maybe 0 ((+ 1) . fst) current
+                    let prior = current >>= \(_, mDyn) -> mDyn >>= fromDynamic
+                    let merged = case prior of
+                            Just p -> merge p value
+                            Nothing -> value
+                    Map.insert (n, Just (toDyn merged)) key state
                     pure n
                 void $ fork $ do
                     Delay.wait settleMs
-                    shouldFire <- STM.atomically $ do
-                        current <- Map.lookup key counters
-                        if current == Just n then
-                            Map.delete key counters $> True
+                    mValue <- STM.atomically $ do
+                        current <- Map.lookup key state
+                        if fmap fst current == Just n then do
+                            Map.delete key state
+                            pure $ current >>= \(_, mDyn) -> mDyn >>= fromDynamic
                         else
-                            pure False
-                    when shouldFire (unlift action)
+                            pure Nothing
+                    for_ mValue (unlift . callback)
 
 
--- | No-op interpreter — fires every action immediately without debouncing.
--- Useful for tests where timing is controlled externally.
+-- | No-op interpreter — fires every callback immediately with its value, without
+-- debouncing. Useful for tests where timing is controlled externally.
 runDebounceNoOp :: Eff (Debounce key : es) a -> Eff es a
 runDebounceNoOp eff = interpretWith eff \env -> \case
-    Debounced _ _ action -> localSeqUnlift env \unlift -> unlift action
+    DebouncedWith _ _ _ value callback -> localSeqUnlift env \unlift -> unlift (callback value)

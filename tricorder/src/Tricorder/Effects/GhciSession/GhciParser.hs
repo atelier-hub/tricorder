@@ -4,21 +4,24 @@ module Tricorder.Effects.GhciSession.GhciParser
     , GhciMessage (..)
     , GhciSeverity (..)
     , LoadResult (..)
+    , LoadedModule (..)
     , Position (..)
     , collectResultCustom
     , parseReload
     , parseShowModules
     , stripAnsi
     , extractTitle
+    , toAbsolute
     , toRelative
     ) where
 
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
-import System.FilePath (isAbsolute, makeRelative, splitDirectories, (</>))
+import System.FilePath (isAbsolute, makeRelative, normalise, splitDirectories, (</>))
 import Text.Megaparsec
 import Text.Megaparsec.Char (char, string)
 
 import Data.List qualified as List
+import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
 import Text.Megaparsec.Char.Lexer qualified as L
@@ -75,12 +78,24 @@ data GhciLoad
     deriving stock (Eq, Show)
 
 
+-- | A module currently loaded in the GHCi session.
+data LoadedModule = LoadedModule
+    { relPath :: FilePath
+    -- ^ Path relative to the project root (e.g. @"./src/Foo.hs"@).
+    , moduleName :: Text
+    }
+    deriving stock (Eq, Show)
+
+
 -- | The result of a GHCi load or reload operation.
 data LoadResult = LoadResult
     { moduleCount :: Int
     , compiledFiles :: Set FilePath
     -- ^ Files compiled in this cycle (derived from 'GLoading' items).
     -- Used by the session layer to decide which files' previous diagnostics to replace vs. retain.
+    , loadedModules :: Map FilePath LoadedModule
+    -- ^ Map from canonical absolute path to module metadata, derived from @:show modules@ output.
+    -- Acts as the source of truth for what GHCi currently knows.
     , diagnostics :: [Diagnostic]
     }
     deriving stock (Eq, Show)
@@ -370,6 +385,14 @@ toRelative base path
         rel -> "." </> List.foldr1 (</>) rel
 
 
+-- | Make a relative path absolute by prepending the given base directory.
+-- Paths already absolute are returned unchanged.
+toAbsolute :: FilePath -> FilePath -> FilePath
+toAbsolute base path
+    | isAbsolute path = path
+    | otherwise = base </> path
+
+
 -- | Strip ANSI escape sequences of the form @ESC [ \<params\> \<letter\>@.
 stripAnsi :: Text -> Text
 stripAnsi t = case T.uncons t of
@@ -387,12 +410,18 @@ stripAnsi t = case T.uncons t of
 collectResultCustom :: FilePath -> [GhciLoad] -> [(Text, FilePath)] -> LoadResult
 collectResultCustom projectRoot loads modules =
     let rel = toRelative projectRoot
+        abs' = toAbsolute projectRoot
         compiledFiles = case [l.sourceFile | GLoading l <- loads] of
             [] -> Set.fromList (map (rel . snd) modules)
             fs -> Set.fromList (map rel fs)
+        mkEntry (mn, fp) =
+            ( normalise (abs' fp)
+            , LoadedModule {relPath = rel fp, moduleName = mn}
+            )
     in  LoadResult
             { moduleCount = length modules
             , compiledFiles
+            , loadedModules = Map.fromList (map mkEntry modules)
             , diagnostics = toDiagnostics rel loads
             }
 
