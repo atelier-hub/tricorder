@@ -48,7 +48,6 @@ import Effectful.Dispatch.Dynamic (interposeWith, interpret, interpretWith, loca
 import Effectful.Exception (bracket, onException)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.TH (makeEffect)
-import Effectful.Timeout (Timeout, timeout)
 
 import Data.HashMap.Strict qualified as HashMap
 import OpenTelemetry.Context qualified as Context
@@ -56,6 +55,8 @@ import OpenTelemetry.Context.ThreadLocal qualified as ThreadLocal
 import OpenTelemetry.Trace qualified as OT
 import OpenTelemetry.Trace.Core qualified as OT
 
+import Atelier.Effects.Timeout (Timeout, timeout)
+import Atelier.Time (Second)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 import Atelier.Types.WithDefaults (WithDefaults (..))
 
@@ -190,7 +191,7 @@ runTracing enabled serviceName otlpEndpoint action
     | otherwise =
         bracket
             (liftIO $ Provider.initTracingState serviceName otlpEndpoint)
-            (\tracingState -> void $ timeout 3_000_000 $ liftIO $ Provider.shutdownTracingState tracingState)
+            (\tracingState -> void $ timeout (3 :: Second) $ liftIO $ Provider.shutdownTracingState tracingState)
             $ \tracingState -> interpretWith action $ \env -> \case
                 WithSpan spanName innerAction -> localSeqUnlift env $ \unlift -> do
                     currentCtx <- liftIO ThreadLocal.getContext

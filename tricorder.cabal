@@ -152,6 +152,7 @@ library atelier
       Atelier.Effects.Posix.IO
       Atelier.Effects.Publishing
       Atelier.Effects.Tally
+      Atelier.Effects.Timeout
       Atelier.Effects.UUID
       Atelier.Effects.Yield
       Atelier.Exception
