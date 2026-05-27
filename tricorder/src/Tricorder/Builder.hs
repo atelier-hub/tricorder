@@ -21,7 +21,7 @@ import Data.Time (diffUTCTime)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
-import Effectful.State.Static.Shared (State, execState, get, modify, put, state)
+import Effectful.State.Static.Shared (State, get, modify, put, state)
 import Relude.Extra.Tuple (dup)
 import System.FilePath (isAbsolute, normalise, (</>))
 
@@ -230,6 +230,7 @@ buildWithGhciOnChange
        , State DiagnosticMap :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
+       , TestRunner :> es
        )
     => SessionStore.Reloader es
     -> BuilderSession
@@ -294,6 +295,7 @@ rebuildOnChange
        , State BuildId :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
+       , TestRunner :> es
        )
     => SessionStore.Reloader es
     -> GhciSession.Controls (Eff es)
@@ -320,32 +322,35 @@ handleSourceChanges
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        , Sub SourceChangeDetected :> es
+       , TestRunner :> es
        )
     => GhciSession.Controls (Eff es) -> Eff es Void
 handleSourceChanges controls = forever $ Conc.scoped do
     readyToBuildSem <- Sem.newSet
     Conc.fork_ $ Sub.listen_ \ev ->
         debounced 200 "source_change_reloader" $ reloadOnSourceChange readyToBuildSem controls ev
-    Conc.fork_ $ Sub.listen_ \_ -> interruptCurrentReload readyToBuildSem controls
+    Conc.fork_ $ Sub.listen_ \_ -> interruptCurrent readyToBuildSem controls
     Conc.awaitAll
 
 
-interruptCurrentReload
+interruptCurrent
     :: ( BuildStore :> es
        , Concurrent :> es
        , Log :> es
+       , TestRunner :> es
        )
     => Semaphore -> GhciSession.Controls (Eff es) -> Eff es ()
-interruptCurrentReload readyToBuildSem controls = do
-    isIdle <- Sem.peek readyToBuildSem
+interruptCurrent readyToBuildSem controls = do
     hasWaiters <- BuildStore.hasWaiters
-    unless (isIdle || hasWaiters)
-        $ bracket_
-            (Sem.unset readyToBuildSem)
-            (Sem.set readyToBuildSem)
-            do
-                Log.info "Change detected. Interrupting current GHCi build."
+    unless hasWaiters do
+        Log.info "Change detected with no waiters. Interrupting current build/tests."
+        isIdle <- Sem.peek readyToBuildSem
+        unless isIdle
+            $ bracket_
+                (Sem.unset readyToBuildSem)
+                (Sem.set readyToBuildSem)
                 controls.interrupt
+        TestRunner.interruptCurrent
 
 
 reloadOnSourceChange
@@ -454,12 +459,18 @@ requestTestRunsForNewBuildResults
     -> Eff es ()
 requestTestRunsForNewBuildResults config partialResult = do
     buildId <- get
-    testRuns <- runTestsIfClean config buildId partialResult
-    publish $ EnteringNewPhase buildId $ Done partialResult {testRuns}
+    runTestsIfClean config buildId partialResult >>= \case
+        Nothing -> Log.info "Test run aborted by source change; skipping Done publish."
+        Just testRuns ->
+            publish $ EnteringNewPhase buildId $ Done partialResult {testRuns}
 
 
 -- Run all configured test suites if the build has no errors.
 -- Transitions to 'Testing' phase while suites are running.
+--
+-- Returns 'Nothing' if the run was aborted mid-flight by a source change
+-- (the caller should not publish a Done phase in that case). Returns
+-- 'Just' with the collected results otherwise.
 runTestsIfClean
     :: ( Log :> es
        , Pub EnteringNewPhase :> es
@@ -468,26 +479,34 @@ runTestsIfClean
     => BuilderSession
     -> BuildId
     -> BuildResult
-    -> Eff es [TestRun]
+    -> Eff es (Maybe [TestRun])
 runTestsIfClean (BuilderSession {testTargets}) bid partialResult
-    | null testTargets || any (\d -> d.severity == SError) partialResult.diagnostics = pure []
+    | null testTargets || any (\d -> d.severity == SError) partialResult.diagnostics = pure (Just [])
     | otherwise = do
+        TestRunner.resetAbort
         publish
             $ EnteringNewPhase bid
             $ Testing partialResult {testRuns = map TestRunning testTargets}
 
         Log.info $ "Running " <> show (length testTargets) <> " test suite(s)"
 
-        fmap (fmap snd)
-            $ execState ((\t -> (t, TestRunning t)) <$> testTargets)
-            $ for_ testTargets \target -> do
-                Log.info $ "Running tests: " <> target
-                result <- TestRunner.runTestSuite target
-                runs <- state $ dup . insert target result
-                publish
-                    $ EnteringNewPhase bid
-                    $ Testing partialResult {testRuns = snd <$> runs}
+        let initial = (\t -> (t, TestRunning t)) <$> testTargets
+        runLoop initial testTargets
   where
+    runLoop acc [] = pure (Just (snd <$> acc))
+    runLoop acc (target : rest) = do
+        Log.info $ "Running tests: " <> target
+        result <- TestRunner.runTestSuite target
+        aborted <- TestRunner.isAborted
+        if aborted then
+            pure Nothing
+        else do
+            let acc' = insert target result acc
+            publish
+                $ EnteringNewPhase bid
+                $ Testing partialResult {testRuns = snd <$> acc'}
+            runLoop acc' rest
+
     insert _ _ [] = []
     insert k v ((k', v') : xs)
         | k == k' = (k, v) : xs

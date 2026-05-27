@@ -2,6 +2,9 @@ module Tricorder.Effects.TestRunner
     ( -- * Effect
       TestRunner
     , runTestSuite
+    , interruptCurrent
+    , resetAbort
+    , isAborted
 
       -- * Interpreters
     , runTestRunnerIO
@@ -12,13 +15,15 @@ module Tricorder.Effects.TestRunner
     , detectOutcome
     ) where
 
+import Control.Concurrent.STM (readTVar, writeTVar)
 import Control.Exception (throwIO)
 import Data.Default (def)
 import Data.Time.Units (Second)
 import Effectful (Effect, IOE)
 import Effectful.Concurrent (Concurrent)
+import Effectful.Concurrent.STM (atomically, newTVarIO)
 import Effectful.Dispatch.Dynamic (interpretWith_, reinterpret)
-import Effectful.Exception (trySync)
+import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, evalState, get, put)
 import Effectful.TH (makeEffect)
@@ -30,7 +35,7 @@ import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Delay (Delay, withTimeout)
 import Atelier.Effects.File (File)
 import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
-import Tricorder.Effects.GhciSession.GhciProcess (execGhci, withGhciProcess)
+import Tricorder.Effects.GhciSession.GhciProcess (GhciProcess, execGhci, interruptGhci, withGhciProcess)
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
@@ -43,6 +48,14 @@ data TestRunner :: Effect where
     -- | Run a single test suite in a short-lived @cabal repl@ process and
     -- return the captured output and detected outcome.
     RunTestSuite :: Text -> TestRunner m TestRun
+    -- | Interrupt the test currently in flight (if any) and latch an abort
+    -- flag so that subsequent 'RunTestSuite' calls short-circuit until
+    -- 'ResetAbort' is called.
+    InterruptCurrent :: TestRunner m ()
+    -- | Clear the abort flag. Call this at the start of a new test run.
+    ResetAbort :: TestRunner m ()
+    -- | Read the abort flag without clearing it.
+    IsAborted :: TestRunner m Bool
 
 
 makeEffect ''TestRunner
@@ -63,35 +76,51 @@ runTestRunnerIO
     => Eff (TestRunner : es) a -> Eff es a
 runTestRunnerIO act = do
     ProjectRoot projectRoot <- ask
+    currentProcRef <- newTVarIO (Nothing :: Maybe GhciProcess)
+    abortedRef <- newTVarIO False
     interpretWith_ act \case
+        InterruptCurrent -> do
+            mProc <- atomically do
+                writeTVar abortedRef True
+                readTVar currentProcRef
+            for_ mProc interruptGhci
+        ResetAbort -> atomically (writeTVar abortedRef False)
+        IsAborted -> atomically (readTVar abortedRef)
         RunTestSuite target -> do
-            Session {testTimeout} <- SessionStore.get
-            result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot \ghci _ -> do
-                case testTimeout of
-                    secs | secs <= 0 -> Right <$> execGhci ghci ":main"
-                    secs ->
-                        withTimeout (fromIntegral secs :: Second) (execGhci ghci ":main") >>= \case
-                            Left () -> pure (Left secs)
-                            Right ls -> pure (Right ls)
-            pure $ case result of
-                Left ex ->
-                    TestRunErrored $ TestRunError {target, message = show ex}
-                Right (Left secs) ->
-                    TestRunErrored $ TestRunError {target, message = "Test suite timed out after " <> show secs <> "s"}
-                Right (Right mainLines) ->
-                    let output = T.unlines mainLines
-                    in  case detectOutcome output of
-                            GhciCrashed msg ->
-                                TestRunErrored $ TestRunError {target, message = msg}
-                            outcome ->
-                                TestRunCompleted
-                                    $ TestRunCompletion
-                                        { target
-                                        , passed = outcome == GhciPassed
-                                        , output
-                                        , testCases = parseHspecOutput output
-                                        , duration = parseHspecDuration output
-                                        }
+            alreadyAborted <- atomically (readTVar abortedRef)
+            if alreadyAborted then
+                pure $ TestRunErrored $ TestRunError {target, message = "Test run aborted"}
+            else do
+                Session {testTimeout} <- SessionStore.get
+                result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot \ghci _ ->
+                    bracket_
+                        (atomically (writeTVar currentProcRef (Just ghci)))
+                        (atomically (writeTVar currentProcRef Nothing))
+                        $ case testTimeout of
+                            secs | secs <= 0 -> Right <$> execGhci ghci ":main"
+                            secs ->
+                                withTimeout (fromIntegral secs :: Second) (execGhci ghci ":main") >>= \case
+                                    Left () -> pure (Left secs)
+                                    Right ls -> pure (Right ls)
+                pure $ case result of
+                    Left ex ->
+                        TestRunErrored $ TestRunError {target, message = show ex}
+                    Right (Left secs) ->
+                        TestRunErrored $ TestRunError {target, message = "Test suite timed out after " <> show secs <> "s"}
+                    Right (Right mainLines) ->
+                        let output = T.unlines mainLines
+                        in  case detectOutcome output of
+                                GhciCrashed msg ->
+                                    TestRunErrored $ TestRunError {target, message = msg}
+                                outcome ->
+                                    TestRunCompleted
+                                        $ TestRunCompletion
+                                            { target
+                                            , passed = outcome == GhciPassed
+                                            , output
+                                            , testCases = parseHspecOutput output
+                                            , duration = parseHspecDuration output
+                                            }
 
 
 -- | Scripted interpreter for testing.
@@ -113,6 +142,9 @@ runTestRunnerScripted results = reinterpret (evalState results) $ \_ ->
                 Right r : rest -> put rest >> pure r
     in  \case
             RunTestSuite _ -> popResult
+            InterruptCurrent -> pure ()
+            ResetAbort -> pure ()
+            IsAborted -> pure False
 
 
 data GhciOutcome
