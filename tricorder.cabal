@@ -452,6 +452,7 @@ test-suite atelier-test
     , hspec
     , hspec-hedgehog
     , stm
+    , stm-containers
     , tasty
     , tasty-hspec
     , time
