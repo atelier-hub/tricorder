@@ -1,17 +1,18 @@
 module Unit.Tricorder.TestRunnerSpec (spec_TestRunner) where
 
-import Control.Exception (ErrorCall (..))
+import Data.IORef (modifyIORef', newIORef, readIORef)
 import Effectful (IOE, runEff)
-import Effectful.Exception (try)
 import Test.Hspec
 
 import Tricorder.BuildState (TestRun (..), TestRunCompletion (..))
 import Tricorder.Effects.TestRunner
-    ( GhciOutcome (..)
+    ( BatchStatus (..)
+    , GhciOutcome (..)
+    , TestRunOutcome (..)
     , TestRunner
     , detectOutcome
     , runTestRunnerScripted
-    , runTestSuite
+    , withBatch
     )
 
 
@@ -95,46 +96,50 @@ testDetectOutcome = do
 
 testScripted :: Spec
 testScripted = do
-    it "returns scripted TestRun" do
-        result <- runScripted [Right passingRun] $ runTestSuite "test:foo"
-        result `shouldBe` passingRun
+    it "returns BatchCompleted when all outcomes are TestCompleted" do
+        (status, observed) <-
+            runBatch
+                [TestCompleted passingRun, TestCompleted failingRun]
+                ["test:foo", "test:bar"]
+        status `shouldBe` BatchCompleted
+        observed
+            `shouldBe` [ ("test:foo", TestCompleted passingRun)
+                       , ("test:bar", TestCompleted failingRun)
+                       ]
 
-    it "ignores the target name argument" do
-        result <- runScripted [Right failingRun] $ runTestSuite "test:anything"
-        result `shouldBe` failingRun
+    it "stops the loop and returns BatchAborted on TestAborted" do
+        (status, observed) <-
+            runBatch
+                [TestCompleted passingRun, TestAborted, TestCompleted failingRun]
+                ["test:foo", "test:bar", "test:baz"]
+        status `shouldBe` BatchAborted
+        observed
+            `shouldBe` [ ("test:foo", TestCompleted passingRun)
+                       , ("test:bar", TestAborted)
+                       ]
 
-    it "throws when scripted result is Left" do
-        result <-
-            runScripted [Left (toException boom)]
-                $ try @ErrorCall
-                $ runTestSuite "test:foo"
-        result `shouldBe` Left boom
+    it "delivers TestAborted to the callback before stopping" do
+        (_, observed) <- runBatch [TestAborted] ["test:foo"]
+        observed `shouldBe` [("test:foo", TestAborted)]
 
-    describe "sequencing" do
-        it "consumes results in order across multiple calls" do
-            (a, b) <- runScripted [Right passingRun, Right failingRun] do
-                a <- runTestSuite "test:foo"
-                b <- runTestSuite "test:bar"
-                pure (a, b)
-            a `shouldBe` passingRun
-            b `shouldBe` failingRun
-
-        it "recover scenario: error then success" do
-            result <- runScripted [Left (toException boom), Right passingRun] do
-                r1 <- try @ErrorCall $ runTestSuite "test:foo"
-                r2 <- runTestSuite "test:bar"
-                pure (r1, r2)
-            fst result `shouldBe` Left boom
-            snd result `shouldBe` passingRun
+    it "returns BatchCompleted (vacuously) for an empty target list" do
+        (status, observed) <- runBatch [] []
+        status `shouldBe` BatchCompleted
+        observed `shouldBe` []
+  where
+    -- Run withBatch with a script and target list, recording every
+    -- (target, outcome) pair the callback sees.
+    runBatch script targets = do
+        ref <- newIORef []
+        status <- runScripted script $ withBatch targets \target outcome ->
+            liftIO $ modifyIORef' ref ((target, outcome) :)
+        observed <- reverse <$> readIORef ref
+        pure (status, observed)
 
 
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
-
-boom :: ErrorCall
-boom = ErrorCall "simulated process crash"
-
 
 passingRun :: TestRun
 passingRun =
@@ -160,5 +165,5 @@ failingRun =
             }
 
 
-runScripted :: [Either SomeException TestRun] -> Eff '[TestRunner, IOE] a -> IO a
-runScripted results = runEff . runTestRunnerScripted results
+runScripted :: [TestRunOutcome] -> Eff '[TestRunner, IOE] a -> IO a
+runScripted outcomes = runEff . runTestRunnerScripted outcomes

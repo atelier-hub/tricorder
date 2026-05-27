@@ -4,11 +4,13 @@ import Control.Concurrent (threadDelay)
 import Data.Time (UTCTime (..), fromGregorian)
 import Effectful (IOE, runEff, runPureEff)
 import Effectful.Concurrent (Concurrent, runConcurrent)
+import Effectful.Writer.Static.Shared (Writer, runWriter)
 import Test.Hspec
 
 import Atelier.Effects.Conc (Conc, runConc)
 import Atelier.Effects.Delay (Delay, runDelay)
-import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..))
+import Atelier.Effects.Publishing (Pub, runPubWriter)
+import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..), EnteredNewPhase)
 import Tricorder.Effects.BuildStore
     ( BuildStore
     , getState
@@ -150,9 +152,9 @@ runScripted :: [BuildState] -> Eff '[BuildStore] a -> a
 runScripted states = runPureEff . runBuildStoreScripted states
 
 
-runStm :: Eff '[BuildStore, Delay, Concurrent, IOE] a -> IO a
-runStm = runEff . runConcurrent . runDelay . runBuildStoreSTM
+runStm :: Eff '[BuildStore, Pub EnteredNewPhase, Writer [EnteredNewPhase], Delay, Concurrent, IOE] a -> IO a
+runStm = fmap fst . runEff . runConcurrent . runDelay . runWriter @[EnteredNewPhase] . runPubWriter . runBuildStoreSTM
 
 
-runStmConc :: Eff '[Conc, BuildStore, Delay, Concurrent, IOE] a -> IO a
-runStmConc = runEff . runConcurrent . runDelay . runBuildStoreSTM . runConc
+runStmConc :: Eff '[Conc, BuildStore, Pub EnteredNewPhase, Writer [EnteredNewPhase], Delay, Concurrent, IOE] a -> IO a
+runStmConc = fmap fst . runEff . runConcurrent . runDelay . runWriter @[EnteredNewPhase] . runPubWriter . runBuildStoreSTM . runConc

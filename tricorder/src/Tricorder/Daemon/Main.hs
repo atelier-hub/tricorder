@@ -80,7 +80,6 @@ main =
         . runPubSub @BuildState.CabalChangeDetected
         . runPubSub @BuildState.SourceChangeDetected
         . runPubSub @BuildState.EnteredNewPhase
-        . runPubSub @BuildState.EnteringNewPhase
         . runDaemonInfo
         . runLogging
         . runTestRunnerIO

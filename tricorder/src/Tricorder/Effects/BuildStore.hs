@@ -7,6 +7,7 @@ module Tricorder.Effects.BuildStore
     , waitForNext
     , waitForAnyChange
     , setPhase
+    , modifyPhase
     , markDirty
     , waitDirty
     , hasWaiters
@@ -21,13 +22,14 @@ module Tricorder.Effects.BuildStore
 import Effectful (Effect)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (TVar, atomically, modifyTVar, newTVar, readTVar, writeTVar)
-import Effectful.Dispatch.Dynamic (interpret_, reinterpret)
+import Effectful.Dispatch.Dynamic (interpret, reinterpret)
 import Effectful.Exception (bracket_)
 import Effectful.State.Static.Shared (State, evalState, get, modify, put)
 import Effectful.TH (makeEffect)
 
 import Atelier.Effects.Delay (Delay, wait)
 import Atelier.Effects.Input (Input, input)
+import Atelier.Effects.Publishing (Pub, publish)
 import Atelier.Time (Millisecond)
 import Tricorder.BuildState
     ( BuildId
@@ -36,6 +38,7 @@ import Tricorder.BuildState
     , BuildStateRef (..)
     , ChangeKind (..)
     , DaemonInfo (..)
+    , EnteredNewPhase (..)
     , initialBuildState
     )
 
@@ -53,6 +56,10 @@ data BuildStore :: Effect where
     WaitForAnyChange :: BuildState -> BuildStore m BuildState
     -- | Update the build id and phase without touching other fields (e.g. daemonInfo).
     SetPhase :: BuildId -> BuildPhase -> BuildStore m ()
+    -- | Apply a function to the phase of the given build, atomically.
+    -- No-ops if the current 'BuildId' does not match — this prevents a late
+    -- callback from a cancelled batch from clobbering a fresher build's state.
+    ModifyPhase :: BuildId -> (BuildPhase -> BuildPhase) -> BuildStore m ()
     -- | Signal that files have changed and a rebuild is needed.
     -- 'CabalChange' upgrades a pending 'SourceChange' but never downgrades.
     MarkDirty :: ChangeKind -> BuildStore m ()
@@ -71,13 +78,18 @@ makeEffect ''BuildStore
 -- STM @retry@, which avoids @BlockedIndefinitelyOnSTM@ during daemon shutdown:
 -- between polls the thread is in an interruptible sleep and can receive
 -- async exceptions (e.g. Ki's @ScopeClosing@) cleanly.
-runBuildStoreSTM :: (Concurrent :> es, Delay :> es) => Eff (BuildStore : es) a -> Eff es a
+runBuildStoreSTM
+    :: ( Concurrent :> es
+       , Delay :> es
+       , Pub EnteredNewPhase :> es
+       )
+    => Eff (BuildStore : es) a -> Eff es a
 runBuildStoreSTM eff = do
     ref <- atomically (newTVar (initialBuildState emptyDaemonInfo))
     dirtyRef <- atomically $ newTVar @(Maybe ChangeKind) Nothing
     waitersRef <- atomically $ newTVar @Int 0
-    interpret_
-        ( \case
+    interpret
+        ( \_ -> \case
             GetState -> atomically (readTVar ref)
             PutState s -> atomically (writeTVar ref s)
             WaitUntilDone ->
@@ -87,7 +99,19 @@ runBuildStoreSTM eff = do
                     (poll ref (not . isBuilding))
             WaitForNext bid -> poll ref \s -> not (isBuilding s) && s.buildId /= bid
             WaitForAnyChange prev -> poll ref (/= prev)
-            SetPhase bid phase -> atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase}
+            SetPhase bid phase -> do
+                atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase}
+                publish (EnteredNewPhase bid phase)
+            ModifyPhase bid f -> do
+                mNew <- atomically do
+                    bs <- readTVar ref
+                    if bs.buildId == bid then do
+                        let bs' = bs {phase = f bs.phase}
+                        writeTVar ref bs'
+                        pure (Just bs'.phase)
+                    else
+                        pure Nothing
+                for_ mNew (publish . EnteredNewPhase bid)
             MarkDirty ck -> atomically (modifyTVar dirtyRef (max (Just ck)))
             WaitDirty -> pollDirtyRef dirtyRef
             HasWaiters -> fmap (> 0) $ atomically (readTVar waitersRef)
@@ -117,11 +141,12 @@ runBuildStoreRef
     :: ( Concurrent :> es
        , Delay :> es
        , Input DaemonInfo :> es
+       , Pub EnteredNewPhase :> es
        )
     => BuildStateRef -> Eff (BuildStore : es) a -> Eff es a
 runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef, waitersRef} =
-    interpret_
-        ( \case
+    interpret
+        ( \_ -> \case
             GetState -> atomically (readTVar ref)
             PutState s -> atomically (writeTVar ref s)
             WaitUntilDone ->
@@ -134,6 +159,17 @@ runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef, waitersRef} =
             SetPhase bid phase -> do
                 daemonInfo <- input
                 atomically $ modifyTVar ref \bs -> bs {buildId = bid, phase = phase, daemonInfo}
+                publish (EnteredNewPhase bid phase)
+            ModifyPhase bid f -> do
+                mNew <- atomically do
+                    bs <- readTVar ref
+                    if bs.buildId == bid then do
+                        let bs' = bs {phase = f bs.phase}
+                        writeTVar ref bs'
+                        pure (Just bs'.phase)
+                    else
+                        pure Nothing
+                for_ mNew (publish . EnteredNewPhase bid)
             MarkDirty ck -> atomically (modifyTVar dirtyRef (max (Just ck)))
             WaitDirty -> pollDirtyRef dirtyRef
             HasWaiters -> fmap (> 0) $ atomically (readTVar waitersRef)
@@ -168,12 +204,13 @@ pollDirtyRef dirtyRef = do
 --
 -- Advances through a pre-loaded list of 'BuildState' values for blocking
 -- operations. Useful for testing components that read build state without
--- needing a real 'TVar' or concurrency.
+-- needing a real 'TVar', concurrency, or pub/sub setup.
 --
 -- * 'getState' peeks at the head of the list without consuming it.
 -- * 'putState' prepends a state, making it the new head.
 -- * 'waitUntilDone' pops states until it finds one where @phase /= Building@.
 -- * 'waitForNext' pops states until it finds a Done state with a different 'BuildId'.
+-- * 'setPhase' / 'modifyPhase' rewrite the head; no events are published.
 runBuildStoreScripted :: [BuildState] -> Eff (BuildStore : es) a -> Eff es a
 runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
     GetState ->
@@ -184,10 +221,16 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
     WaitUntilDone -> advance (not . isBuilding)
     WaitForNext bid -> advance \s -> not (isBuilding s) && s.buildId /= bid
     WaitForAnyChange prev -> advance (/= prev)
-    SetPhase bid phase -> do
+    SetPhase bid phase ->
         get >>= \case
             [] -> pure ()
             s : rest -> put (s {buildId = bid, phase = phase} : rest)
+    ModifyPhase bid f ->
+        get >>= \case
+            [] -> pure ()
+            s : rest
+                | s.buildId == bid -> put (s {phase = f s.phase} : rest)
+                | otherwise -> pure ()
     MarkDirty _ -> pure ()
     WaitDirty -> pure SourceChange
     HasWaiters -> pure False
@@ -216,6 +259,7 @@ runBuildStore
     :: ( Concurrent :> es
        , Delay :> es
        , Input DaemonInfo :> es
+       , Pub EnteredNewPhase :> es
        )
     => Eff (BuildStore : es) a -> Eff es a
 runBuildStore eff = do

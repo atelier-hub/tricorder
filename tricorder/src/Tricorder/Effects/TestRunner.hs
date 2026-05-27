@@ -1,10 +1,12 @@
 module Tricorder.Effects.TestRunner
     ( -- * Effect
       TestRunner
-    , runTestSuite
+    , withBatch
     , interruptCurrent
-    , resetAbort
-    , isAborted
+
+      -- * Types
+    , TestRunOutcome (..)
+    , BatchStatus (..)
 
       -- * Interpreters
     , runTestRunnerIO
@@ -16,16 +18,15 @@ module Tricorder.Effects.TestRunner
     ) where
 
 import Control.Concurrent.STM (readTVar, writeTVar)
-import Control.Exception (throwIO)
 import Data.Default (def)
 import Data.Time.Units (Second)
 import Effectful (Effect, IOE)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (atomically, newTVarIO)
-import Effectful.Dispatch.Dynamic (interpretWith_, reinterpret)
+import Effectful.Dispatch.Dynamic (interpret, localSeqUnlift, reinterpret)
 import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
-import Effectful.State.Static.Shared (State, evalState, get, put)
+import Effectful.State.Static.Shared (State, evalState, state)
 import Effectful.TH (makeEffect)
 
 import Data.List qualified as List
@@ -44,25 +45,34 @@ import Tricorder.TestOutput (parseHspecDuration, parseHspecOutput)
 import Tricorder.Effects.SessionStore qualified as SessionStore
 
 
+data TestRunOutcome
+    = TestCompleted TestRun
+    | TestAborted
+    deriving stock (Eq, Show)
+
+
+data BatchStatus
+    = BatchCompleted
+    | BatchAborted
+    deriving stock (Eq, Show)
+
+
 data TestRunner :: Effect where
-    -- | Run a single test suite in a short-lived @cabal repl@ process and
-    -- return the captured output and detected outcome.
-    RunTestSuite :: Text -> TestRunner m TestRun
+    -- | Run a batch of test suites. The abort latch is reset on entry so a
+    -- stale interrupt from a previous batch cannot short-circuit this one.
+    -- Iterates targets in order, invoking the callback per outcome. Stops on
+    -- the first 'TestAborted' (which is also delivered to the callback).
+    WithBatch :: [Text] -> (Text -> TestRunOutcome -> m ()) -> TestRunner m BatchStatus
     -- | Interrupt the test currently in flight (if any) and latch an abort
-    -- flag so that subsequent 'RunTestSuite' calls short-circuit until
-    -- 'ResetAbort' is called.
+    -- flag so the in-progress 'WithBatch' loop bails out at the next step.
     InterruptCurrent :: TestRunner m ()
-    -- | Clear the abort flag. Call this at the start of a new test run.
-    ResetAbort :: TestRunner m ()
-    -- | Read the abort flag without clearing it.
-    IsAborted :: TestRunner m Bool
 
 
 makeEffect ''TestRunner
 
 
 -- | Production interpreter that spawns a short-lived @cabal repl test:\<name\>@
--- process for each suite, feeds @:main\\n:quit\\n@ to stdin, captures combined
+-- process for each suite, feeds @:main@ to stdin, captures combined
 -- stdout+stderr, and detects the outcome via 'detectOutcome'.
 runTestRunnerIO
     :: ( Conc :> es
@@ -78,73 +88,96 @@ runTestRunnerIO act = do
     ProjectRoot projectRoot <- ask
     currentProcRef <- newTVarIO (Nothing :: Maybe GhciProcess)
     abortedRef <- newTVarIO False
-    interpretWith_ act \case
-        InterruptCurrent -> do
-            mProc <- atomically do
-                writeTVar abortedRef True
-                readTVar currentProcRef
-            for_ mProc interruptGhci
-        ResetAbort -> atomically (writeTVar abortedRef False)
-        IsAborted -> atomically (readTVar abortedRef)
-        RunTestSuite target -> do
-            alreadyAborted <- atomically (readTVar abortedRef)
-            if alreadyAborted then
-                pure $ TestRunErrored $ TestRunError {target, message = "Test run aborted"}
-            else do
-                Session {testTimeout} <- SessionStore.get
-                result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot \ghci _ ->
-                    bracket_
-                        (atomically (writeTVar currentProcRef (Just ghci)))
-                        (atomically (writeTVar currentProcRef Nothing))
-                        $ case testTimeout of
-                            secs | secs <= 0 -> Right <$> execGhci ghci ":main"
-                            secs ->
-                                withTimeout (fromIntegral secs :: Second) (execGhci ghci ":main") >>= \case
-                                    Left () -> pure (Left secs)
-                                    Right ls -> pure (Right ls)
-                pure $ case result of
-                    Left ex ->
-                        TestRunErrored $ TestRunError {target, message = show ex}
-                    Right (Left secs) ->
-                        TestRunErrored $ TestRunError {target, message = "Test suite timed out after " <> show secs <> "s"}
-                    Right (Right mainLines) ->
-                        let output = T.unlines mainLines
-                        in  case detectOutcome output of
-                                GhciCrashed msg ->
-                                    TestRunErrored $ TestRunError {target, message = msg}
-                                outcome ->
-                                    TestRunCompleted
-                                        $ TestRunCompletion
-                                            { target
-                                            , passed = outcome == GhciPassed
-                                            , output
-                                            , testCases = parseHspecOutput output
-                                            , duration = parseHspecDuration output
-                                            }
+    interpret
+        ( \env -> \case
+            InterruptCurrent -> do
+                mProc <- atomically do
+                    writeTVar abortedRef True
+                    readTVar currentProcRef
+                for_ mProc interruptGhci
+            WithBatch targets callback -> do
+                atomically (writeTVar abortedRef False)
+                localSeqUnlift env \unlift -> do
+                    let go [] = pure BatchCompleted
+                        go (target : rest) = do
+                            outcome <- runOneSuite projectRoot currentProcRef abortedRef target
+                            unlift (callback target outcome)
+                            case outcome of
+                                TestAborted -> pure BatchAborted
+                                TestCompleted _ -> go rest
+                    go targets
+        )
+        act
+  where
+    runOneSuite projectRoot currentProcRef abortedRef target = do
+        alreadyAborted <- atomically (readTVar abortedRef)
+        if alreadyAborted then
+            pure TestAborted
+        else do
+            Session {testTimeout} <- SessionStore.get
+            result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot \ghci _ ->
+                bracket_
+                    (atomically (writeTVar currentProcRef (Just ghci)))
+                    (atomically (writeTVar currentProcRef Nothing))
+                    $ case testTimeout of
+                        secs | secs <= 0 -> Right <$> execGhci ghci ":main"
+                        secs ->
+                            withTimeout (fromIntegral secs :: Second) (execGhci ghci ":main") >>= \case
+                                Left () -> pure (Left secs)
+                                Right ls -> pure (Right ls)
+            -- If interrupt fired during the run, surface it uniformly as
+            -- TestAborted rather than leaking the kill-induced exception
+            -- through as a confusing TestRunErrored that callers would
+            -- discard anyway.
+            abortedDuring <- atomically (readTVar abortedRef)
+            if abortedDuring then
+                pure TestAborted
+            else pure $ TestCompleted $ case result of
+                Left ex ->
+                    TestRunErrored $ TestRunError {target, message = show ex}
+                Right (Left secs) ->
+                    TestRunErrored $ TestRunError {target, message = "Test suite timed out after " <> show secs <> "s"}
+                Right (Right mainLines) ->
+                    let output = T.unlines mainLines
+                    in  case detectOutcome output of
+                            GhciCrashed msg ->
+                                TestRunErrored $ TestRunError {target, message = msg}
+                            outcome ->
+                                TestRunCompleted
+                                    $ TestRunCompletion
+                                        { target
+                                        , passed = outcome == GhciPassed
+                                        , output
+                                        , testCases = parseHspecOutput output
+                                        , duration = parseHspecDuration output
+                                        }
 
 
 -- | Scripted interpreter for testing.
 --
--- Each call to 'runTestSuite' pops the next result from the pre-loaded list.
--- 'Left' results are re-thrown as exceptions, simulating process failures.
+-- Each iteration of a 'WithBatch' loop pops one 'TestRunOutcome' from the
+-- pre-loaded queue, invokes the callback, and (if the outcome is
+-- 'TestAborted') stops the loop with 'BatchAborted'.
 runTestRunnerScripted
     :: forall es a
-     . (IOE :> es)
-    => [Either SomeException TestRun]
+     . [TestRunOutcome]
     -> Eff (TestRunner : es) a
     -> Eff es a
-runTestRunnerScripted results = reinterpret (evalState results) $ \_ ->
-    let popResult :: Eff (State [Either SomeException TestRun] : es) TestRun
-        popResult =
-            get >>= \case
-                [] -> error "TestRunnerScripted: no more results in queue"
-                Left ex : rest -> put rest >> liftIO (throwIO ex)
-                Right r : rest -> put rest >> pure r
-    in  \case
-            RunTestSuite _ -> popResult
-            InterruptCurrent -> pure ()
-            ResetAbort -> pure ()
-            IsAborted -> pure False
+runTestRunnerScripted outcomes = reinterpret (evalState outcomes) $ \env -> \case
+    InterruptCurrent -> pure ()
+    WithBatch targets callback ->
+        let popOutcome :: Eff (State [TestRunOutcome] : es) TestRunOutcome
+            popOutcome = state \case
+                x : xs -> (x, xs)
+                [] -> error "TestRunnerScripted: no more outcomes in queue"
+            go [] = pure BatchCompleted
+            go (target : rest) = do
+                outcome <- popOutcome
+                localSeqUnlift env \unlift -> unlift (callback target outcome)
+                case outcome of
+                    TestAborted -> pure BatchAborted
+                    TestCompleted _ -> go rest
+        in  go targets
 
 
 data GhciOutcome

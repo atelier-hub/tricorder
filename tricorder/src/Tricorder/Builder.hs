@@ -1,6 +1,5 @@
 module Tricorder.Builder
     ( component
-    , withBuilderSession
     , BuilderSession (..)
     , filterToWatchDirs
     , mergeDiagnostics
@@ -13,7 +12,7 @@ module Tricorder.Builder
     , onRestart
     , reloadOnSourceChange
     , resolveKnownTargets
-    , setNewPhase
+    , upsertTestRun
     ) where
 
 import Data.Default (Default (..))
@@ -44,16 +43,16 @@ import Tricorder.BuildState
     , BuildResult (..)
     , CabalChangeDetected (..)
     , Diagnostic (..)
-    , EnteredNewPhase (..)
-    , EnteringNewPhase (..)
     , Severity (..)
     , SourceChangeDetected (..)
     , TestRun (..)
+    , TestRunCompletion (..)
+    , TestRunError (..)
     )
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..), LoadedModule (..))
 import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
-import Tricorder.Effects.TestRunner (TestRunner)
+import Tricorder.Effects.TestRunner (BatchStatus (..), TestRunOutcome (..), TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
@@ -84,8 +83,6 @@ component
        , GhciSession :> es
        , Log :> es
        , Pub BuildResult :> es
-       , Pub EnteredNewPhase :> es
-       , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
        , SessionStore :> es
@@ -94,7 +91,6 @@ component
        , State DiagnosticMap :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
-       , Sub EnteringNewPhase :> es
        , Sub NewLoadResult :> es
        , Sub SessionStoreReloaded :> es
        , Sub SourceChangeDetected :> es
@@ -164,8 +160,6 @@ restartableListeners
        , GhciSession :> es
        , Log :> es
        , Pub BuildResult :> es
-       , Pub EnteredNewPhase :> es
-       , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
        , State (Map FilePath LoadedModule) :> es
@@ -173,7 +167,6 @@ restartableListeners
        , State DiagnosticMap :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
-       , Sub EnteringNewPhase :> es
        , Sub NewLoadResult :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
@@ -181,37 +174,26 @@ restartableListeners
     => SessionStore.Reloader es
     -> BuilderSession
     -> Eff es ()
-restartableListeners reloader config = bracket_ (pure ()) (onRestart) $ Conc.scoped do
+restartableListeners reloader config = bracket_ (pure ()) onRestart $ Conc.scoped do
     ProjectRoot projectRoot <- ask
     Log.info $ "Builder.component: resolved command = " <> config.command
     Log.info $ "Builder.component: projectRoot = " <> toText projectRoot
-    Conc.fork_ $ Sub.listen_ $ compileLoadResultsIntoBuildResults config
-    Conc.fork_ $ Sub.listen_ $ requestTestRunsForNewBuildResults config
+    Conc.fork_ $ Sub.listen_ @NewLoadResult $ compileLoadResultsIntoBuildResults config
+    Conc.fork_ $ Sub.listen_ @BuildResult $ requestTestRunsForNewBuildResults config
     Conc.fork_ $ buildWithGhciOnChange reloader config
-    Conc.fork_ $ Sub.listen_ setNewPhase
     Conc.awaitAll
 
 
 onRestart
-    :: ( Log :> es
-       , Pub EnteringNewPhase :> es
+    :: ( BuildStore :> es
+       , Log :> es
        , State BuildId :> es
        )
     => Eff es ()
 onRestart = do
     Log.info "Restarting builder..."
     buildId <- state (\b -> (b, b + 1))
-    publish $ EnteringNewPhase buildId $ Building Nothing
-
-
-setNewPhase
-    :: ( BuildStore :> es
-       , Pub EnteredNewPhase :> es
-       )
-    => EnteringNewPhase -> Eff es ()
-setNewPhase (EnteringNewPhase bid phase) = do
-    BuildStore.setPhase bid phase
-    publish $ EnteredNewPhase bid phase
+    BuildStore.setPhase buildId (Building Nothing)
 
 
 buildWithGhciOnChange
@@ -222,7 +204,6 @@ buildWithGhciOnChange
        , Debounce Text :> es
        , GhciSession :> es
        , Log :> es
-       , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
        , State (Map FilePath LoadedModule) :> es
@@ -289,7 +270,6 @@ rebuildOnChange
        , Concurrent :> es
        , Debounce Text :> es
        , Log :> es
-       , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
@@ -317,7 +297,6 @@ handleSourceChanges
        , Concurrent :> es
        , Debounce Text :> es
        , Log :> es
-       , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
@@ -354,10 +333,10 @@ interruptCurrent readyToBuildSem controls = do
 
 
 reloadOnSourceChange
-    :: ( Clock :> es
+    :: ( BuildStore :> es
+       , Clock :> es
        , Concurrent :> es
        , Log :> es
-       , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
@@ -376,7 +355,7 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
                     <> toText fp
         Just action -> do
             buildId <- get
-            publish $ EnteringNewPhase buildId $ Building Nothing
+            BuildStore.setPhase buildId (Building Nothing)
 
             res <- trySync $ Sem.withSemaphore readyToBuildSem do
                 startTime <- Clock.currentTime
@@ -449,8 +428,8 @@ compileLoadResultsIntoBuildResults session newLoadResult = do
 
 
 requestTestRunsForNewBuildResults
-    :: ( Log :> es
-       , Pub EnteringNewPhase :> es
+    :: ( BuildStore :> es
+       , Log :> es
        , State BuildId :> es
        , TestRunner :> es
        )
@@ -460,57 +439,63 @@ requestTestRunsForNewBuildResults
 requestTestRunsForNewBuildResults config partialResult = do
     buildId <- get
     runTestsIfClean config buildId partialResult >>= \case
-        Nothing -> Log.info "Test run aborted by source change; skipping Done publish."
-        Just testRuns ->
-            publish $ EnteringNewPhase buildId $ Done partialResult {testRuns}
+        BatchAborted -> Log.info "Test run aborted by source change; skipping Done publish."
+        BatchCompleted ->
+            -- Freeze the build's final state as Done. From the normal path
+            -- the phase is Testing with accumulated testRuns; from the
+            -- early-return path (no targets / errored build) it's still
+            -- whatever the build phase was, and we fall back to the input.
+            BuildStore.modifyPhase buildId \case
+                Testing buildResult -> Done buildResult
+                _ -> Done partialResult
 
 
 -- Run all configured test suites if the build has no errors.
--- Transitions to 'Testing' phase while suites are running.
+-- Transitions to 'Testing' phase while suites are running, and updates the
+-- per-target slot in BuildStore as each suite completes.
 --
--- Returns 'Nothing' if the run was aborted mid-flight by a source change
--- (the caller should not publish a Done phase in that case). Returns
--- 'Just' with the collected results otherwise.
+-- Returns 'BatchAborted' if the run was interrupted mid-flight by a source
+-- change; the caller should not publish a Done phase in that case.
 runTestsIfClean
-    :: ( Log :> es
-       , Pub EnteringNewPhase :> es
+    :: ( BuildStore :> es
+       , Log :> es
        , TestRunner :> es
        )
     => BuilderSession
     -> BuildId
     -> BuildResult
-    -> Eff es (Maybe [TestRun])
+    -> Eff es BatchStatus
 runTestsIfClean (BuilderSession {testTargets}) bid partialResult
-    | null testTargets || any (\d -> d.severity == SError) partialResult.diagnostics = pure (Just [])
+    | null testTargets || any (\d -> d.severity == SError) partialResult.diagnostics =
+        pure BatchCompleted
     | otherwise = do
-        TestRunner.resetAbort
-        publish
-            $ EnteringNewPhase bid
-            $ Testing partialResult {testRuns = map TestRunning testTargets}
-
+        BuildStore.setPhase bid $ Testing partialResult {testRuns = map TestRunning testTargets}
         Log.info $ "Running " <> show (length testTargets) <> " test suite(s)"
+        TestRunner.withBatch testTargets \target -> \case
+            TestAborted -> pure ()
+            TestCompleted testRun -> do
+                Log.info $ "Test completed: " <> target
+                BuildStore.modifyPhase bid (upsertTestRun testRun)
 
-        let initial = (\t -> (t, TestRunning t)) <$> testTargets
-        runLoop initial testTargets
+
+-- | Replace the slot for a 'TestRun' (matched by target name) inside the
+-- @testRuns@ list of a 'Testing' phase. Leaves other phases unchanged.
+upsertTestRun :: TestRun -> BuildPhase -> BuildPhase
+upsertTestRun newRun (Testing buildResult) =
+    Testing buildResult {testRuns = replace buildResult.testRuns}
   where
-    runLoop acc [] = pure (Just (snd <$> acc))
-    runLoop acc (target : rest) = do
-        Log.info $ "Running tests: " <> target
-        result <- TestRunner.runTestSuite target
-        aborted <- TestRunner.isAborted
-        if aborted then
-            pure Nothing
-        else do
-            let acc' = insert target result acc
-            publish
-                $ EnteringNewPhase bid
-                $ Testing partialResult {testRuns = snd <$> acc'}
-            runLoop acc' rest
+    target = testRunTarget newRun
+    replace [] = []
+    replace (existing : rest)
+        | testRunTarget existing == target = newRun : rest
+        | otherwise = existing : replace rest
+upsertTestRun _ phase = phase
 
-    insert _ _ [] = []
-    insert k v ((k', v') : xs)
-        | k == k' = (k, v) : xs
-        | otherwise = (k', v') : insert k v xs
+
+testRunTarget :: TestRun -> Text
+testRunTarget (TestRunning t) = t
+testRunTarget (TestRunErrored e) = e.target
+testRunTarget (TestRunCompleted c) = c.target
 
 
 -- | Merge a new 'LoadResult' into the accumulated per-file diagnostic map.

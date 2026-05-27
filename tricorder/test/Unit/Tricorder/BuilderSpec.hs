@@ -22,11 +22,9 @@ import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)
     , BuildResult (..)
-    , BuildState (..)
     , DaemonInfo (..)
     , Diagnostic (..)
     , EnteredNewPhase (..)
-    , EnteringNewPhase (..)
     , Severity (..)
     , SourceChangeDetected (..)
     , TestRun (..)
@@ -42,10 +40,9 @@ import Tricorder.Builder
     , reloadOnSourceChange
     , requestTestRunsForNewBuildResults
     , resolveKnownTargets
-    , setNewPhase
     )
 import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..), extractTitle)
-import Tricorder.Effects.TestRunner (runTestRunnerScripted)
+import Tricorder.Effects.TestRunner (TestRunOutcome (..), runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
 
 import Atelier.Types.Semaphore qualified as Sem
@@ -61,7 +58,6 @@ spec_Builder = do
     describe "extractTitle" testExtractTitle
     describe "compileLoadResultsIntoBuildResults" testCompileLoadResultsIntoBuildResults
     describe "requestTestRunsForNewBuildResults" testRequestTestRunsForNewBuildResults
-    describe "setNewPhase" testSetNewPhase
     describe "restartOnCabalChange" testRestartOnCabalChange
     describe "reloadOnSourceChange" testReloadOnSourceChange
     describe "resolveKnownTargets" testResolveKnownTargets
@@ -69,21 +65,26 @@ spec_Builder = do
 
 testRestartOnCabalChange :: Spec
 testRestartOnCabalChange = do
-    it "should publish that it is building" $ run do
+    it "should publish that it is building" do
         (phases, _) <- runTest
-        liftIO $ phases `shouldBe` [EnteringNewPhase (BuildId 1) $ Building Nothing]
+        phases `shouldBe` [EnteredNewPhase (BuildId 1) (Building Nothing)]
 
-    it "should increment the build ID" $ run do
+    it "should increment the build ID" do
         (_, buildId) <- runTest
-        liftIO $ buildId `shouldBe` BuildId 2
+        buildId `shouldBe` BuildId 2
   where
     runTest =
-        runState (BuildId 1)
-            . execWriter
-            . runPubWriter @EnteringNewPhase
+        runEff
+            . runConcurrent
+            . runDelay
+            . runInputConst emptyDaemonInfo
+            . runLogNoOp
+            . fmap (\((((), phases), buildId)) -> (phases, buildId))
+            . runState (BuildId 1)
+            . runWriter @[EnteredNewPhase]
+            . runPubWriter @EnteredNewPhase
+            . BuildStore.runBuildStore
             $ onRestart
-
-    run = runEff . runConcurrent . runLogNoOp
 
 
 testReloadOnSourceChange :: Spec
@@ -92,7 +93,7 @@ testReloadOnSourceChange = do
         describe "when the file is loaded in GHCi" do
             it "publishes that it is building" do
                 (_, phases) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
-                phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Building Nothing]
+                phases `shouldMatchList` [EnteredNewPhase (BuildId 1) (Building Nothing)]
 
             it "calls controls.reload" do
                 (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
@@ -122,17 +123,20 @@ testReloadOnSourceChange = do
             results `shouldMatchList` []
             phases `shouldMatchList` []
   where
-    runTest initialModuleMap ctrls event = do
+    runTest initialModuleMap ctrls event =
         runEff
             . runConcurrent
             . runClockConst epoch
+            . runDelay
+            . runInputConst emptyDaemonInfo
             . evalState (BuildId 1)
             . evalState @(Map FilePath LoadedModule) initialModuleMap
             . runLogNoOp
             . runWriter
-            . runPubWriter @EnteringNewPhase
+            . runPubWriter @EnteredNewPhase
             . execWriter
             . runPubWriter @NewLoadResult
+            . BuildStore.runBuildStore
             $ do
                 sem <- Sem.newSet
                 reloadOnSourceChange sem ctrls event
@@ -166,28 +170,6 @@ testReloadOnSourceChange = do
     reloadLr = mkLr 10
     addLr = mkLr 20
     unaddLr = mkLr 30
-
-
-testSetNewPhase :: Spec
-testSetNewPhase = do
-    it "should set build phase" do
-        (state, pubs) <- runEff
-            . runConcurrent
-            . runDelay
-            . runWriter
-            . runPubWriter
-            . runInputConst emptyDaemonInfo
-            . BuildStore.runBuildStore
-            $ do
-                setNewPhase $ EnteringNewPhase (BuildId 1) (Building Nothing)
-                BuildStore.getState
-        state
-            `shouldBe` BuildState
-                { buildId = BuildId 1
-                , phase = Building Nothing
-                , daemonInfo = emptyDaemonInfo
-                }
-        pubs `shouldMatchList` [EnteredNewPhase (BuildId 1) (Building Nothing)]
 
 
 testCompileLoadResultsIntoBuildResults :: Spec
@@ -266,26 +248,23 @@ testCompileLoadResultsIntoBuildResults = do
 
 testRequestTestRunsForNewBuildResults :: Spec
 testRequestTestRunsForNewBuildResults = do
-    describe "when there are no test targets" $ it "should skip testing" do
+    describe "when there are no test targets" $ it "transitions straight to Done" do
         phases <- runTest [] [] expected
-        length phases `shouldBe` 1
-        phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Done expected]
+        phases `shouldMatchList` [EnteredNewPhase (BuildId 1) (Done expected)]
 
-    describe "when there are errors" $ it "should skip testing" do
-        let expected' = expected {BuildState.diagnostics = [errMsg]}
-        phases <- runTest ["test:foo"] [] expected'
-        length phases `shouldBe` 1
-        phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Done expected']
+    describe "when there are errors" $ it "skips testing and transitions to Done" do
+        let withErrors = expected {BuildState.diagnostics = [errMsg]}
+        phases <- runTest ["test:foo"] [] withErrors
+        phases `shouldMatchList` [EnteredNewPhase (BuildId 1) (Done withErrors)]
 
-    it "should emit EnteringNewPhase events for each test target" do
+    it "emits EnteredNewPhase events for each test target" do
         phases <-
             runTest
                 ["test:foo", "test:bar"]
-                [ Right $ mkTestRun "test:foo"
-                , Right $ mkTestRun "test:bar"
+                [ TestCompleted (mkTestRun "test:foo")
+                , TestCompleted (mkTestRun "test:bar")
                 ]
                 expected
-        length phases `shouldBe` 4
         let expectedPhases =
                 [ mkTesting . buildWithTests
                     $ [ TestRunning "test:foo"
@@ -306,16 +285,25 @@ testRequestTestRunsForNewBuildResults = do
                 ]
         phases `shouldMatchList` expectedPhases
   where
-    runTest testTargets script =
+    runTest testTargets script partial =
         runEff
+            . runConcurrent
+            . runDelay
+            . runInputConst emptyDaemonInfo
             . runLogNoOp
             . evalState (BuildId 1)
             . execWriter
-            . runPubWriter
+            . runPubWriter @EnteredNewPhase
+            . BuildStore.runBuildStore
             . runTestRunnerScripted script
-            . requestTestRunsForNewBuildResults (def {testTargets})
+            $ do
+                -- Seed BuildStore to BuildId 1 so modifyPhase calls match.
+                -- (In production, a prior setPhase establishes this.)
+                BuildStore.putState
+                    (BuildState.initialBuildState emptyDaemonInfo) {BuildState.buildId = BuildId 1}
+                requestTestRunsForNewBuildResults (def {testTargets}) partial
 
-    mkPhase = EnteringNewPhase (BuildId 1)
+    mkPhase = EnteredNewPhase (BuildId 1)
     mkTesting = mkPhase . Testing
     mkDone = mkPhase . Done
     buildWithTests testRuns = expected {testRuns}

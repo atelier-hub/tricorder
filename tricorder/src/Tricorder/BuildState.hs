@@ -20,7 +20,6 @@ module Tricorder.BuildState
     , stateLabel
     , CabalChangeDetected (..)
     , SourceChangeDetected (..)
-    , EnteringNewPhase (..)
     , EnteredNewPhase (..)
     ) where
 
@@ -238,10 +237,6 @@ initialBuildState di =
         , phase = Building Nothing
         , daemonInfo = di
         }
-
-
-data EnteringNewPhase = EnteringNewPhase BuildId BuildPhase
-    deriving stock (Eq, Show)
 
 
 data EnteredNewPhase = EnteredNewPhase BuildId BuildPhase
