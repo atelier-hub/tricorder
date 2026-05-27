@@ -10,6 +10,7 @@ import Tricorder.Effects.GhciSession.GhciParser
     , Position (..)
     , parseReload
     , parseShowModules
+    , parseShowTargets
     )
 
 
@@ -25,6 +26,8 @@ spec_GhciParser = do
     describe "parseShowModules" do
         describe "typical output" testShowModules
         describe "empty / blank input" testShowModulesEmpty
+
+    describe "parseShowTargets" testShowTargets
 
 
 --------------------------------------------------------------------------------
@@ -277,3 +280,34 @@ testShowModulesEmpty = do
 
     it "skips lines without '( '" do
         parseShowModules ["just some random text"] `shouldBe` []
+
+
+--------------------------------------------------------------------------------
+-- parseShowTargets
+--------------------------------------------------------------------------------
+
+testShowTargets :: Spec
+testShowTargets = do
+    it "parses module names emitted by cabal repl --enable-multi-repl" do
+        parseShowTargets
+            [ "Atelier.Effects.Cache"
+            , "Atelier.Effects.Chan"
+            , "Paths_tricorder"
+            ]
+            `shouldBe` ["Atelier.Effects.Cache", "Atelier.Effects.Chan", "Paths_tricorder"]
+
+    it "parses file-path targets emitted by plain ghci" do
+        parseShowTargets ["src/Foo.hs", "test/Bar.hs"]
+            `shouldBe` ["src/Foo.hs", "test/Bar.hs"]
+
+    it "strips the leading '*' marker for the active interactive target" do
+        parseShowTargets ["*Main", "Foo.Bar"] `shouldBe` ["Main", "Foo.Bar"]
+
+    it "strips ANSI escape sequences" do
+        parseShowTargets ["\ESC[1mFoo.Bar\ESC[0m"] `shouldBe` ["Foo.Bar"]
+
+    it "skips blank and whitespace-only lines" do
+        parseShowTargets ["", "   ", "\t", "Real.Target"] `shouldBe` ["Real.Target"]
+
+    it "returns empty list for empty input" do
+        parseShowTargets [] `shouldBe` []

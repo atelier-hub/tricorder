@@ -41,6 +41,7 @@ import Tricorder.Builder
     , onRestart
     , reloadOnSourceChange
     , requestTestRunsForNewBuildResults
+    , resolveKnownTargets
     , setNewPhase
     )
 import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..), extractTitle)
@@ -63,6 +64,7 @@ spec_Builder = do
     describe "setNewPhase" testSetNewPhase
     describe "restartOnCabalChange" testRestartOnCabalChange
     describe "reloadOnSourceChange" testReloadOnSourceChange
+    describe "resolveKnownTargets" testResolveKnownTargets
 
 
 testRestartOnCabalChange :: Spec
@@ -97,24 +99,16 @@ testReloadOnSourceChange = do
                 results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
         describe "when the file is not loaded in GHCi" do
-            -- Regression for stale-results bug: GHCi drops failed-compile
-            -- modules from `:show modules`, so a fixed file looks "unknown" to
-            -- the dispatcher. Dispatching `:add` in that state was a no-op and
-            -- left stale diagnostics in place. `Modified` must always reload.
-            it "calls controls.reload (recovers files that failed to compile last cycle)" do
+            it "calls controls.add (the editor just wrote a new file)" do
                 (results, _) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/New.hs" Modified)
-                results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
+                results `shouldMatchList` [NewLoadResult epoch epoch addLr]
 
     describe "Added" do
-        -- Atomic-save editors (vim, neovim, etc.) write via tmpfile+rename,
-        -- which fsnotify reports as Added even for an existing file. So this
-        -- branch needs the same failed-compile-recovery semantics as Modified:
-        -- always reload, never trust the module map for `unknown` lookups.
-        describe "when the file is not loaded" $ it "calls controls.reload" do
+        describe "when the file is not loaded" $ it "calls controls.add" do
             (results, _) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
-            results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
+            results `shouldMatchList` [NewLoadResult epoch epoch addLr]
 
-        describe "when the file is already loaded" $ it "calls controls.reload" do
+        describe "when the file is already loaded" $ it "calls controls.reload (re-add is a reload)" do
             (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
             results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
@@ -166,6 +160,7 @@ testReloadOnSourceChange = do
             { moduleCount = n
             , compiledFiles = Set.singleton errMsg.file
             , loadedModules = Map.empty
+            , targetNames = []
             , diagnostics = []
             }
     reloadLr = mkLr 10
@@ -209,6 +204,7 @@ testCompileLoadResultsIntoBuildResults = do
                                 { moduleCount = 2
                                 , compiledFiles = Set.singleton errMsg.file
                                 , loadedModules = Map.empty
+                                , targetNames = []
                                 , diagnostics = []
                                 }
                         }
@@ -224,6 +220,7 @@ testCompileLoadResultsIntoBuildResults = do
                                 { moduleCount = 2
                                 , compiledFiles = Set.singleton warnMsg.file
                                 , loadedModules = Map.empty
+                                , targetNames = []
                                 , diagnostics = [warnMsg]
                                 }
                         }
@@ -244,6 +241,7 @@ testCompileLoadResultsIntoBuildResults = do
                                 { moduleCount = 2
                                 , compiledFiles = Set.singleton warnMsg.file
                                 , loadedModules = Map.empty
+                                , targetNames = []
                                 , diagnostics = [warnMsg]
                                 }
                         }
@@ -343,6 +341,81 @@ testRequestTestRunsForNewBuildResults = do
 
 
 --------------------------------------------------------------------------------
+-- resolveKnownTargets tests
+--------------------------------------------------------------------------------
+
+testResolveKnownTargets :: Spec
+testResolveKnownTargets = do
+    it "uses :show modules as the primary source for path↔name mapping" do
+        let result =
+                emptyLr
+                    { loadedModules =
+                        Map.fromList
+                            [
+                                ( "/abs/src/Foo.hs"
+                                , LoadedModule {relPath = "./src/Foo.hs", moduleName = "Foo"}
+                                )
+                            ]
+                    , targetNames = ["Foo"]
+                    }
+        resolveKnownTargets Map.empty result
+            `shouldBe` Map.fromList
+                [
+                    ( "/abs/src/Foo.hs"
+                    , LoadedModule {relPath = "./src/Foo.hs", moduleName = "Foo"}
+                    )
+                ]
+
+    -- Regression test for the stale-results bug. After a failed compile, the
+    -- module disappears from :show modules but stays in :show targets. The
+    -- prior state's entry must be carried over so the dispatcher continues to
+    -- see the file as "known" and issues :reload (not :add) when the user
+    -- fixes the error.
+    it "carries over prior state for targets that are no longer in :show modules" do
+        let prev =
+                Map.fromList
+                    [
+                        ( "/abs/src/Foo.hs"
+                        , LoadedModule {relPath = "./src/Foo.hs", moduleName = "Foo"}
+                        )
+                    ]
+            result =
+                emptyLr
+                    { loadedModules = Map.empty -- Foo failed to compile
+                    , targetNames = ["Foo"] -- but is still a target
+                    }
+        resolveKnownTargets prev result `shouldBe` prev
+
+    it "drops targets that are no longer in :show targets" do
+        let prev =
+                Map.fromList
+                    [
+                        ( "/abs/src/Foo.hs"
+                        , LoadedModule {relPath = "./src/Foo.hs", moduleName = "Foo"}
+                        )
+                    ]
+            result = emptyLr {loadedModules = Map.empty, targetNames = []}
+        resolveKnownTargets prev result `shouldBe` Map.empty
+
+    -- A genuinely-new target that has never compiled successfully has no
+    -- entry in :show modules and no carryover in prior state. We skip it
+    -- silently; the dispatcher will treat the next event for that file as
+    -- "unknown" and issue :add, which is the correct behavior.
+    it "drops targets that have neither a current :show modules entry nor prior state" do
+        let result = emptyLr {loadedModules = Map.empty, targetNames = ["BrandNew"]}
+        resolveKnownTargets Map.empty result `shouldBe` Map.empty
+  where
+    emptyLr =
+        LoadResult
+            { moduleCount = 0
+            , compiledFiles = Set.empty
+            , loadedModules = Map.empty
+            , targetNames = []
+            , diagnostics = []
+            }
+
+
+--------------------------------------------------------------------------------
 -- mergeDiagnostics tests
 --------------------------------------------------------------------------------
 
@@ -358,6 +431,7 @@ testMergeDiagnostics = do
                     { moduleCount = 2
                     , compiledFiles = Set.singleton errMsg.file
                     , loadedModules = Map.empty
+                    , targetNames = []
                     , diagnostics = []
                     }
         let merged = mergeDiagnostics prev result
@@ -370,6 +444,7 @@ testMergeDiagnostics = do
                     { moduleCount = 1
                     , compiledFiles = Set.singleton errMsg.file
                     , loadedModules = Map.empty
+                    , targetNames = []
                     , diagnostics = []
                     }
         let merged = mergeDiagnostics prev result
@@ -383,6 +458,7 @@ testMergeDiagnostics = do
                     { moduleCount = 1
                     , compiledFiles = Set.singleton errMsg.file
                     , loadedModules = Map.empty
+                    , targetNames = []
                     , diagnostics = [newErr]
                     }
         let merged = mergeDiagnostics prev result
@@ -394,6 +470,7 @@ testMergeDiagnostics = do
                     { moduleCount = 1
                     , compiledFiles = Set.singleton warnMsg.file
                     , loadedModules = Map.empty
+                    , targetNames = []
                     , diagnostics = [warnMsg]
                     }
         let merged = mergeDiagnostics Map.empty result
