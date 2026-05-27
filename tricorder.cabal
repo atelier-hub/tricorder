@@ -139,6 +139,7 @@ library atelier
       Atelier.Effects.File
       Atelier.Effects.FileSystem
       Atelier.Effects.FileWatcher
+      Atelier.Effects.Input
       Atelier.Effects.Internal.Coroutine
       Atelier.Effects.Iterator
       Atelier.Effects.Log
