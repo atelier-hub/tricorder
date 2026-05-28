@@ -99,10 +99,10 @@ data LoadResult = LoadResult
     -- Lists only modules that compiled successfully this cycle — GHCi drops
     -- failed-compile modules from @:show modules@.
     , targetNames :: [Text]
-    -- ^ Raw entries from @:show targets@ — typically dotted module names in
-    -- @cabal repl --enable-multi-repl@. Unlike 'loadedModules', this list
-    -- survives failed compiles, so the Builder uses it (joined with carried-over
-    -- name↔path knowledge) as the source of truth for which files GHCi tracks.
+    -- ^ Raw entries from @:show targets@ — typically dotted module names
+    -- in @cabal repl --enable-multi-repl@. Unlike 'loadedModules' this
+    -- survives failed compiles, so the Builder feeds it into
+    -- @KnownTargetNames@ for the dispatcher's fallback lookup.
     , diagnostics :: [Diagnostic]
     }
     deriving stock (Eq, Show)
