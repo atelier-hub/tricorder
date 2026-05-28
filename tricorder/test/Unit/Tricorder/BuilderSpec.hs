@@ -34,8 +34,10 @@ import Tricorder.BuildState
     )
 import Tricorder.Builder
     ( BuilderSession (..)
+    , KnownTargetNames (..)
     , NewLoadResult (..)
     , compileLoadResultsIntoBuildResults
+    , fileMatchesAnyTarget
     , filterToWatchDirs
     , mergeDiagnostics
     , onRestart
@@ -65,6 +67,7 @@ spec_Builder = do
     describe "restartOnCabalChange" testRestartOnCabalChange
     describe "reloadOnSourceChange" testReloadOnSourceChange
     describe "resolveKnownTargets" testResolveKnownTargets
+    describe "fileMatchesAnyTarget" testFileMatchesAnyTarget
 
 
 testRestartOnCabalChange :: Spec
@@ -91,43 +94,58 @@ testReloadOnSourceChange = do
     describe "Modified" do
         describe "when the file is loaded in GHCi" do
             it "publishes that it is building" do
-                (_, phases) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
+                (_, phases) <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
                 phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Building Nothing]
 
             it "calls controls.reload" do
-                (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
+                (results, _) <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
                 results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
         describe "when the file is not loaded in GHCi" do
             it "calls controls.add (the editor just wrote a new file)" do
-                (results, _) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/New.hs" Modified)
+                (results, _) <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/New.hs" Modified)
                 results `shouldMatchList` [NewLoadResult epoch epoch addLr]
+
+        -- Regression test for stale-diagnostics bug: cold-start with a
+        -- pre-existing error then fix it. Foo is in :show targets but
+        -- not :show modules, so dispatch must consult KnownTargetNames to
+        -- avoid issuing a no-op :add.
+        describe "when the file is a known target that failed on initial load" do
+            it "calls controls.reload, not controls.add" do
+                (results, _) <-
+                    runTest
+                        Map.empty
+                        (KnownTargetNames (Set.singleton "Foo"))
+                        distinctCtrls
+                        (SourceChangeDetected "/abs/src/Foo.hs" Modified)
+                results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
     describe "Added" do
         describe "when the file is not loaded" $ it "calls controls.add" do
-            (results, _) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
+            (results, _) <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
             results `shouldMatchList` [NewLoadResult epoch epoch addLr]
 
         describe "when the file is already loaded" $ it "calls controls.reload (re-add is a reload)" do
-            (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
+            (results, _) <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
             results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
 
     describe "Removed" do
         describe "when the file is loaded" $ it "calls controls.unadd" do
-            (results, _) <- runTest knownFoo distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Removed)
+            (results, _) <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Removed)
             results `shouldMatchList` [NewLoadResult epoch epoch unaddLr]
 
         describe "when the file is not loaded" $ it "is a no-op" do
-            (results, phases) <- runTest Map.empty distinctCtrls (SourceChangeDetected "/abs/path/Unknown.hs" Removed)
+            (results, phases) <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Unknown.hs" Removed)
             results `shouldMatchList` []
             phases `shouldMatchList` []
   where
-    runTest initialModuleMap ctrls event = do
+    runTest initialModuleMap initialTargets ctrls event = do
         runEff
             . runConcurrent
             . runClockConst epoch
             . evalState (BuildId 1)
             . evalState @(Map FilePath LoadedModule) initialModuleMap
+            . evalState @KnownTargetNames initialTargets
             . runLogNoOp
             . runWriter
             . runPubWriter @EnteringNewPhase
@@ -136,6 +154,8 @@ testReloadOnSourceChange = do
             $ do
                 sem <- Sem.newSet
                 reloadOnSourceChange sem ctrls event
+
+    noTargets = KnownTargetNames Set.empty
 
     distinctCtrls =
         Controls
@@ -397,10 +417,8 @@ testResolveKnownTargets = do
             result = emptyLr {loadedModules = Map.empty, targetNames = []}
         resolveKnownTargets prev result `shouldBe` Map.empty
 
-    -- A genuinely-new target that has never compiled successfully has no
-    -- entry in :show modules and no carryover in prior state. We skip it
-    -- silently; the dispatcher will treat the next event for that file as
-    -- "unknown" and issue :add, which is the correct behavior.
+    -- Dropped from the path-keyed map because we have no path↔name entry;
+    -- the dispatcher still handles them via 'KnownTargetNames'.
     it "drops targets that have neither a current :show modules entry nor prior state" do
         let result = emptyLr {loadedModules = Map.empty, targetNames = ["BrandNew"]}
         resolveKnownTargets Map.empty result `shouldBe` Map.empty
@@ -413,6 +431,43 @@ testResolveKnownTargets = do
             , targetNames = []
             , diagnostics = []
             }
+
+
+--------------------------------------------------------------------------------
+-- fileMatchesAnyTarget tests
+--------------------------------------------------------------------------------
+
+testFileMatchesAnyTarget :: Spec
+testFileMatchesAnyTarget = do
+    it "matches when the path's uppercase-suffix equals a target" do
+        fileMatchesAnyTarget
+            (KnownTargetNames (Set.singleton "Tricorder.Version"))
+            "./tricorder/src/Tricorder/Version.hs"
+            `shouldBe` True
+
+    it "matches a single-segment module" do
+        fileMatchesAnyTarget
+            (KnownTargetNames (Set.singleton "Main"))
+            "./app/Main.hs"
+            `shouldBe` True
+
+    it "does not match when no uppercase-suffix equals a target" do
+        fileMatchesAnyTarget
+            (KnownTargetNames (Set.singleton "Other.Module"))
+            "./tricorder/src/Tricorder/Version.hs"
+            `shouldBe` False
+
+    it "does not match a lowercase-prefix even if textually contained" do
+        fileMatchesAnyTarget
+            (KnownTargetNames (Set.singleton "src.Tricorder.Version"))
+            "./tricorder/src/Tricorder/Version.hs"
+            `shouldBe` False
+
+    it "handles .lhs extension" do
+        fileMatchesAnyTarget
+            (KnownTargetNames (Set.singleton "Foo.Bar"))
+            "./src/Foo/Bar.lhs"
+            `shouldBe` True
 
 
 --------------------------------------------------------------------------------

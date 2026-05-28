@@ -6,9 +6,11 @@ module Tricorder.Builder
     , mergeDiagnostics
     , NewLoadResult (..)
     , DiagnosticMap
+    , KnownTargetNames (..)
     , compileLoadResultsIntoBuildResults
     , requestTestRunsForNewBuildResults
     , buildWithGhciOnChange
+    , fileMatchesAnyTarget
     , handleInitialBuild
     , onRestart
     , reloadOnSourceChange
@@ -23,10 +25,11 @@ import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, get, modify, put, state)
 import Relude.Extra.Tuple (dup)
-import System.FilePath (isAbsolute, normalise, (</>))
+import System.FilePath (dropExtension, isAbsolute, normalise, splitDirectories, (</>))
 
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+import Data.Text qualified as T
 
 import Atelier.Component (Component (..), defaultComponent)
 import Atelier.Effects.Chan (Chan)
@@ -92,6 +95,7 @@ component
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        , State DiagnosticMap :> es
+       , State KnownTargetNames :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
        , Sub EnteringNewPhase :> es
@@ -171,6 +175,7 @@ restartableListeners
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        , State DiagnosticMap :> es
+       , State KnownTargetNames :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
        , Sub EnteringNewPhase :> es
@@ -228,6 +233,7 @@ buildWithGhciOnChange
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
        , State DiagnosticMap :> es
+       , State KnownTargetNames :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
@@ -238,6 +244,7 @@ buildWithGhciOnChange
 buildWithGhciOnChange reloader config = forever do
     put @DiagnosticMap Map.empty
     put @(Map FilePath LoadedModule) Map.empty
+    put @KnownTargetNames (KnownTargetNames Set.empty)
     projectRoot <- ask
     BuildId n <- get
     Log.info $ "Starting GHCi session #" <> show n <> ": " <> config.command
@@ -247,6 +254,7 @@ buildWithGhciOnChange reloader config = forever do
         initialEndTime <- Clock.currentTime
         handleInitialBuild config initialStartTime initialEndTime initialLoad
         put @(Map FilePath LoadedModule) (resolveKnownTargets Map.empty initialLoad)
+        put @KnownTargetNames (KnownTargetNames (Set.fromList initialLoad.targetNames))
         rebuildOnChange reloader controls
 
 
@@ -293,6 +301,7 @@ rebuildOnChange
        , Pub NewLoadResult :> es
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
+       , State KnownTargetNames :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
@@ -321,6 +330,7 @@ handleSourceChanges
        , Pub NewLoadResult :> es
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
+       , State KnownTargetNames :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
@@ -361,13 +371,15 @@ reloadOnSourceChange
        , Pub NewLoadResult :> es
        , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
+       , State KnownTargetNames :> es
        )
     => Semaphore -> GhciSession.Controls (Eff es) -> SourceChangeDetected -> Eff es ()
 reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = do
     Log.debug $ "Builder: source change detected " <> show event <> " " <> toText fp
     moduleMap <- get @(Map FilePath LoadedModule)
+    knownTargets <- get @KnownTargetNames
     let known = Map.lookup (normalise fp) moduleMap
-    case dispatch known of
+    case dispatch knownTargets known of
         Nothing ->
             Log.debug
                 $ "Builder: no-op for "
@@ -390,23 +402,27 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
                     Log.err $ show now <> " Reload errored: " <> show e
                 Right (startTime, endTime, loadResult) -> do
                     modify @(Map FilePath LoadedModule) (\prev -> resolveKnownTargets prev loadResult)
+                    put @KnownTargetNames (KnownTargetNames (Set.fromList loadResult.targetNames))
                     publish $ NewLoadResult {startTime, endTime, loadResult}
   where
-    -- Dispatch on (is the file currently loaded in GHCi?, FileEvent).
-    --
-    -- The module map is the source of truth for "is this file a tracked
-    -- target?" and it must be built from `:show targets` (which survives
-    -- failed compiles), not `:show modules` (which drops them). See
-    -- 'resolveKnownTargets' for how the map is maintained.
-    dispatch = \case
+    -- The path-keyed module map misses targets that failed on first load,
+    -- so we fall back to 'KnownTargetNames' for those — otherwise the
+    -- dispatcher would issue @:add@ (a no-op for an already-tracked cabal
+    -- target), leaving stale diagnostics in place.
+    dispatch knownTargets = \case
         Just lm -> Just $ case event of
-            Added -> controls.reload -- re-adding a known file is just a reload
+            Added -> controls.reload
             Modified -> controls.reload
             Removed -> controls.unadd lm.moduleName
-        Nothing -> case event of
-            Added -> Just (controls.add fp)
-            Modified -> Just (controls.add fp) -- editor wrote a not-yet-loaded file
-            Removed -> Nothing -- nothing to remove
+        Nothing
+            | fileMatchesAnyTarget knownTargets fp -> case event of
+                Added -> Just controls.reload
+                Modified -> Just controls.reload
+                Removed -> Nothing
+            | otherwise -> case event of
+                Added -> Just (controls.add fp)
+                Modified -> Just (controls.add fp)
+                Removed -> Nothing
 
 
 data NewLoadResult = NewLoadResult
@@ -526,16 +542,10 @@ mergeDiagnostics prev LoadResult {compiledFiles, diagnostics} =
     in  Map.union newByFile cleared
 
 
--- | Compute the next "known targets" map by joining this cycle's
--- @:show modules@ (definitive path↔name mapping for successful loads) with
--- the prior map (carryover for targets that failed to compile and are
--- therefore absent from @:show modules@).
---
--- Targets that have never compiled successfully — so we have no entry for
--- them in either source — are dropped here: with neither @:show modules@ nor
--- prior knowledge we can't resolve their dotted name to a file path, and the
--- dispatcher keys on file paths. They'll be picked up next cycle via the
--- @unknown → :add@ branch.
+-- | Path↔module-name map for the next cycle: this round's @:show modules@
+-- plus carryover from @prev@ for targets that failed mid-session and so
+-- dropped out. Never-compiled targets are absent here (no path↔name
+-- mapping); the dispatcher recognises those via 'KnownTargetNames'.
 resolveKnownTargets
     :: Map FilePath LoadedModule
     -- ^ Previous known-targets map (carryover source).
@@ -553,6 +563,37 @@ resolveKnownTargets prev lr =
                 , Just (path, lm) <- [Map.lookup name prevByName]
                 ]
     in  Map.union primary carryover
+
+
+-- | GHCi's current target set, as raw entries from @:show targets@
+-- (typically dotted module names under @cabal repl --enable-multi-repl@).
+-- Survives every compile failure mode, so the dispatcher can recognise a
+-- target even when it's absent from the path-keyed module map.
+newtype KnownTargetNames = KnownTargetNames {unKnownTargetNames :: Set Text}
+    deriving stock (Eq, Show)
+
+
+-- | Whether a file path corresponds to one of GHCi's targets.
+--
+-- We can't convert dotted target names to paths without cabal's
+-- source-dirs, so we check the other direction: any uppercase-segment
+-- suffix of the path (with @/@ → @.@, extension dropped) that equals a
+-- target name is a match. E.g. @./tricorder/src/Tricorder/Version.hs@
+-- yields candidates @"Tricorder.Version"@ and @"Version"@.
+fileMatchesAnyTarget :: KnownTargetNames -> FilePath -> Bool
+fileMatchesAnyTarget (KnownTargetNames targets) fp =
+    any (`Set.member` targets) (pathSuffixesAsModuleName fp)
+
+
+pathSuffixesAsModuleName :: FilePath -> [Text]
+pathSuffixesAsModuleName fp =
+    let segments = filter (not . null) (splitDirectories (dropExtension (normalise fp)))
+        upperSegments = dropWhile (not . startsUpper) segments
+        suffixes = takeWhile (not . null) (iterate (drop 1) upperSegments)
+    in  [T.intercalate "." (map toText s) | s <- suffixes]
+  where
+    startsUpper (c : _) = c >= 'A' && c <= 'Z'
+    startsUpper _ = False
 
 
 -- | Keep only diagnostics whose file is under one of the watched directories.

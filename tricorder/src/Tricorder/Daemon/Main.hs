@@ -93,6 +93,7 @@ main =
         . evalState (BuildId 1)
         . evalState @Builder.DiagnosticMap mempty
         . evalState @(Map FilePath LoadedModule) mempty
+        . evalState @Builder.KnownTargetNames (Builder.KnownTargetNames mempty)
         $ do
             Log.info $ "Starting tricorder " <> Version.gitHash
             runSystem
