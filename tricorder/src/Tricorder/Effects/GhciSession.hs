@@ -38,8 +38,8 @@ import Effectful.State.Static.Shared (State, evalState, state)
 import Effectful.TH (makeEffect)
 
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.File (File)
+import Atelier.Effects.Timeout (Timeout)
 import Tricorder.BuildState (BuildPhase (..), BuildProgress (..), BuildState (..))
 import Tricorder.Effects.BuildStore (BuildStore, getState, setPhase)
 import Tricorder.Effects.GhciSession.GhciParser
@@ -104,7 +104,15 @@ runGhciSessionScripted results = reinterpret (evalState results) $ \env ->
 
 -- | GHCi session manager backed by 'Tricorder.Effects.GhciSession.GhciProcess'
 -- and 'Tricorder.Effects.GhciSession.GhciParser'.
-runGhciSession :: (BuildStore :> es, Conc :> es, Concurrent :> es, Delay :> es, File :> es, IOE :> es) => Eff (GhciSession : es) a -> Eff es a
+runGhciSession
+    :: ( BuildStore :> es
+       , Conc :> es
+       , Concurrent :> es
+       , File :> es
+       , IOE :> es
+       , Timeout :> es
+       )
+    => Eff (GhciSession : es) a -> Eff es a
 runGhciSession = interpret $ \env -> \case
     WithGhci cmd (ProjectRoot dir) handler ->
         withGhciProcess def cmd dir \process startupLines ->

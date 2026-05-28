@@ -42,8 +42,8 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.Delay (Delay, withTimeout)
 import Atelier.Effects.File (File)
+import Atelier.Effects.Timeout (Timeout, timeout)
 import Tricorder.Effects.GhciSession.GhciParser
     ( GhciLoad (..)
     , GhciLoading (..)
@@ -111,9 +111,9 @@ instance Exception GhciProcessError
 startGhciProcess
     :: ( Conc :> es
        , Concurrent :> es
-       , Delay :> es
        , File :> es
        , IOE :> es
+       , Timeout :> es
        )
     => Config -> Text -> FilePath -> Eff es (GhciProcess, [Text])
 startGhciProcess config cmd dir = do
@@ -186,7 +186,7 @@ startGhciProcess config cmd dir = do
 -- during the startup sync (stdout ++ stderr). These lines contain the initial
 -- compilation progress and any startup diagnostics.
 withGhciProcess
-    :: (Conc :> es, Concurrent :> es, Delay :> es, File :> es, IOE :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es, Timeout :> es)
     => Config
     -> Text
     -> FilePath
@@ -245,11 +245,7 @@ interruptGhci ghciProcess = do
 --
 -- Never throws — all errors are swallowed.
 stopGhciProcess
-    :: ( Conc :> es
-       , Delay :> es
-       , File :> es
-       , IOE :> es
-       )
+    :: (File :> es, IOE :> es, Timeout :> es)
     => Config -> GhciProcess -> Eff es ()
 stopGhciProcess config ghciProcess = do
     -- Try to write :quit
@@ -258,8 +254,8 @@ stopGhciProcess config ghciProcess = do
         File.hFlush ghciProcess.stdin
 
     -- Wait up to shutdownTimeout seconds for the process to exit, then force-kill
-    result <- withTimeout config.shutdownTimeout (liftIO $ waitExitCode ghciProcess.handle)
-    when (not (isRight result))
+    result <- timeout config.shutdownTimeout (liftIO $ waitExitCode ghciProcess.handle)
+    when (not (isJust result))
         $ liftIO
         $ stopProcess ghciProcess.handle
 
@@ -324,14 +320,13 @@ drainUntil h command = go []
 --
 -- Returns 'True' if the banner was seen, 'False' on timeout.
 waitForBanner
-    :: ( Conc :> es
-       , Delay :> es
-       , File :> es
+    :: ( File :> es
+       , Timeout :> es
        )
     => Second -> Handle -> Eff es Bool
-waitForBanner timeout h = do
-    result <- withTimeout timeout go
-    pure (isRight result)
+waitForBanner delay h = do
+    result <- timeout delay go
+    pure (isJust result)
   where
     isVersionLine :: Text -> Bool
     isVersionLine line =
