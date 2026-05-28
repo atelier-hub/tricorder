@@ -1,6 +1,7 @@
 module Atelier.Effects.Timeout
     ( Timeout
     , timeout
+    , timeout_
     , runTimeout
     ) where
 
@@ -18,6 +19,13 @@ data Timeout :: Effect where
 
 
 makeEffect ''Timeout
+
+
+-- | Like 'timeout', but for times where you do not need the result. If you
+-- need to distinguish whether the action ran to completion, or whether it
+-- timed out, you should use 'timeout'.
+timeout_ :: (TimeUnit t, Timeout :> es) => t -> Eff es a -> Eff es ()
+timeout_ t m = const () <$> timeout t m
 
 
 runTimeout :: (HasCallStack, IOE :> es) => Eff (Timeout : es) a -> Eff es a
