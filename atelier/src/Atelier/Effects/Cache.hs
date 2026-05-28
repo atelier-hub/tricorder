@@ -12,6 +12,7 @@ module Atelier.Effects.Cache
 
       -- * Interpreters
     , runCacheTtl
+    , runCacheTtlWithWait
     , runCacheForever
     ) where
 
@@ -73,14 +74,31 @@ runCacheTtl
        , Log :> es
        , Reader Config :> es
        )
-    => Eff (Cache key value : es) a
+    => Eff (Cache key value : es) a -> Eff es a
+runCacheTtl act = do
+    cfg <- ask
+    runCacheTtlWithWait (Delay.wait $ nominalDiffTime @Microsecond cfg.cleanupInterval) act
+
+
+runCacheTtlWithWait
+    :: forall key value es a
+     . ( Clock :> es
+       , Conc :> es
+       , Concurrent :> es
+       , Hashable key
+       , Log :> es
+       , Reader Config :> es
+       )
+    => Eff es ()
+    -- ^ Action that completes when it is time to perform cleanup.
+    -> Eff (Cache key value : es) a
     -> Eff es a
-runCacheTtl action = do
+runCacheTtlWithWait waitForNextCleanup action = do
     cfg <- ask @Config
     store <- STM.atomically (Map.new :: STM (Map key (CacheEntry value)))
 
     Conc.fork_ $ forever $ Log.withNamespace "Cache" do
-        Delay.wait $ nominalDiffTime @Microsecond cfg.cleanupInterval
+        waitForNextCleanup
         now <- currentTime
         evicted <- STM.atomically $ evictExpiredEntries store cfg.entryTtl now
 
