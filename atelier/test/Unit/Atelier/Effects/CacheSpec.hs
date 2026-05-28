@@ -3,7 +3,6 @@ module Unit.Atelier.Effects.CacheSpec (spec_Cache) where
 import Data.Time (UTCTime, addUTCTime, getCurrentTime)
 import Effectful (IOE, runEff)
 import Effectful.Concurrent (Concurrent, runConcurrent)
-import Effectful.Concurrent.Async (mapConcurrently)
 import Effectful.Reader.Static (Reader, runReader)
 import Effectful.State.Static.Shared (State, evalState, put)
 import Hedgehog (forAll, (===))
@@ -147,15 +146,15 @@ spec_Cache = do
         it "concurrent inserts to different keys don't interfere" $ hedgehog do
             n <- forAll $ Gen.int (Range.linear 1 20)
             results <- liftIO $ runCacheTest $ do
-                _ <- mapConcurrently (\i -> cacheInsert @Int @Int i i) [1 .. n]
-                traverse (\i -> cacheLookup @Int @Int i) [1 .. n]
+                for_ [1 .. n] \i -> cacheInsert i i
+                traverse (\i -> cacheLookup i) [1 .. n]
             results === map (Just . id) [1 .. n]
 
         it "modify is atomic under concurrency" $ hedgehog do
             n <- forAll $ Gen.int (Range.linear 1 50)
             finalVal <- liftIO $ runCacheTest $ do
-                _ <- mapConcurrently (const $ cacheModify @Int @Int 1 (maybe 1 (+ 1))) [1 .. n]
-                cacheLookup @Int @Int 1
+                for_ [1 .. n] \_ -> cacheModify 1 (maybe 1 (+ 1))
+                cacheLookup 1
             finalVal === Just n
 
 

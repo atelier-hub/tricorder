@@ -16,7 +16,6 @@ import Data.Default (Default (..))
 import Data.Time.Units (Second)
 import Effectful (IOE)
 import Effectful.Concurrent (Concurrent)
-import Effectful.Concurrent.Async (concurrently)
 import Effectful.Concurrent.STM (atomically, newTVarIO)
 import Effectful.Exception (bracket, finally, throwIO, try, trySync)
 import System.Process (interruptProcessGroupOf)
@@ -109,7 +108,14 @@ instance Exception GhciProcessError
 -- Waits up to 'startupTimeout' seconds for GHCi to print its version banner,
 -- then performs initial setup (setting prompts and synchronising) and sends
 -- any 'extraSetupCommands' from the config.
-startGhciProcess :: (Conc :> es, Concurrent :> es, Delay :> es, File :> es, IOE :> es) => Config -> Text -> FilePath -> Eff es (GhciProcess, [Text])
+startGhciProcess
+    :: ( Conc :> es
+       , Concurrent :> es
+       , Delay :> es
+       , File :> es
+       , IOE :> es
+       )
+    => Config -> Text -> FilePath -> Eff es (GhciProcess, [Text])
 startGhciProcess config cmd dir = do
     p <-
         liftIO
@@ -194,7 +200,13 @@ withGhciProcess config cmd dir action =
 
 
 -- | Execute a command in GHCi and return the combined stdout+stderr output lines.
-execGhci :: (Concurrent :> es, File :> es, IOE :> es) => GhciProcess -> Text -> Eff es [Text]
+execGhci
+    :: ( Conc :> es
+       , Concurrent :> es
+       , File :> es
+       , IOE :> es
+       )
+    => GhciProcess -> Text -> Eff es [Text]
 execGhci ghciProcess command = do
     n <- atomically do
         readTVar ghciProcess.stateVar >>= \case
@@ -207,10 +219,10 @@ execGhci ghciProcess command = do
         liftIO $ TIO.hPutStrLn ghciProcess.stdin command
         File.hFlush ghciProcess.stdin
         sendSyncCommand ghciProcess.stdin marker
-        (stdoutLines, stderrLines) <-
-            concurrently
-                (drainUntil ghciProcess.stdout marker)
-                (drainUntil ghciProcess.stderr marker)
+        (stdoutLines, stderrLines) <- do
+            stdoutThread <- Conc.fork $ drainUntil ghciProcess.stdout marker
+            stderrThread <- Conc.fork $ drainUntil ghciProcess.stderr marker
+            (,) <$> Conc.await stdoutThread <*> Conc.await stderrThread
         pure (stdoutLines ++ stderrLines)
 
 
@@ -232,7 +244,13 @@ interruptGhci ghciProcess = do
 -- | Stop the GHCi process gracefully, falling back to forced termination.
 --
 -- Never throws — all errors are swallowed.
-stopGhciProcess :: (Concurrent :> es, Delay :> es, File :> es, IOE :> es) => Config -> GhciProcess -> Eff es ()
+stopGhciProcess
+    :: ( Conc :> es
+       , Delay :> es
+       , File :> es
+       , IOE :> es
+       )
+    => Config -> GhciProcess -> Eff es ()
 stopGhciProcess config ghciProcess = do
     -- Try to write :quit
     void $ trySync $ do
@@ -305,7 +323,12 @@ drainUntil h command = go []
 -- given handle.
 --
 -- Returns 'True' if the banner was seen, 'False' on timeout.
-waitForBanner :: (Concurrent :> es, Delay :> es, File :> es) => Second -> Handle -> Eff es Bool
+waitForBanner
+    :: ( Conc :> es
+       , Delay :> es
+       , File :> es
+       )
+    => Second -> Handle -> Eff es Bool
 waitForBanner timeout h = do
     result <- withTimeout timeout go
     pure (isRight result)
@@ -332,7 +355,7 @@ waitForBanner timeout h = do
 -- list via @:show modules@. Emits a progress callback for each
 -- @[N of M] Compiling …@ line.
 collectGhciResult
-    :: (Concurrent :> es, File :> es, IOE :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
     => GhciProcess
     -> [Text]
     -> FilePath
@@ -354,7 +377,7 @@ collectGhciResult process lines' projectRoot onProgress = do
 -- | Execute @:reload@ and return the assembled 'LoadResult', emitting a
 -- progress callback for each @[N of M] Compiling …@ line.
 reloadGhci
-    :: (Concurrent :> es, File :> es, IOE :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
     => GhciProcess
     -> FilePath
     -> (GhciLoading -> Eff es ())
@@ -367,7 +390,7 @@ reloadGhci process projectRoot onProgress = do
 -- | Execute @:add@ for the given file and return the assembled 'LoadResult',
 -- emitting a progress callback for each @[N of M] Compiling …@ line.
 addGhci
-    :: (Concurrent :> es, File :> es, IOE :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
     => GhciProcess
     -> FilePath -- the file to :add
     -> FilePath -- projectRoot
@@ -381,7 +404,7 @@ addGhci process filePath projectRoot onProgress = do
 -- | Execute @:unadd@ for the given module and return the assembled 'LoadResult',
 -- emitting a progress callback for each @[N of M] Compiling …@ line.
 unaddGhci
-    :: (Concurrent :> es, File :> es, IOE :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
     => GhciProcess
     -> Text -- the module name to :unadd
     -> FilePath -- projectRoot

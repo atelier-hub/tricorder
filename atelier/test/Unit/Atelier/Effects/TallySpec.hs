@@ -2,7 +2,6 @@ module Unit.Atelier.Effects.TallySpec (spec_Tally) where
 
 import Effectful (IOE, runEff)
 import Effectful.Concurrent (Concurrent, runConcurrent)
-import Effectful.Concurrent.Async (mapConcurrently)
 import Effectful.Reader.Static (Reader, runReader)
 import Hedgehog (forAll, (===))
 import Test.Hspec (Spec, describe, it, shouldBe)
@@ -66,7 +65,7 @@ spec_Tally = do
         it "no lost updates under concurrency" $ hedgehog $ do
             n <- forAll $ Gen.int (Range.linear 1 50)
             finalCount <- liftIO $ runTallyTest $ do
-                _ <- mapConcurrently (const checkCount) [1 .. n]
+                replicateM_ n checkCount
                 checkCount
             finalCount === n + 1
 

@@ -7,7 +7,6 @@ import Effectful.Prim.IORef (atomicModifyIORef, newIORef, readIORef)
 import Effectful.State.Static.Shared (evalState, execState, gets)
 import Test.Hspec
 
-import Effectful.Concurrent.Async qualified as Async
 import Effectful.Prim.IORef qualified as IORef
 
 import Atelier.Effects.Delay (mkTimers, runDelayWithControls)
@@ -219,16 +218,16 @@ testWithTimeout = do
 
     it "action finishes before deadline returns Right" do
         result <- runTest do
-            a <- Async.async $ Delay.withTimeout (100 :: Microsecond) (Delay.wait (10 :: Microsecond))
+            a <- Conc.fork $ Delay.withTimeout (100 :: Microsecond) (Delay.wait (10 :: Microsecond))
             Delay.tickNext
-            Async.wait a
+            Conc.await a
         result `shouldBe` Right ()
 
     it "deadline fires before action returns Left" do
         result <- runTest do
-            a <- Async.async $ Delay.withTimeout (10 :: Microsecond) (Delay.wait (100 :: Microsecond))
+            a <- Conc.fork $ Delay.withTimeout (10 :: Microsecond) (Delay.wait (100 :: Microsecond))
             Delay.tickNext
-            Async.wait a
+            Conc.await a
         result `shouldBe` Left ()
   where
     runTest = runEff . runPrim . runConcurrent . Conc.runConc . evalState mkTimers . runDelayWithControls
