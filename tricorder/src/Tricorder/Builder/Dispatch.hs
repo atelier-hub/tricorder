@@ -7,14 +7,14 @@ module Tricorder.Builder.Dispatch
     , resolveKnownTargets
     ) where
 
-import System.FilePath (dropExtension, isAbsolute, normalise, splitDirectories, (</>))
+import System.FilePath (isAbsolute, (</>))
 
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Data.Text qualified as T
 
 import Tricorder.BuildState (Diagnostic (..))
 import Tricorder.Effects.GhciSession (LoadResult (..), LoadedModule (..))
+import Tricorder.Effects.GhciSession.GhciParser (pathSuffixesAsModuleName)
 
 
 type DiagnosticMap = Map FilePath [Diagnostic]
@@ -65,26 +65,9 @@ newtype KnownTargetNames = KnownTargetNames {unKnownTargetNames :: Set Text}
 
 
 -- | Whether a file path corresponds to one of GHCi's targets.
---
--- We can't convert dotted target names to paths without cabal's
--- source-dirs, so we check the other direction: any uppercase-segment
--- suffix of the path (with @/@ → @.@, extension dropped) that equals a
--- target name is a match. E.g. @./tricorder/src/Tricorder/Version.hs@
--- yields candidates @"Tricorder.Version"@ and @"Version"@.
 fileMatchesAnyTarget :: KnownTargetNames -> FilePath -> Bool
 fileMatchesAnyTarget (KnownTargetNames targets) fp =
     any (`Set.member` targets) (pathSuffixesAsModuleName fp)
-
-
-pathSuffixesAsModuleName :: FilePath -> [Text]
-pathSuffixesAsModuleName fp =
-    let segments = filter (not . null) (splitDirectories (dropExtension (normalise fp)))
-        upperSegments = dropWhile (not . startsUpper) segments
-        suffixes = takeWhile (not . null) (iterate (drop 1) upperSegments)
-    in  [T.intercalate "." (map toText s) | s <- suffixes]
-  where
-    startsUpper (c : _) = c >= 'A' && c <= 'Z'
-    startsUpper _ = False
 
 
 -- | Keep only diagnostics whose file is under one of the watched directories.
