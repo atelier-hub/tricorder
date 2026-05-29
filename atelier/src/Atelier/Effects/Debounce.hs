@@ -23,6 +23,7 @@ module Atelier.Effects.Debounce
 
       -- * Interpreters
     , runDebounce
+    , runDebounceWithMap
     , runDebounceNoOp
 
       -- * Helpers
@@ -96,6 +97,20 @@ runDebounce
     -> Eff es a
 runDebounce eff = do
     state <- STM.atomically (Map.new @key @Entry)
+    runDebounceWithMap state eff
+
+
+runDebounceWithMap
+    :: forall key es a
+     . ( Conc :> es
+       , Concurrent :> es
+       , Hashable key
+       , Timeout :> es
+       )
+    => Map.Map key Entry
+    -> Eff (Debounce key : es) a
+    -> Eff es a
+runDebounceWithMap state eff =
     interpretWith eff \env -> \case
         DebouncedWith settleMs merge key arg callback -> do
             entry <- STM.atomically $ ensureEntry key arg state merge
