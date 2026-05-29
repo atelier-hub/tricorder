@@ -17,8 +17,7 @@ import Data.Time (diffUTCTime)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
-import Effectful.State.Static.Shared (State, get, modify, put, state)
-import Relude.Extra.Tuple (dup)
+import Effectful.State.Static.Shared (State, get, modify, state)
 import System.FilePath (normalise)
 
 import Data.Map.Strict qualified as Map
@@ -47,15 +46,16 @@ import Tricorder.BuildState
     , TestRun (..)
     )
 import Tricorder.Builder.Dispatch
-    ( DiagnosticMap
+    ( BuilderState (..)
     , KnownTargetNames (..)
+    , emptyBuilderState
     , fileMatchesAnyTarget
     , filterToWatchDirs
     , mergeDiagnostics
     , resolveKnownTargets
     )
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..), LoadedModule (..))
+import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
 import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
@@ -90,10 +90,8 @@ component
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
        , SessionStore :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State DiagnosticMap :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
        , Sub EnteringNewPhase :> es
@@ -175,10 +173,8 @@ restartableListeners
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State DiagnosticMap :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
        , Sub EnteringNewPhase :> es
@@ -233,10 +229,8 @@ buildWithGhciOnChange
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State DiagnosticMap :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
@@ -245,9 +239,7 @@ buildWithGhciOnChange
     -> BuilderSession
     -> Eff es Void
 buildWithGhciOnChange reloader config = forever do
-    put @DiagnosticMap Map.empty
-    put @(Map FilePath LoadedModule) Map.empty
-    put @KnownTargetNames (KnownTargetNames Set.empty)
+    modify @BuilderState (const emptyBuilderState)
     projectRoot <- ask
     BuildId n <- get
     Log.info $ "Starting GHCi session #" <> show n <> ": " <> config.command
@@ -256,8 +248,11 @@ buildWithGhciOnChange reloader config = forever do
     GhciSession.withGhci config.command projectRoot \initialLoad controls -> do
         initialEndTime <- Clock.currentTime
         handleInitialBuild config initialStartTime initialEndTime initialLoad
-        put @(Map FilePath LoadedModule) (resolveKnownTargets Map.empty initialLoad)
-        put @KnownTargetNames (KnownTargetNames (Set.fromList initialLoad.targetNames))
+        modify @BuilderState \s ->
+            s
+                { loadedModules = resolveKnownTargets Map.empty initialLoad
+                , knownTargets = KnownTargetNames (Set.fromList initialLoad.targetNames)
+                }
         rebuildOnChange reloader controls
 
 
@@ -302,9 +297,8 @@ rebuildOnChange
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
@@ -331,9 +325,8 @@ handleSourceChanges
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
@@ -372,17 +365,15 @@ reloadOnSourceChange
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        )
     => Semaphore -> GhciSession.Controls (Eff es) -> SourceChangeDetected -> Eff es ()
 reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = do
     Log.debug $ "Builder: source change detected " <> show event <> " " <> toText fp
-    moduleMap <- get @(Map FilePath LoadedModule)
-    knownTargets <- get @KnownTargetNames
-    let known = Map.lookup (normalise fp) moduleMap
-    case dispatch knownTargets known of
+    builderState <- get @BuilderState
+    let known = Map.lookup (normalise fp) builderState.loadedModules
+    case dispatch builderState.knownTargets known of
         Nothing ->
             Log.debug
                 $ "Builder: no-op for "
@@ -404,8 +395,11 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
                     now <- Clock.currentTime
                     Log.err $ show now <> " Reload errored: " <> show e
                 Right (startTime, endTime, loadResult) -> do
-                    modify @(Map FilePath LoadedModule) (\prev -> resolveKnownTargets prev loadResult)
-                    put @KnownTargetNames (KnownTargetNames (Set.fromList loadResult.targetNames))
+                    modify @BuilderState \s ->
+                        s
+                            { loadedModules = resolveKnownTargets s.loadedModules loadResult
+                            , knownTargets = KnownTargetNames (Set.fromList loadResult.targetNames)
+                            }
                     publish $ NewLoadResult {startTime, endTime, loadResult}
   where
     -- The path-keyed module map misses targets that failed on first load,
@@ -439,7 +433,7 @@ data NewLoadResult = NewLoadResult
 compileLoadResultsIntoBuildResults
     :: ( Pub BuildResult :> es
        , Reader ProjectRoot :> es
-       , State DiagnosticMap :> es
+       , State BuilderState :> es
        )
     => BuilderSession
     -> NewLoadResult
@@ -452,7 +446,9 @@ compileLoadResultsIntoBuildResults session newLoadResult = do
                     filterToWatchDirs projectRoot watchDirs loadResult.diagnostics
                 }
 
-    newAccumulated <- state $ dup . flip mergeDiagnostics filteredResult
+    newAccumulated <- state \s ->
+        let merged = mergeDiagnostics s.diagnosticMap filteredResult
+        in  (merged, s {diagnosticMap = merged})
 
     publish
         BuildResult

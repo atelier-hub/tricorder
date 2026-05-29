@@ -49,7 +49,9 @@ import Tricorder.Builder
     , setNewPhase
     )
 import Tricorder.Builder.Dispatch
-    ( KnownTargetNames (..)
+    ( BuilderState (..)
+    , KnownTargetNames (..)
+    , emptyBuilderState
     , fileMatchesAnyTarget
     , filterToWatchDirs
     , mergeDiagnostics
@@ -257,8 +259,11 @@ testReloadOnSourceChange = do
             . runConcurrent
             . runClockConst epoch
             . evalState (BuildId 1)
-            . evalState @(Map FilePath LoadedModule) initialModuleMap
-            . evalState @KnownTargetNames initialTargets
+            . evalState @BuilderState
+                emptyBuilderState
+                    { loadedModules = initialModuleMap
+                    , knownTargets = initialTargets
+                    }
             . runLogNoOp
             . runWriter
             . runPubWriter @EnteringNewPhase
@@ -388,13 +393,15 @@ testCompileLoadResultsIntoBuildResults = do
                     }
         rs `shouldMatchList` [expected]
   where
-    runTest acc =
-        runPureEff
-            . runWriter
-            . runPubWriter
-            . runReader (ProjectRoot "/")
-            . execState acc
-            . compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]})
+    runTest acc nlr =
+        let (st, rs) =
+                runPureEff
+                    . runWriter
+                    . runPubWriter
+                    . runReader (ProjectRoot "/")
+                    . execState (emptyBuilderState {diagnosticMap = acc})
+                    $ compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]}) nlr
+        in  (st.diagnosticMap, rs)
 
 
 testRequestTestRunsForNewBuildResults :: Spec

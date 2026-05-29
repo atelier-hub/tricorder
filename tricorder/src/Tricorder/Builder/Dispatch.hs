@@ -1,12 +1,15 @@
 module Tricorder.Builder.Dispatch
-    ( DiagnosticMap
+    ( BuilderState (..)
+    , DiagnosticMap
     , KnownTargetNames (..)
+    , emptyBuilderState
     , fileMatchesAnyTarget
     , filterToWatchDirs
     , mergeDiagnostics
     , resolveKnownTargets
     ) where
 
+import Data.Default (Default (..))
 import System.FilePath (isAbsolute, (</>))
 
 import Data.Map.Strict qualified as Map
@@ -15,6 +18,33 @@ import Data.Set qualified as Set
 import Tricorder.BuildState (Diagnostic (..))
 import Tricorder.Effects.GhciSession (LoadResult (..), LoadedModule (..))
 import Tricorder.Effects.GhciSession.GhciParser (pathSuffixesAsModuleName)
+
+
+-- | The Builder's per-GHCi-session cache: what it last saw from GHCi plus its
+-- accumulated diagnostics. Reset on every GHCi restart in
+-- @buildWithGhciOnChange@; 'BuildId' is intentionally /not/ here because it
+-- counts across restarts.
+data BuilderState = BuilderState
+    { loadedModules :: Map FilePath LoadedModule
+    , knownTargets :: KnownTargetNames
+    , diagnosticMap :: DiagnosticMap
+    -- ^ Named 'diagnosticMap' (not 'diagnostics') to avoid 'DuplicateRecordFields'
+    -- collisions with 'LoadResult' and 'BuildResult'.
+    }
+    deriving stock (Eq, Show)
+
+
+instance Default BuilderState where
+    def = emptyBuilderState
+
+
+emptyBuilderState :: BuilderState
+emptyBuilderState =
+    BuilderState
+        { loadedModules = mempty
+        , knownTargets = KnownTargetNames mempty
+        , diagnosticMap = mempty
+        }
 
 
 type DiagnosticMap = Map FilePath [Diagnostic]
