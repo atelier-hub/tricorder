@@ -87,10 +87,10 @@ spec_Singleflight = do
                 (results, execCount) <- runSingleflightTest $ do
                     -- Launch 10 concurrent requests for the same key
                     asyncs <- replicateM 10 do
-                        sem <- Sem.newSet
+                        sem <- Sem.new
                         async <- Conc.fork $ withCache 1 (slowCompute sem 42)
                         pure (sem, async)
-                    traverse_ Sem.unset $ fst <$> asyncs
+                    traverse_ Sem.set $ fst <$> asyncs
                     traverse Conc.await $ snd <$> asyncs
                 all (== 42) results `shouldBe` True
                 length results `shouldBe` 10
