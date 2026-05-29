@@ -18,6 +18,7 @@ library
       Tricorder
       Tricorder.Arguments
       Tricorder.Builder
+      Tricorder.Builder.Dispatch
       Tricorder.BuildState
       Tricorder.CLI
       Tricorder.CLI.Main

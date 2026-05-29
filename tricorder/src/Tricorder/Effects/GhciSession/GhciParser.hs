@@ -10,6 +10,8 @@ module Tricorder.Effects.GhciSession.GhciParser
     , parseReload
     , parseShowModules
     , parseShowTargets
+    , pathSuffixesAsModuleName
+    , resolveKnownTargets
     , stripAnsi
     , extractTitle
     , toAbsolute
@@ -17,7 +19,7 @@ module Tricorder.Effects.GhciSession.GhciParser
     ) where
 
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
-import System.FilePath (isAbsolute, makeRelative, normalise, splitDirectories, (</>))
+import System.FilePath (dropExtension, isAbsolute, makeRelative, normalise, splitDirectories, (</>))
 import Text.Megaparsec
 import Text.Megaparsec.Char (char, string)
 
@@ -418,6 +420,24 @@ toAbsolute base path
     | otherwise = base </> path
 
 
+-- | Candidate dotted module names for a file path.
+--
+-- We can't convert dotted target names to paths without cabal's
+-- source-dirs, so callers check the other direction: any uppercase-segment
+-- suffix of the path (with @/@ → @.@, extension dropped) is a candidate.
+-- E.g. @./tricorder/src/Tricorder/Version.hs@ yields candidates
+-- @"Tricorder.Version"@ and @"Version"@.
+pathSuffixesAsModuleName :: FilePath -> [Text]
+pathSuffixesAsModuleName fp =
+    let segments = filter (not . null) (splitDirectories (dropExtension (normalise fp)))
+        upperSegments = dropWhile (not . startsUpper) segments
+        suffixes = takeWhile (not . null) (iterate (drop 1) upperSegments)
+    in  [T.intercalate "." (map toText s) | s <- suffixes]
+  where
+    startsUpper (c : _) = c >= 'A' && c <= 'Z'
+    startsUpper _ = False
+
+
 -- | Strip ANSI escape sequences of the form @ESC [ \<params\> \<letter\>@.
 stripAnsi :: Text -> Text
 stripAnsi t = case T.uncons t of
@@ -450,6 +470,29 @@ collectResultCustom projectRoot loads modules targets =
             , targetNames = targets
             , diagnostics = toDiagnostics rel loads
             }
+
+
+-- | Path↔module-name map for the next cycle: this round's @:show modules@
+-- plus carryover from @prev@ for targets that failed mid-session and so
+-- dropped out. Never-compiled targets are absent here (no path↔name
+-- mapping); the dispatcher recognises those via 'KnownTargetNames'.
+resolveKnownTargets
+    :: Map FilePath LoadedModule
+    -- ^ Previous known-targets map (carryover source).
+    -> LoadResult
+    -> Map FilePath LoadedModule
+resolveKnownTargets prev lr =
+    let primary = lr.loadedModules
+        primaryNames = Set.fromList [lm.moduleName | lm <- Map.elems primary]
+        prevByName = Map.fromList [(lm.moduleName, (path, lm)) | (path, lm) <- Map.toList prev]
+        carryover =
+            Map.fromList
+                [ (path, lm)
+                | name <- lr.targetNames
+                , not (Set.member name primaryNames)
+                , Just (path, lm) <- [Map.lookup name prevByName]
+                ]
+    in  Map.union primary carryover
 
 
 toDiagnostics :: (FilePath -> FilePath) -> [GhciLoad] -> [BuildState.Diagnostic]

@@ -11,9 +11,6 @@ module Tricorder.Effects.GhciSession
       -- * Interpreters
     , runGhciSession
     , runGhciSessionScripted
-
-      -- * Parsing utilities
-    , extractTitle
     ) where
 
 import Data.Default (def)
@@ -46,7 +43,6 @@ import Tricorder.Effects.GhciSession.GhciParser
     ( GhciLoading (..)
     , LoadResult (..)
     , LoadedModule (..)
-    , extractTitle
     )
 import Tricorder.Effects.GhciSession.GhciProcess (addGhci, collectGhciResult, interruptGhci, reloadGhci, unaddGhci, withGhciProcess)
 import Tricorder.Runtime (ProjectRoot (..))

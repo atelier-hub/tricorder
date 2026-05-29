@@ -42,19 +42,23 @@ import Tricorder.BuildState
     )
 import Tricorder.Builder
     ( BuilderSession (..)
-    , KnownTargetNames (..)
     , NewLoadResult (..)
     , compileLoadResultsIntoBuildResults
-    , fileMatchesAnyTarget
-    , filterToWatchDirs
-    , mergeDiagnostics
     , onRestart
     , reloadOnSourceChange
     , requestTestRunsForNewBuildResults
-    , resolveKnownTargets
     , setNewPhase
     )
-import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..), extractTitle)
+import Tricorder.Builder.Dispatch
+    ( BuilderState (..)
+    , KnownTargetNames (..)
+    , emptyBuilderState
+    , fileMatchesAnyTarget
+    , filterToWatchDirs
+    , mergeDiagnostics
+    )
+import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..))
+import Tricorder.Effects.GhciSession.GhciParser (extractTitle, resolveKnownTargets)
 import Tricorder.Effects.SessionStore
     ( SessionStore (..)
     , SessionStoreReloaded (..)
@@ -242,8 +246,11 @@ testReloadOnSourceChange = do
             . runConcurrent
             . runClockConst epoch
             . evalState (BuildId 1)
-            . evalState @(Map FilePath LoadedModule) initialModuleMap
-            . evalState @KnownTargetNames initialTargets
+            . evalState
+                emptyBuilderState
+                    { loadedModules = initialModuleMap
+                    , knownTargets = initialTargets
+                    }
             . runLogNoOp
             . runWriter
             . runPubWriter @EnteringNewPhase
@@ -373,13 +380,14 @@ testCompileLoadResultsIntoBuildResults = do
                     }
         rs `shouldMatchList` [expected]
   where
-    runTest acc =
-        runPureEff
+    runTest acc nlr =
+        first (.diagnosticMap)
+            . runPureEff
             . runWriter
             . runPubWriter
             . runReader (ProjectRoot "/")
-            . execState acc
-            . compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]})
+            . execState (emptyBuilderState {diagnosticMap = acc})
+            $ compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]}) nlr
 
 
 testRequestTestRunsForNewBuildResults :: Spec

@@ -2,19 +2,13 @@ module Tricorder.Builder
     ( component
     , withBuilderSession
     , BuilderSession (..)
-    , filterToWatchDirs
-    , mergeDiagnostics
     , NewLoadResult (..)
-    , DiagnosticMap
-    , KnownTargetNames (..)
     , compileLoadResultsIntoBuildResults
     , requestTestRunsForNewBuildResults
     , buildWithGhciOnChange
-    , fileMatchesAnyTarget
     , handleInitialBuild
     , onRestart
     , reloadOnSourceChange
-    , resolveKnownTargets
     , setNewPhase
     ) where
 
@@ -24,19 +18,16 @@ import Effectful.Concurrent (Concurrent)
 import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, get, modify, put, state)
-import Relude.Extra.Tuple (dup)
-import System.FilePath (dropExtension, isAbsolute, normalise, splitDirectories, (</>))
+import System.FilePath (normalise)
 
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Data.Text qualified as T
 
 import Atelier.Component (Component (..), defaultComponent)
 import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce, debounced)
-import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
 import Atelier.Time (Millisecond, nominalDiffTime)
@@ -53,8 +44,18 @@ import Tricorder.BuildState
     , SourceChangeDetected (..)
     , TestRun (..)
     )
+import Tricorder.Builder.Dispatch
+    ( BuilderState (..)
+    , DispatchAction (..)
+    , KnownTargetNames (..)
+    , dispatch
+    , emptyBuilderState
+    , filterToWatchDirs
+    , mergeDiagnostics
+    )
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..), LoadedModule (..))
+import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
+import Tricorder.Effects.GhciSession.GhciParser (resolveKnownTargets)
 import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
@@ -69,9 +70,6 @@ import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.GhciSession qualified as GhciSession
 import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.Effects.TestRunner qualified as TestRunner
-
-
-type DiagnosticMap = Map FilePath [Diagnostic]
 
 
 -- | Builder component.
@@ -92,10 +90,8 @@ component
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
        , SessionStore :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State DiagnosticMap :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
        , Sub EnteringNewPhase :> es
@@ -177,10 +173,8 @@ restartableListeners
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State DiagnosticMap :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
        , Sub EnteringNewPhase :> es
@@ -235,10 +229,8 @@ buildWithGhciOnChange
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State DiagnosticMap :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
@@ -247,9 +239,7 @@ buildWithGhciOnChange
     -> BuilderSession
     -> Eff es Void
 buildWithGhciOnChange reloader config = forever do
-    put @DiagnosticMap Map.empty
-    put @(Map FilePath LoadedModule) Map.empty
-    put @KnownTargetNames (KnownTargetNames Set.empty)
+    put emptyBuilderState
     projectRoot <- ask
     BuildId n <- get
     Log.info $ "Starting GHCi session #" <> show n <> ": " <> config.command
@@ -258,8 +248,11 @@ buildWithGhciOnChange reloader config = forever do
     GhciSession.withGhci config.command projectRoot \initialLoad controls -> do
         initialEndTime <- Clock.currentTime
         handleInitialBuild config initialStartTime initialEndTime initialLoad
-        put @(Map FilePath LoadedModule) (resolveKnownTargets Map.empty initialLoad)
-        put @KnownTargetNames (KnownTargetNames (Set.fromList initialLoad.targetNames))
+        modify \s ->
+            s
+                { loadedModules = resolveKnownTargets Map.empty initialLoad
+                , knownTargets = KnownTargetNames (Set.fromList initialLoad.targetNames)
+                }
         rebuildOnChange reloader controls
 
 
@@ -304,9 +297,8 @@ rebuildOnChange
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
@@ -333,9 +325,8 @@ handleSourceChanges
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
@@ -374,17 +365,15 @@ reloadOnSourceChange
        , Log :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
-       , State (Map FilePath LoadedModule) :> es
        , State BuildId :> es
-       , State KnownTargetNames :> es
+       , State BuilderState :> es
        )
     => Semaphore -> GhciSession.Controls (Eff es) -> SourceChangeDetected -> Eff es ()
 reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = do
     Log.debug $ "Builder: source change detected " <> show event <> " " <> toText fp
-    moduleMap <- get @(Map FilePath LoadedModule)
-    knownTargets <- get @KnownTargetNames
-    let known = Map.lookup (normalise fp) moduleMap
-    case dispatch knownTargets known of
+    builderState <- get @BuilderState
+    let known = Map.lookup (normalise fp) builderState.loadedModules
+    case dispatch builderState.knownTargets known fp event of
         Nothing ->
             Log.debug
                 $ "Builder: no-op for "
@@ -397,7 +386,7 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
 
             res <- trySync $ Sem.withSemaphore readyToBuildSem do
                 startTime <- Clock.currentTime
-                res <- action
+                res <- runAction controls action
                 endTime <- Clock.currentTime
                 pure (startTime, endTime, res)
 
@@ -406,28 +395,19 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
                     now <- Clock.currentTime
                     Log.err $ show now <> " Reload errored: " <> show e
                 Right (startTime, endTime, loadResult) -> do
-                    modify @(Map FilePath LoadedModule) (\prev -> resolveKnownTargets prev loadResult)
-                    put @KnownTargetNames (KnownTargetNames (Set.fromList loadResult.targetNames))
+                    modify \s ->
+                        s
+                            { loadedModules = resolveKnownTargets s.loadedModules loadResult
+                            , knownTargets = KnownTargetNames (Set.fromList loadResult.targetNames)
+                            }
                     publish $ NewLoadResult {startTime, endTime, loadResult}
-  where
-    -- The path-keyed module map misses targets that failed on first load,
-    -- so we fall back to 'KnownTargetNames' for those — otherwise the
-    -- dispatcher would issue @:add@ (a no-op for an already-tracked cabal
-    -- target), leaving stale diagnostics in place.
-    dispatch knownTargets = \case
-        Just lm -> Just $ case event of
-            Added -> controls.reload
-            Modified -> controls.reload
-            Removed -> controls.unadd lm.moduleName
-        Nothing
-            | fileMatchesAnyTarget knownTargets fp -> case event of
-                Added -> Just controls.reload
-                Modified -> Just controls.reload
-                Removed -> Nothing
-            | otherwise -> case event of
-                Added -> Just (controls.add fp)
-                Modified -> Just (controls.add fp)
-                Removed -> Nothing
+
+
+runAction :: GhciSession.Controls (Eff es) -> DispatchAction -> Eff es LoadResult
+runAction controls = \case
+    Reload -> controls.reload
+    Add fp -> controls.add fp
+    Unadd mn -> controls.unadd mn
 
 
 data NewLoadResult = NewLoadResult
@@ -441,7 +421,7 @@ data NewLoadResult = NewLoadResult
 compileLoadResultsIntoBuildResults
     :: ( Pub BuildResult :> es
        , Reader ProjectRoot :> es
-       , State DiagnosticMap :> es
+       , State BuilderState :> es
        )
     => BuilderSession
     -> NewLoadResult
@@ -454,7 +434,9 @@ compileLoadResultsIntoBuildResults session newLoadResult = do
                     filterToWatchDirs projectRoot watchDirs loadResult.diagnostics
                 }
 
-    newAccumulated <- state $ dup . flip mergeDiagnostics filteredResult
+    newAccumulated <- state \s ->
+        let merged = mergeDiagnostics s.diagnosticMap filteredResult
+        in  (merged, s {diagnosticMap = merged})
 
     publish
         BuildResult
@@ -532,95 +514,3 @@ runTestsIfClean (BuilderSession {testTargets}) bid partialResult
     insert k v ((k', v') : xs)
         | k == k' = (k, v) : xs
         | otherwise = (k', v') : insert k v xs
-
-
--- | Merge a new 'LoadResult' into the accumulated per-file diagnostic map.
---
--- Files in 'compiledFiles' have their previous diagnostics cleared and replaced
--- by any new diagnostics produced for them in this cycle. Files absent from
--- 'compiledFiles' were skipped by incremental compilation and retain their
--- previous diagnostics unchanged.
-mergeDiagnostics :: DiagnosticMap -> LoadResult -> DiagnosticMap
-mergeDiagnostics prev LoadResult {compiledFiles, diagnostics} =
-    let cleared = foldr Map.delete prev compiledFiles
-        newByFile = Map.fromListWith (++) [(d.file, [d]) | d <- diagnostics]
-    in  Map.union newByFile cleared
-
-
--- | Path↔module-name map for the next cycle: this round's @:show modules@
--- plus carryover from @prev@ for targets that failed mid-session and so
--- dropped out. Never-compiled targets are absent here (no path↔name
--- mapping); the dispatcher recognises those via 'KnownTargetNames'.
-resolveKnownTargets
-    :: Map FilePath LoadedModule
-    -- ^ Previous known-targets map (carryover source).
-    -> LoadResult
-    -> Map FilePath LoadedModule
-resolveKnownTargets prev lr =
-    let primary = lr.loadedModules
-        primaryNames = Set.fromList [lm.moduleName | lm <- Map.elems primary]
-        prevByName = Map.fromList [(lm.moduleName, (path, lm)) | (path, lm) <- Map.toList prev]
-        carryover =
-            Map.fromList
-                [ (path, lm)
-                | name <- lr.targetNames
-                , not (Set.member name primaryNames)
-                , Just (path, lm) <- [Map.lookup name prevByName]
-                ]
-    in  Map.union primary carryover
-
-
--- | GHCi's current target set, as raw entries from @:show targets@
--- (typically dotted module names under @cabal repl --enable-multi-repl@).
--- Survives every compile failure mode, so the dispatcher can recognise a
--- target even when it's absent from the path-keyed module map.
-newtype KnownTargetNames = KnownTargetNames {unKnownTargetNames :: Set Text}
-    deriving stock (Eq, Show)
-
-
--- | Whether a file path corresponds to one of GHCi's targets.
---
--- We can't convert dotted target names to paths without cabal's
--- source-dirs, so we check the other direction: any uppercase-segment
--- suffix of the path (with @/@ → @.@, extension dropped) that equals a
--- target name is a match. E.g. @./tricorder/src/Tricorder/Version.hs@
--- yields candidates @"Tricorder.Version"@ and @"Version"@.
-fileMatchesAnyTarget :: KnownTargetNames -> FilePath -> Bool
-fileMatchesAnyTarget (KnownTargetNames targets) fp =
-    any (`Set.member` targets) (pathSuffixesAsModuleName fp)
-
-
-pathSuffixesAsModuleName :: FilePath -> [Text]
-pathSuffixesAsModuleName fp =
-    let segments = filter (not . null) (splitDirectories (dropExtension (normalise fp)))
-        upperSegments = dropWhile (not . startsUpper) segments
-        suffixes = takeWhile (not . null) (iterate (drop 1) upperSegments)
-    in  [T.intercalate "." (map toText s) | s <- suffixes]
-  where
-    startsUpper (c : _) = c >= 'A' && c <= 'Z'
-    startsUpper _ = False
-
-
--- | Keep only diagnostics whose file is under one of the watched directories.
---
--- Diagnostics from outside the project (e.g. @.h@ files in the Nix store) and
--- those with mangled filenames produced by the C preprocessor (e.g.
--- @"In file included from ..."@) are dropped here, before they can enter the
--- accumulation map where they would be impossible to evict.
-filterToWatchDirs :: FilePath -> [FilePath] -> [Diagnostic] -> [Diagnostic]
-filterToWatchDirs _ [] diags = diags
-filterToWatchDirs projectRoot watchDirs diags =
-    filter (isUnderAnyWatchDir . (.file)) diags
-  where
-    absWatchDirs = map toAbsWd watchDirs
-    toAbsWd wd
-        | wd == "." = projectRoot
-        | isAbsolute wd = wd
-        | otherwise = projectRoot </> wd
-    isUnderAnyWatchDir file
-        | not (isAbsolute file) && not ("./" `isPrefixOf` file) = False
-        | isAbsolute file =
-            any (\wd -> (wd ++ "/") `isPrefixOf` file || wd == file) absWatchDirs
-        | otherwise =
-            let absFile = projectRoot </> drop 2 file
-            in  any (\wd -> (wd ++ "/") `isPrefixOf` absFile || wd == absFile) absWatchDirs
