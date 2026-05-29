@@ -32,8 +32,8 @@ import Data.List qualified as List
 import Data.Text qualified as T
 
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.Delay (Delay, withTimeout)
 import Atelier.Effects.File (File)
+import Atelier.Effects.Timeout (Timeout, timeout)
 import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
 import Tricorder.Effects.GhciSession.GhciProcess (GhciProcess, execGhci, interruptGhci, withGhciProcess)
 import Tricorder.Effects.SessionStore (SessionStore)
@@ -67,11 +67,11 @@ makeEffect ''TestRunner
 runTestRunnerIO
     :: ( Conc :> es
        , Concurrent :> es
-       , Delay :> es
        , File :> es
        , IOE :> es
        , Reader ProjectRoot :> es
        , SessionStore :> es
+       , Timeout :> es
        )
     => Eff (TestRunner : es) a -> Eff es a
 runTestRunnerIO act = do
@@ -99,9 +99,9 @@ runTestRunnerIO act = do
                         $ case testTimeout of
                             secs | secs <= 0 -> Right <$> execGhci ghci ":main"
                             secs ->
-                                withTimeout (fromIntegral secs :: Second) (execGhci ghci ":main") >>= \case
-                                    Left () -> pure (Left secs)
-                                    Right ls -> pure (Right ls)
+                                timeout (fromIntegral secs :: Second) (execGhci ghci ":main") >>= \case
+                                    Nothing -> pure (Left secs)
+                                    Just ls -> pure (Right ls)
                 pure $ case result of
                     Left ex ->
                         TestRunErrored $ TestRunError {target, message = show ex}
