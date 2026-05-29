@@ -4,9 +4,9 @@ import Data.Default (def)
 import Data.IORef (IORef)
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian)
 import Effectful (IOE, runEff, runPureEff)
-import Effectful.Concurrent (Concurrent, runConcurrent)
+import Effectful.Concurrent (runConcurrent)
 import Effectful.Dispatch.Dynamic (interpret_)
-import Effectful.Error.Static (Error, runErrorNoCallStack, throwError)
+import Effectful.Error.Static (runErrorNoCallStack, throwError)
 import Effectful.Reader.Static (runReader)
 import Effectful.State.Static.Shared (evalState, execState, runState)
 import Effectful.Writer.Static.Shared (execWriter, runWriter)
@@ -16,15 +16,16 @@ import Data.IORef qualified as IORef
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
-import Atelier.Effects.Chan (Chan, runChan)
-import Atelier.Effects.Clock (Clock, runClockConst)
-import Atelier.Effects.Conc (Conc, runConc)
-import Atelier.Effects.Delay (runDelay, settle)
+import Atelier.Effects.Chan (runChan)
+import Atelier.Effects.Clock (runClockConst)
+import Atelier.Effects.Conc (runConc)
+import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Input (runInputConst)
 import Atelier.Effects.Log (runLogNoOp)
-import Atelier.Effects.Monitoring.Tracing (Tracing, runTracingNoOp)
-import Atelier.Effects.Publishing (Pub, Sub, publish, runPubSub, runPubWriter)
+import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
+import Atelier.Effects.Publishing (Pub, publish, runPubSub, runPubWriter)
+import Atelier.Time (Millisecond)
 import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)
@@ -62,6 +63,7 @@ import Tricorder.Effects.TestRunner (runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
+import Atelier.Effects.Delay qualified as Delay
 import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
@@ -126,11 +128,11 @@ testRebuildOnCabalReload = do
                 n <- liftIO $ IORef.atomicModifyIORef' runsRef (\x -> (x + 1, x + 1))
                 if n == 1 then do
                     -- Let the inner Iter.fromEvents iterator subscribe.
-                    settle
+                    Delay.wait (1 :: Millisecond)
                     liftIO $ IORef.writeIORef sessionRef sameProjection
                     reloader.reload
                     -- Give the restart a chance to fire (it won't, with the bug).
-                    settle
+                    Delay.wait (1 :: Millisecond)
                     throwError StopSignal
                 else
                     throwError StopSignal
@@ -152,6 +154,18 @@ testRebuildOnCabalReload = do
             , testTimeout = 10
             }
 
+    runMutable ref =
+        runEff
+            . runConcurrent
+            . runTracingNoOp
+            . runClockConst epoch
+            . runChan
+            . runDelay
+            . runPubSub @SessionStoreReloaded
+            . runSessionStoreMutable ref
+            . runErrorNoCallStack @StopSignal
+            . runConc
+
 
 --------------------------------------------------------------------------------
 -- Effect stack for integration tests
@@ -159,33 +173,6 @@ testRebuildOnCabalReload = do
 
 data StopSignal = StopSignal
     deriving stock (Show)
-
-
-type IntegrationEs =
-    '[ Conc
-     , Error StopSignal
-     , SessionStore
-     , Pub SessionStoreReloaded
-     , Sub SessionStoreReloaded
-     , Chan
-     , Clock
-     , Tracing
-     , Concurrent
-     , IOE
-     ]
-
-
-runMutable :: IORef Session -> Eff IntegrationEs a -> IO (Either StopSignal a)
-runMutable ref =
-    runEff
-        . runConcurrent
-        . runTracingNoOp
-        . runClockConst epoch
-        . runChan
-        . runPubSub @SessionStoreReloaded
-        . runSessionStoreMutable ref
-        . runErrorNoCallStack @StopSignal
-        . runConc
 
 
 runSessionStoreMutable
