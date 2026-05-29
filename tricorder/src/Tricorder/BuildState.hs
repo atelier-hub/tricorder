@@ -1,3 +1,10 @@
+-- | Shared wire-protocol vocabulary for the build system.
+--
+-- Every type here is serialised (most via 'FromJSON' / 'ToJSON') and crosses
+-- module boundaries between the daemon, the socket layer, the CLI, the UI,
+-- and external clients. Components' /internal/ caches and bookkeeping (e.g.
+-- the Builder's per-cycle module map and diagnostic accumulator) do not
+-- belong here — they live next to the component that owns them.
 module Tricorder.BuildState
     ( BuildId (..)
     , BuildState (..)
