@@ -2,6 +2,7 @@ module Tricorder.Session
     ( Session (..)
     , Config (..)
     , loadSession
+    , runSession
     , resolveCommand
     , resolveTargets
     , allComponentTargets
@@ -33,6 +34,7 @@ import Distribution.Types.TestSuite (testBuildInfo)
 import Distribution.Types.UnqualComponentName (mkUnqualComponentName, unUnqualComponentName)
 import Distribution.Utils.Path (getSymbolicPath)
 import Effectful.Reader.Static (Reader, ask)
+import Effectful.State.Static.Shared (State, evalState)
 import System.FilePath (takeExtension, (</>))
 
 import Data.Text qualified as T
@@ -53,6 +55,7 @@ data Session = Session
     , replBuildDir :: FilePath
     , testTimeout :: Int
     }
+    deriving stock (Eq, Show)
 
 
 instance Default Session where
@@ -232,3 +235,9 @@ loadSession = do
             , replBuildDir = cfgFile.replBuildDir
             , testTimeout = cfgFile.testTimeout
             }
+
+
+runSession :: (FileSystem :> es, Reader LoadedConfig :> es, Reader ProjectRoot :> es) => Eff (State Session : es) a -> Eff es a
+runSession act = do
+    initialSession <- loadSession
+    evalState initialSession act

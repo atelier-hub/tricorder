@@ -3,10 +3,12 @@ module Atelier.Effects.Input
     , input
     , runInputEff
     , runInputConst
+    , runInputFromState
     ) where
 
 import Effectful (Effect)
 import Effectful.Dispatch.Dynamic (interpret_)
+import Effectful.State.Static.Shared (State, get)
 import Effectful.TH (makeEffect)
 
 
@@ -40,3 +42,9 @@ runInputEff mk = interpret_ \Input -> mk
 -- 'Effectful.Reader.Local', but is available here for testing.
 runInputConst :: i -> Eff (Input i : es) a -> Eff es a
 runInputConst = runInputEff . pure
+
+
+-- | Run an 'Input' effect backed by a 'State'. This is effectively like
+-- projecting just the 'get' operation of 'State'.
+runInputFromState :: (State i :> es) => Eff (Input i : es) a -> Eff es a
+runInputFromState = runInputEff get

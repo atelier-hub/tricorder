@@ -1,6 +1,5 @@
 module Tricorder.Builder
     ( component
-    , withBuilderSession
     , BuilderSession (..)
     , NewLoadResult (..)
     , compileLoadResultsIntoBuildResults
@@ -15,19 +14,19 @@ module Tricorder.Builder
 import Data.Default (Default (..))
 import Data.Time (diffUTCTime)
 import Effectful.Concurrent (Concurrent)
-import Effectful.Exception (bracket_, trySync)
+import Effectful.Exception (bracket_, finally, trySync)
 import Effectful.Reader.Static (Reader, ask)
-import Effectful.State.Static.Shared (State, get, modify, put, state)
+import Effectful.State.Static.Shared (State, evalState, get, modify, put, state)
 import System.FilePath (normalise)
 
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
 import Atelier.Component (Component (..), defaultComponent)
-import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce, debounced)
+import Atelier.Effects.Input (Input, input)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
 import Atelier.Time (Millisecond, nominalDiffTime)
@@ -56,8 +55,8 @@ import Tricorder.Builder.Dispatch
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
 import Tricorder.Effects.GhciSession.GhciParser (resolveKnownTargets)
-import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Effects.TestRunner (TestRunner)
+import Tricorder.Events.Restart (Restart (..))
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
@@ -68,8 +67,9 @@ import Atelier.Effects.Publishing qualified as Sub
 import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.GhciSession qualified as GhciSession
-import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.Effects.TestRunner qualified as TestRunner
+import Tricorder.Events.Restart qualified as Restart
+import Tricorder.SessionStore qualified as SessionStore
 
 
 -- | Builder component.
@@ -77,26 +77,28 @@ import Tricorder.Effects.TestRunner qualified as TestRunner
 -- from the watcher.
 component
     :: ( BuildStore :> es
-       , Chan :> es
        , Clock :> es
        , Conc :> es
        , Concurrent :> es
        , Debounce Text :> es
        , GhciSession :> es
+       , Input Session :> es
        , Log :> es
+       , Pub (Restart BuilderSession) :> es
        , Pub BuildResult :> es
        , Pub EnteredNewPhase :> es
        , Pub EnteringNewPhase :> es
        , Pub NewLoadResult :> es
+       , Pub SessionStore.ReloadRequested :> es
        , Reader ProjectRoot :> es
-       , SessionStore :> es
        , State BuildId :> es
        , State BuilderState :> es
+       , Sub (Restart BuilderSession) :> es
        , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
        , Sub EnteringNewPhase :> es
        , Sub NewLoadResult :> es
-       , Sub SessionStoreReloaded :> es
+       , Sub SessionStore.Reloaded :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
@@ -105,8 +107,12 @@ component =
     defaultComponent
         { name = "Builder"
         , listeners = do
-            session <- SessionStore.get
-            pure [withBuilderSession session restartableListeners]
+            session <- input
+            pure
+                [ Restart.onEvent restartableListeners $ Restart $ mkBuilderSession session
+                , Sub.listen_ restartOnCabalChange
+                , restartOnSessionChange session
+                ]
         }
 
 
@@ -132,32 +138,14 @@ instance Default BuilderSession where
         session = def @Session
 
 
--- | Tracks the parts of 'Session' that 'Builder' cares about, and restarts the
--- passed function whenever those parts change.
-withBuilderSession
-    :: ( Chan :> es
-       , Conc :> es
-       , SessionStore :> es
-       , Sub SessionStoreReloaded :> es
-       )
-    => Session
-    -> (SessionStore.Reloader es -> BuilderSession -> Eff es ())
-    -> Eff es Void
-withBuilderSession =
-    -- 'withReloadingSubSession' (not 'withSubSession') so cabal-file edits
-    -- always restart GHCi, even when the projected fields (command, targets,
-    -- testTargets, watchDirs) didn't change. Most cabal edits change ghc-
-    -- options or deps, which are invisible to the projection but still
-    -- require a fresh GHCi.
-    SessionStore.withReloadingSubSession mkBuilderSession
-  where
-    mkBuilderSession session =
-        BuilderSession
-            { command = session.command
-            , targets = session.targets
-            , testTargets = session.testTargets
-            , watchDirs = session.watchDirs
-            }
+mkBuilderSession :: Session -> BuilderSession
+mkBuilderSession session =
+    BuilderSession
+        { command = session.command
+        , targets = session.targets
+        , testTargets = session.testTargets
+        , watchDirs = session.watchDirs
+        }
 
 
 restartableListeners
@@ -176,24 +164,44 @@ restartableListeners
        , State BuildId :> es
        , State BuilderState :> es
        , Sub BuildResult :> es
-       , Sub CabalChangeDetected :> es
        , Sub EnteringNewPhase :> es
        , Sub NewLoadResult :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
-    => SessionStore.Reloader es
-    -> BuilderSession
+    => BuilderSession
     -> Eff es ()
-restartableListeners reloader config = bracket_ (pure ()) (onRestart) $ Conc.scoped do
-    ProjectRoot projectRoot <- ask
-    Log.info $ "Builder.component: resolved command = " <> config.command
-    Log.info $ "Builder.component: projectRoot = " <> toText projectRoot
-    Conc.fork_ $ Sub.listen_ $ compileLoadResultsIntoBuildResults config
-    Conc.fork_ $ Sub.listen_ $ requestTestRunsForNewBuildResults config
-    Conc.fork_ $ buildWithGhciOnChange reloader config
-    Conc.fork_ $ Sub.listen_ setNewPhase
-    Conc.awaitAll
+restartableListeners config = do
+    flip finally onRestart $ Conc.scoped do
+        ProjectRoot projectRoot <- ask
+        Log.info $ "Builder.component: resolved command = " <> config.command
+        Log.info $ "Builder.component: projectRoot = " <> toText projectRoot
+        Conc.fork_ $ Sub.listen_ $ compileLoadResultsIntoBuildResults config
+        Conc.fork_ $ Sub.listen_ $ requestTestRunsForNewBuildResults config
+        Conc.fork_ $ buildWithGhciOnChange config
+        Conc.fork_ $ Sub.listen_ setNewPhase
+        Conc.awaitAll
+
+
+restartOnCabalChange
+    :: (Pub SessionStore.ReloadRequested :> es)
+    => CabalChangeDetected -> Eff es ()
+restartOnCabalChange CabalChangeDetected =
+    publish SessionStore.ReloadRequested
+
+
+restartOnSessionChange
+    :: (Pub (Restart BuilderSession) :> es, Sub SessionStore.Reloaded :> es)
+    => Session -> Eff es Void
+restartOnSessionChange initialSession = evalState initial $ forever do
+    SessionStore.Reloaded session <- Sub.listenOnce_
+    let new = mkBuilderSession session
+    old <- get
+    when (old /= new) do
+        put new
+        publish $ Restart new
+  where
+    initial = mkBuilderSession initialSession
 
 
 onRestart
@@ -231,14 +239,12 @@ buildWithGhciOnChange
        , Reader ProjectRoot :> es
        , State BuildId :> es
        , State BuilderState :> es
-       , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
-    => SessionStore.Reloader es
-    -> BuilderSession
+    => BuilderSession
     -> Eff es Void
-buildWithGhciOnChange reloader config = forever do
+buildWithGhciOnChange config = forever do
     put emptyBuilderState
     projectRoot <- ask
     BuildId n <- get
@@ -253,7 +259,7 @@ buildWithGhciOnChange reloader config = forever do
                 { loadedModules = resolveKnownTargets Map.empty initialLoad
                 , knownTargets = KnownTargetNames (Set.fromList initialLoad.targetNames)
                 }
-        rebuildOnChange reloader controls
+        rebuildOnChange controls
 
 
 handleInitialBuild
@@ -299,20 +305,14 @@ rebuildOnChange
        , Pub NewLoadResult :> es
        , State BuildId :> es
        , State BuilderState :> es
-       , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
-    => SessionStore.Reloader es
-    -> GhciSession.Controls (Eff es)
+    => GhciSession.Controls (Eff es)
     -> Eff es Void
-rebuildOnChange reloader controls = Conc.scoped do
+rebuildOnChange controls = Conc.scoped do
     BuildId n <- get
     Log.debug $ "Builder: waiting for dirty flag (build #" <> show n <> ")"
-    Conc.fork_ $ Sub.listen_ @CabalChangeDetected $ \_ -> do
-        Log.info "Cabal file changed; reloading session"
-        -- Signals to `withBuilderSession` that the session should be reloaded.
-        reloader.reload
     handleSourceChanges controls
 
 

@@ -18,6 +18,7 @@ import Atelier.Effects.Exit (runExit)
 import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.FileWatcher (runFileWatcherIO)
+import Atelier.Effects.Input (runInputFromState)
 import Atelier.Effects.Monitoring.Tracing (TracingConfig, runTracingFromConfig)
 import Atelier.Effects.Publishing (runPubSub)
 import Atelier.Effects.Timeout (runTimeout)
@@ -27,19 +28,20 @@ import Tricorder.Effects.BuildStore (runBuildStore)
 import Tricorder.Effects.GhcPkg (runGhcPkgIO)
 import Tricorder.Effects.GhciSession (runGhciSession)
 import Tricorder.Effects.Logging (runLogging)
-import Tricorder.Effects.SessionStore (runSessionStore)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
+import Tricorder.Events.Restart (Restart)
 import Tricorder.Runtime (runLogPath, runProjectRoot, runRuntimeDir, runSocketPath)
+import Tricorder.Session (Session, runSession)
 
 import Atelier.Effects.Cache.Config qualified as CacheConfig
 import Atelier.Effects.Log qualified as Log
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
 import Tricorder.Builder.Dispatch qualified as Dispatch
-import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.GhcPkg.Types qualified as GhcPkg
 import Tricorder.Observability qualified as Observability
+import Tricorder.SessionStore qualified as SessionStore
 import Tricorder.Socket.Server qualified as SocketServer
 import Tricorder.SourceLookup qualified as SourceLookup
 import Tricorder.Version qualified as Version
@@ -71,11 +73,15 @@ main =
         . runConfig @"observability" @Observability.Config
         . runConfig @"observability.tracing" @TracingConfig
         . runTracingFromConfig
+        . runSession
+        . runInputFromState @Session
         . runChan
-        . runPubSub @SessionStore.SessionStoreReloaded
-        . runSessionStore
+        . runPubSub @SessionStore.Reloaded
+        . runPubSub @SessionStore.ReloadRequested
         . runReader @CacheConfig.Config def
-        . runPubSub @Watcher.WatchedFile
+        . runPubSub @(Restart Builder.BuilderSession)
+        . runPubSub @(Restart Watcher.WatcherSession)
+        . runPubSub @Watcher.FileChangeDetected
         . runPubSub @Builder.NewLoadResult
         . runPubSub @BuildState.BuildResult
         . runPubSub @BuildState.CabalChangeDetected
@@ -100,4 +106,5 @@ main =
                 , Watcher.component
                 , Builder.component
                 , SocketServer.component
+                , SessionStore.component
                 ]

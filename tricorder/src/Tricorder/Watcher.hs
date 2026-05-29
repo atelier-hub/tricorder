@@ -1,15 +1,16 @@
 module Tricorder.Watcher
     ( component
-    , WatchedFile (..)
+    , WatcherSession
+    , FileChangeDetected (..)
     , isCabalFile
     , markWatchedFiles
     ) where
 
 import Effectful.Reader.Static (Reader, ask)
+import Effectful.State.Static.Shared (evalState, get, put)
 import System.FilePath (takeExtension, takeFileName)
 
 import Atelier.Component (Component (..), defaultComponent)
-import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce)
 import Atelier.Effects.FileWatcher
@@ -22,6 +23,7 @@ import Atelier.Effects.FileWatcher
     , excluding
     , watchFilePathsDebounced
     )
+import Atelier.Effects.Input (Input, input)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
 import Tricorder.BuildState
     ( CabalChangeDetected (..)
@@ -29,40 +31,47 @@ import Tricorder.BuildState
     , SourceChangeDetected (..)
     )
 import Tricorder.Effects.BuildStore (BuildStore)
-import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
+import Tricorder.Events.Restart (Restart (..))
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
 import Atelier.Effects.Publishing qualified as Sub
 import Tricorder.Effects.BuildStore qualified as BuildStore
-import Tricorder.Effects.SessionStore qualified as SessionStore
+import Tricorder.Events.Restart qualified as Restart
+import Tricorder.SessionStore qualified as SessionStore
 
 
--- | Watcher component.
--- Watches source files and cabal-related files for changes, setting the dirty
--- flag in 'BuildStore'. 'GhciSession' polls this flag and triggers a rebuild
--- or session restart accordingly.
 component
     :: ( BuildStore :> es
-       , Chan :> es
        , Conc :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
+       , Input Session :> es
+       , Pub (Restart WatcherSession) :> es
        , Pub CabalChangeDetected :> es
+       , Pub FileChangeDetected :> es
        , Pub SourceChangeDetected :> es
-       , Pub WatchedFile :> es
        , Reader ProjectRoot :> es
-       , SessionStore :> es
-       , Sub SessionStoreReloaded :> es
-       , Sub WatchedFile :> es
+       , Sub (Restart WatcherSession) :> es
+       , Sub FileChangeDetected :> es
+       , Sub SessionStore.Reloaded :> es
        )
     => Component es
 component =
     defaultComponent
         { name = "Watcher"
-        , triggers = pure [watchFiles]
-        , listeners = pure [Sub.listen_ markWatchedFiles]
+        , listeners = do
+            session <- input
+            pure
+                [ Restart.onEvent watchFiles $ Restart $ mkWatcherSession session
+                , Sub.listen_ markWatchedFiles
+                , restartOnSessionReload session
+                ]
         }
+
+
+mkWatcherSession :: Session -> WatcherSession
+mkWatcherSession = WatcherSession . (.watchDirs)
 
 
 markWatchedFiles
@@ -70,7 +79,7 @@ markWatchedFiles
        , Pub CabalChangeDetected :> es
        , Pub SourceChangeDetected :> es
        )
-    => WatchedFile -> Eff es ()
+    => FileChangeDetected -> Eff es ()
 markWatchedFiles f = do
     BuildStore.markDirty change
     case change of
@@ -80,7 +89,7 @@ markWatchedFiles f = do
     change = changeKindFor f.path
 
 
-data WatchedFile = WatchedFile
+data FileChangeDetected = FileChangeDetected
     { path :: FilePath
     , event :: FileEvent
     }
@@ -92,36 +101,34 @@ data WatcherSession = WatcherSession
     deriving stock (Eq)
 
 
-withWatcherSession
-    :: ( Chan :> es
-       , Conc :> es
-       , SessionStore :> es
-       , Sub SessionStoreReloaded :> es
-       )
-    => Session
-    -> (SessionStore.Reloader es -> WatcherSession -> Eff es Void)
-    -> Eff es Void
-withWatcherSession =
-    SessionStore.withSubSession $ WatcherSession . (.watchDirs)
-
-
 watchFiles
-    :: ( Chan :> es
-       , Conc :> es
-       , Debounce FilePath :> es
+    :: ( Debounce FilePath :> es
        , FileWatcher :> es
-       , Pub WatchedFile :> es
+       , Pub FileChangeDetected :> es
        , Reader ProjectRoot :> es
-       , SessionStore :> es
-       , Sub SessionStoreReloaded :> es
        )
-    => Eff es Void
-watchFiles = do
-    initialSession <- SessionStore.get
-    withWatcherSession initialSession $ \_ session -> do
-        projectRoot <- ask
-        let watches = sourceWatches session.watchDirs <> cabalWatches projectRoot
-        watchFilePathsDebounced watches \filePath fileEvent -> publish (WatchedFile filePath fileEvent)
+    => WatcherSession -> Eff es Void
+watchFiles session = do
+    projectRoot <- ask
+    let watches = sourceWatches session.watchDirs <> cabalWatches projectRoot
+    watchFilePathsDebounced watches \filePath fileEvent ->
+        publish (FileChangeDetected filePath fileEvent)
+
+
+restartOnSessionReload
+    :: ( Pub (Restart WatcherSession) :> es
+       , Sub SessionStore.Reloaded :> es
+       )
+    => Session -> Eff es Void
+restartOnSessionReload initialSession = evalState initial $ forever do
+    SessionStore.Reloaded session <- Sub.listenOnce_
+    let new = mkWatcherSession session
+    old <- get
+    when (old /= new) do
+        put new
+        publish $ Restart new
+  where
+    initial = mkWatcherSession initialSession
 
 
 sourceWatches :: [FilePath] -> [Watch]

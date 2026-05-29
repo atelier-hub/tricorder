@@ -38,13 +38,11 @@ import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (makeRelative)
 
 import Atelier.Effects.FileWatcher (FileEvent)
-import Atelier.Effects.Input (Input, runInputEff)
+import Atelier.Effects.Input (Input, input, runInputEff)
 import Atelier.Time (Millisecond)
-import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (LogPath (..), ProjectRoot (..), SocketPath (..))
 import Tricorder.Session (Session (..))
 
-import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.Observability qualified as Observability
 
 
@@ -66,15 +64,15 @@ data DaemonInfo = DaemonInfo
 
 
 loadDaemonInfo
-    :: ( Reader LogPath :> es
+    :: ( Input Session :> es
+       , Reader LogPath :> es
        , Reader Observability.Config :> es
        , Reader ProjectRoot :> es
        , Reader SocketPath :> es
-       , SessionStore :> es
        )
     => Eff es DaemonInfo
 loadDaemonInfo = do
-    session <- SessionStore.get
+    session <- input @Session
     obsCfg <- ask @Observability.Config
     ProjectRoot projectRoot <- ask
     SocketPath sockPath <- ask
@@ -90,11 +88,11 @@ loadDaemonInfo = do
 
 
 runDaemonInfo
-    :: ( Reader LogPath :> es
+    :: ( Input Session :> es
+       , Reader LogPath :> es
        , Reader Observability.Config :> es
        , Reader ProjectRoot :> es
        , Reader SocketPath :> es
-       , SessionStore :> es
        )
     => Eff (Input DaemonInfo : es) a -> Eff es a
 runDaemonInfo = runInputEff loadDaemonInfo

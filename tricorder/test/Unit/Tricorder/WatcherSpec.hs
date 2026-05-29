@@ -18,7 +18,7 @@ import Tricorder.BuildState
     , SourceChangeDetected (..)
     )
 import Tricorder.Effects.BuildStore (BuildStore (..))
-import Tricorder.Watcher (WatchedFile (..), markWatchedFiles)
+import Tricorder.Watcher (FileChangeDetected (..), markWatchedFiles)
 
 
 spec_Watcher :: Spec
@@ -51,7 +51,7 @@ testMarkWatchedFiles = do
             . runPubWriter @CabalChangeDetected
             . mockBuildStore
             . markWatchedFiles
-            . (`WatchedFile` Modified)
+            . (`FileChangeDetected` Modified)
     mockBuildStore :: Eff (BuildStore : es) a -> Eff es (Maybe ChangeKind)
     mockBuildStore = reinterpret_ (execState Nothing) \case
         MarkDirty ck -> put $ Just ck

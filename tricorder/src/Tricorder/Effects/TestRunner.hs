@@ -33,15 +33,13 @@ import Data.Text qualified as T
 
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.File (File)
+import Atelier.Effects.Input (Input, input)
 import Atelier.Effects.Timeout (Timeout, timeout)
 import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
 import Tricorder.Effects.GhciSession.GhciProcess (GhciProcess, execGhci, interruptGhci, withGhciProcess)
-import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 import Tricorder.TestOutput (parseHspecDuration, parseHspecOutput)
-
-import Tricorder.Effects.SessionStore qualified as SessionStore
 
 
 data TestRunner :: Effect where
@@ -69,8 +67,8 @@ runTestRunnerIO
        , Concurrent :> es
        , File :> es
        , IOE :> es
+       , Input Session :> es
        , Reader ProjectRoot :> es
-       , SessionStore :> es
        , Timeout :> es
        )
     => Eff (TestRunner : es) a -> Eff es a
@@ -91,7 +89,7 @@ runTestRunnerIO act = do
             if alreadyAborted then
                 pure $ TestRunErrored $ TestRunError {target, message = "Test run aborted"}
             else do
-                Session {testTimeout} <- SessionStore.get
+                Session {testTimeout} <- input
                 result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot \ghci _ ->
                     bracket_
                         (atomically (writeTVar currentProcRef (Just ghci)))

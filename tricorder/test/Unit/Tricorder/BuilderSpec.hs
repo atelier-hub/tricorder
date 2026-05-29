@@ -1,31 +1,23 @@
 module Unit.Tricorder.BuilderSpec (spec_Builder) where
 
 import Data.Default (def)
-import Data.IORef (IORef)
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian)
-import Effectful (IOE, runEff, runPureEff)
+import Effectful (runEff, runPureEff)
 import Effectful.Concurrent (runConcurrent)
-import Effectful.Dispatch.Dynamic (interpret_)
-import Effectful.Error.Static (runErrorNoCallStack, throwError)
 import Effectful.Reader.Static (runReader)
 import Effectful.State.Static.Shared (evalState, execState, runState)
 import Effectful.Writer.Static.Shared (execWriter, runWriter)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList)
 
-import Data.IORef qualified as IORef
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
-import Atelier.Effects.Chan (runChan)
 import Atelier.Effects.Clock (runClockConst)
-import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Input (runInputConst)
 import Atelier.Effects.Log (runLogNoOp)
-import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
-import Atelier.Effects.Publishing (Pub, publish, runPubSub, runPubWriter)
-import Atelier.Time (Millisecond)
+import Atelier.Effects.Publishing (runPubWriter)
 import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)
@@ -59,20 +51,13 @@ import Tricorder.Builder.Dispatch
     )
 import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..))
 import Tricorder.Effects.GhciSession.GhciParser (extractTitle, resolveKnownTargets)
-import Tricorder.Effects.SessionStore
-    ( SessionStore (..)
-    , SessionStoreReloaded (..)
-    )
 import Tricorder.Effects.TestRunner (runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Session (..))
 
-import Atelier.Effects.Delay qualified as Delay
 import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
 import Tricorder.Effects.BuildStore qualified as BuildStore
-import Tricorder.Effects.SessionStore qualified as SessionStore
 
 
 spec_Builder :: Spec
@@ -84,7 +69,6 @@ spec_Builder = do
     describe "requestTestRunsForNewBuildResults" testRequestTestRunsForNewBuildResults
     describe "setNewPhase" testSetNewPhase
     describe "restartOnCabalChange" testRestartOnCabalChange
-    describe "rebuildOnChange (cabal reload)" testRebuildOnCabalReload
     describe "reloadOnSourceChange" testReloadOnSourceChange
     describe "resolveKnownTargets" testResolveKnownTargets
     describe "fileMatchesAnyTarget" testFileMatchesAnyTarget
@@ -109,87 +93,9 @@ testRestartOnCabalChange = do
     run = runEff . runConcurrent . runLogNoOp
 
 
--- | Reproduces the hpack/cabal-reload bug: when a cabal file change leaves
--- 'BuilderSession's projected fields (command, targets, testTargets, watchDirs)
--- unchanged, 'reloader.reload' silently no-ops and the builder action is never
--- restarted. In the live daemon this manifests as the UI staying on the
--- previous build's "Done" with no rebuild kicked off after hpack rewrites
--- @tricorder.cabal@.
-testRebuildOnCabalReload :: Spec
-testRebuildOnCabalReload = do
-    it "restarts the builder action when a cabal reload arrives" do
-        runsRef <- IORef.newIORef (0 :: Int)
-        -- Two sessions with identical BuilderSession projections, differing
-        -- only in a field that the projection ignores (outputFile). Mirrors
-        -- the real scenario where hpack rewrites the cabal file without
-        -- changing GHCi targets.
-        let baseSession = mkSession Nothing
-            sameProjection = mkSession (Just "/other")
-        sessionRef <- IORef.newIORef baseSession
-
-        _ <- runMutable sessionRef do
-            Builder.withBuilderSession baseSession \reloader _cfg -> do
-                n <- liftIO $ IORef.atomicModifyIORef' runsRef (\x -> (x + 1, x + 1))
-                if n == 1 then do
-                    -- Let the inner Iter.fromEvents iterator subscribe.
-                    Delay.wait (1 :: Millisecond)
-                    liftIO $ IORef.writeIORef sessionRef sameProjection
-                    reloader.reload
-                    -- Give the restart a chance to fire (it won't, with the bug).
-                    Delay.wait (1 :: Millisecond)
-                    throwError StopSignal
-                else
-                    throwError StopSignal
-
-        runs <- IORef.readIORef runsRef
-        runs `shouldBe` 2
-  where
-    -- Constructor syntax avoids the -Wambiguous-fields warning that record
-    -- update would trigger (Session and Config in Tricorder.Session share
-    -- field names).
-    mkSession outputFile =
-        Session
-            { command = "cmd"
-            , targets = []
-            , testTargets = []
-            , watchDirs = []
-            , outputFile
-            , replBuildDir = "/tmp"
-            , testTimeout = 10
-            }
-
-    runMutable ref =
-        runEff
-            . runConcurrent
-            . runTracingNoOp
-            . runClockConst epoch
-            . runChan
-            . runDelay
-            . runPubSub @SessionStoreReloaded
-            . runSessionStoreMutable ref
-            . runErrorNoCallStack @StopSignal
-            . runConc
-
-
 --------------------------------------------------------------------------------
 -- Effect stack for integration tests
 --------------------------------------------------------------------------------
-
-data StopSignal = StopSignal
-    deriving stock (Show)
-
-
-runSessionStoreMutable
-    :: (IOE :> es, Pub SessionStoreReloaded :> es)
-    => IORef Session
-    -> Eff (SessionStore : es) a
-    -> Eff es a
-runSessionStoreMutable ref = interpret_ \case
-    Get -> liftIO $ IORef.readIORef ref
-    RawReload -> do
-        session <- liftIO $ IORef.readIORef ref
-        publish (SessionStoreReloaded session)
-
 
 testReloadOnSourceChange :: Spec
 testReloadOnSourceChange = do

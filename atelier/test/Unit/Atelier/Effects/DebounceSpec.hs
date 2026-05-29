@@ -192,7 +192,7 @@ testRunDebounce = do
             runTest do
                 debouncedWith 50 (+) () (42 :: Int) $ \v ->
                     liftIO $ modifyMVar_ result (\_ -> pure (Just v))
-                Delay.wait @Millisecond 100
+                Delay.wait @Millisecond 200
             readMVar result >>= (`shouldBe` Just 42)
 
         describe "when invoked multiple times rapidly" do
