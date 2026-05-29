@@ -200,6 +200,7 @@
             (hsPkgs."hspec" or (errorHandler.buildDepError "hspec"))
             (hsPkgs."hspec-hedgehog" or (errorHandler.buildDepError "hspec-hedgehog"))
             (hsPkgs."stm" or (errorHandler.buildDepError "stm"))
+            (hsPkgs."stm-containers" or (errorHandler.buildDepError "stm-containers"))
             (hsPkgs."tasty" or (errorHandler.buildDepError "tasty"))
             (hsPkgs."tasty-hspec" or (errorHandler.buildDepError "tasty-hspec"))
             (hsPkgs."time" or (errorHandler.buildDepError "time"))

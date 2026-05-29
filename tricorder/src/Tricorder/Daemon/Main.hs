@@ -54,13 +54,13 @@ main =
         . runConc
         . runClock
         . runDelay
+        . runTimeout
         . runDebounce @FilePath
         . runDebounce @Text
         . runFileWatcherIO
         . runFileSystemIO
         . runProjectRoot
         . restartOnConfigChange
-        . runTimeout
         . runExit
         . runFile
         . runRuntimeDir
