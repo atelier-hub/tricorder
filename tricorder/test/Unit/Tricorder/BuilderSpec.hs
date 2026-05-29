@@ -41,17 +41,19 @@ import Tricorder.BuildState
     )
 import Tricorder.Builder
     ( BuilderSession (..)
-    , KnownTargetNames (..)
     , NewLoadResult (..)
     , compileLoadResultsIntoBuildResults
-    , fileMatchesAnyTarget
-    , filterToWatchDirs
-    , mergeDiagnostics
     , onRestart
     , reloadOnSourceChange
     , requestTestRunsForNewBuildResults
-    , resolveKnownTargets
     , setNewPhase
+    )
+import Tricorder.Builder.Dispatch
+    ( KnownTargetNames (..)
+    , fileMatchesAnyTarget
+    , filterToWatchDirs
+    , mergeDiagnostics
+    , resolveKnownTargets
     )
 import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..), extractTitle)
 import Tricorder.Effects.SessionStore

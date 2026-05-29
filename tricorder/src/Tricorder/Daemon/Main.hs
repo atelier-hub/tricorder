@@ -36,6 +36,7 @@ import Atelier.Effects.Cache.Config qualified as CacheConfig
 import Atelier.Effects.Log qualified as Log
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
+import Tricorder.Builder.Dispatch qualified as Builder
 import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.GhcPkg.Types qualified as GhcPkg
 import Tricorder.Observability qualified as Observability
