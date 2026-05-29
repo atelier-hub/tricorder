@@ -11,6 +11,7 @@ module Tricorder.Effects.GhciSession.GhciParser
     , parseShowModules
     , parseShowTargets
     , pathSuffixesAsModuleName
+    , resolveKnownTargets
     , stripAnsi
     , extractTitle
     , toAbsolute
@@ -469,6 +470,29 @@ collectResultCustom projectRoot loads modules targets =
             , targetNames = targets
             , diagnostics = toDiagnostics rel loads
             }
+
+
+-- | Path↔module-name map for the next cycle: this round's @:show modules@
+-- plus carryover from @prev@ for targets that failed mid-session and so
+-- dropped out. Never-compiled targets are absent here (no path↔name
+-- mapping); the dispatcher recognises those via 'KnownTargetNames'.
+resolveKnownTargets
+    :: Map FilePath LoadedModule
+    -- ^ Previous known-targets map (carryover source).
+    -> LoadResult
+    -> Map FilePath LoadedModule
+resolveKnownTargets prev lr =
+    let primary = lr.loadedModules
+        primaryNames = Set.fromList [lm.moduleName | lm <- Map.elems primary]
+        prevByName = Map.fromList [(lm.moduleName, (path, lm)) | (path, lm) <- Map.toList prev]
+        carryover =
+            Map.fromList
+                [ (path, lm)
+                | name <- lr.targetNames
+                , not (Set.member name primaryNames)
+                , Just (path, lm) <- [Map.lookup name prevByName]
+                ]
+    in  Map.union primary carryover
 
 
 toDiagnostics :: (FilePath -> FilePath) -> [GhciLoad] -> [BuildState.Diagnostic]

@@ -55,9 +55,9 @@ import Tricorder.Builder.Dispatch
     , fileMatchesAnyTarget
     , filterToWatchDirs
     , mergeDiagnostics
-    , resolveKnownTargets
     )
-import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..), extractTitle)
+import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..))
+import Tricorder.Effects.GhciSession.GhciParser (extractTitle, resolveKnownTargets)
 import Tricorder.Effects.SessionStore
     ( SessionStore (..)
     , SessionStoreReloaded (..)
@@ -259,7 +259,7 @@ testReloadOnSourceChange = do
             . runConcurrent
             . runClockConst epoch
             . evalState (BuildId 1)
-            . evalState @BuilderState
+            . evalState
                 emptyBuilderState
                     { loadedModules = initialModuleMap
                     , knownTargets = initialTargets
@@ -394,14 +394,13 @@ testCompileLoadResultsIntoBuildResults = do
         rs `shouldMatchList` [expected]
   where
     runTest acc nlr =
-        let (st, rs) =
-                runPureEff
-                    . runWriter
-                    . runPubWriter
-                    . runReader (ProjectRoot "/")
-                    . execState (emptyBuilderState {diagnosticMap = acc})
-                    $ compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]}) nlr
-        in  (st.diagnosticMap, rs)
+        first (.diagnosticMap)
+            . runPureEff
+            . runWriter
+            . runPubWriter
+            . runReader (ProjectRoot "/")
+            . execState (emptyBuilderState {diagnosticMap = acc})
+            $ compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]}) nlr
 
 
 testRequestTestRunsForNewBuildResults :: Spec

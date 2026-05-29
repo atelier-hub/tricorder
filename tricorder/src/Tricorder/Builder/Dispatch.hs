@@ -1,12 +1,13 @@
 module Tricorder.Builder.Dispatch
     ( BuilderState (..)
     , DiagnosticMap
+    , DispatchAction (..)
     , KnownTargetNames (..)
+    , dispatch
     , emptyBuilderState
     , fileMatchesAnyTarget
     , filterToWatchDirs
     , mergeDiagnostics
-    , resolveKnownTargets
     ) where
 
 import Data.Default (Default (..))
@@ -15,6 +16,7 @@ import System.FilePath (isAbsolute, (</>))
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
+import Atelier.Effects.FileWatcher (FileEvent (..))
 import Tricorder.BuildState (Diagnostic (..))
 import Tricorder.Effects.GhciSession (LoadResult (..), LoadedModule (..))
 import Tricorder.Effects.GhciSession.GhciParser (pathSuffixesAsModuleName)
@@ -28,8 +30,6 @@ data BuilderState = BuilderState
     { loadedModules :: Map FilePath LoadedModule
     , knownTargets :: KnownTargetNames
     , diagnosticMap :: DiagnosticMap
-    -- ^ Named 'diagnosticMap' (not 'diagnostics') to avoid 'DuplicateRecordFields'
-    -- collisions with 'LoadResult' and 'BuildResult'.
     }
     deriving stock (Eq, Show)
 
@@ -63,29 +63,6 @@ mergeDiagnostics prev LoadResult {compiledFiles, diagnostics} =
     in  Map.union newByFile cleared
 
 
--- | Path↔module-name map for the next cycle: this round's @:show modules@
--- plus carryover from @prev@ for targets that failed mid-session and so
--- dropped out. Never-compiled targets are absent here (no path↔name
--- mapping); the dispatcher recognises those via 'KnownTargetNames'.
-resolveKnownTargets
-    :: Map FilePath LoadedModule
-    -- ^ Previous known-targets map (carryover source).
-    -> LoadResult
-    -> Map FilePath LoadedModule
-resolveKnownTargets prev lr =
-    let primary = lr.loadedModules
-        primaryNames = Set.fromList [lm.moduleName | lm <- Map.elems primary]
-        prevByName = Map.fromList [(lm.moduleName, (path, lm)) | (path, lm) <- Map.toList prev]
-        carryover =
-            Map.fromList
-                [ (path, lm)
-                | name <- lr.targetNames
-                , not (Set.member name primaryNames)
-                , Just (path, lm) <- [Map.lookup name prevByName]
-                ]
-    in  Map.union primary carryover
-
-
 -- | GHCi's current target set, as raw entries from @:show targets@
 -- (typically dotted module names under @cabal repl --enable-multi-repl@).
 -- Survives every compile failure mode, so the dispatcher can recognise a
@@ -98,6 +75,42 @@ newtype KnownTargetNames = KnownTargetNames {unKnownTargetNames :: Set Text}
 fileMatchesAnyTarget :: KnownTargetNames -> FilePath -> Bool
 fileMatchesAnyTarget (KnownTargetNames targets) fp =
     any (`Set.member` targets) (pathSuffixesAsModuleName fp)
+
+
+-- | A GHCi command to issue in response to a source file change.
+data DispatchAction
+    = Reload
+    | Add FilePath
+    | Unadd Text
+    deriving stock (Eq, Show)
+
+
+-- | Decide what GHCi action a source-file change requires.
+--
+-- The path-keyed module map misses targets that failed on first load,
+-- so we fall back to 'KnownTargetNames' for those — otherwise we would
+-- issue @:add@ (a no-op for an already-tracked cabal target), leaving
+-- stale diagnostics in place.
+dispatch
+    :: KnownTargetNames
+    -> Maybe LoadedModule
+    -> FilePath
+    -> FileEvent
+    -> Maybe DispatchAction
+dispatch knownTargets known fp event = case known of
+    Just lm -> Just $ case event of
+        Added -> Reload
+        Modified -> Reload
+        Removed -> Unadd lm.moduleName
+    Nothing
+        | fileMatchesAnyTarget knownTargets fp -> case event of
+            Added -> Just Reload
+            Modified -> Just Reload
+            Removed -> Nothing
+        | otherwise -> case event of
+            Added -> Just (Add fp)
+            Modified -> Just (Add fp)
+            Removed -> Nothing
 
 
 -- | Keep only diagnostics whose file is under one of the watched directories.

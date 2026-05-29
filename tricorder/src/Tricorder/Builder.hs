@@ -17,7 +17,7 @@ import Data.Time (diffUTCTime)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
-import Effectful.State.Static.Shared (State, get, modify, state)
+import Effectful.State.Static.Shared (State, get, modify, put, state)
 import System.FilePath (normalise)
 
 import Data.Map.Strict qualified as Map
@@ -28,7 +28,6 @@ import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce, debounced)
-import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
 import Atelier.Time (Millisecond, nominalDiffTime)
@@ -47,15 +46,16 @@ import Tricorder.BuildState
     )
 import Tricorder.Builder.Dispatch
     ( BuilderState (..)
+    , DispatchAction (..)
     , KnownTargetNames (..)
+    , dispatch
     , emptyBuilderState
-    , fileMatchesAnyTarget
     , filterToWatchDirs
     , mergeDiagnostics
-    , resolveKnownTargets
     )
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
+import Tricorder.Effects.GhciSession.GhciParser (resolveKnownTargets)
 import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
@@ -239,7 +239,7 @@ buildWithGhciOnChange
     -> BuilderSession
     -> Eff es Void
 buildWithGhciOnChange reloader config = forever do
-    modify @BuilderState (const emptyBuilderState)
+    put emptyBuilderState
     projectRoot <- ask
     BuildId n <- get
     Log.info $ "Starting GHCi session #" <> show n <> ": " <> config.command
@@ -248,7 +248,7 @@ buildWithGhciOnChange reloader config = forever do
     GhciSession.withGhci config.command projectRoot \initialLoad controls -> do
         initialEndTime <- Clock.currentTime
         handleInitialBuild config initialStartTime initialEndTime initialLoad
-        modify @BuilderState \s ->
+        modify \s ->
             s
                 { loadedModules = resolveKnownTargets Map.empty initialLoad
                 , knownTargets = KnownTargetNames (Set.fromList initialLoad.targetNames)
@@ -373,7 +373,7 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
     Log.debug $ "Builder: source change detected " <> show event <> " " <> toText fp
     builderState <- get @BuilderState
     let known = Map.lookup (normalise fp) builderState.loadedModules
-    case dispatch builderState.knownTargets known of
+    case dispatch builderState.knownTargets known fp event of
         Nothing ->
             Log.debug
                 $ "Builder: no-op for "
@@ -386,7 +386,7 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
 
             res <- trySync $ Sem.withSemaphore readyToBuildSem do
                 startTime <- Clock.currentTime
-                res <- action
+                res <- runAction controls action
                 endTime <- Clock.currentTime
                 pure (startTime, endTime, res)
 
@@ -395,31 +395,19 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
                     now <- Clock.currentTime
                     Log.err $ show now <> " Reload errored: " <> show e
                 Right (startTime, endTime, loadResult) -> do
-                    modify @BuilderState \s ->
+                    modify \s ->
                         s
                             { loadedModules = resolveKnownTargets s.loadedModules loadResult
                             , knownTargets = KnownTargetNames (Set.fromList loadResult.targetNames)
                             }
                     publish $ NewLoadResult {startTime, endTime, loadResult}
-  where
-    -- The path-keyed module map misses targets that failed on first load,
-    -- so we fall back to 'KnownTargetNames' for those — otherwise the
-    -- dispatcher would issue @:add@ (a no-op for an already-tracked cabal
-    -- target), leaving stale diagnostics in place.
-    dispatch knownTargets = \case
-        Just lm -> Just $ case event of
-            Added -> controls.reload
-            Modified -> controls.reload
-            Removed -> controls.unadd lm.moduleName
-        Nothing
-            | fileMatchesAnyTarget knownTargets fp -> case event of
-                Added -> Just controls.reload
-                Modified -> Just controls.reload
-                Removed -> Nothing
-            | otherwise -> case event of
-                Added -> Just (controls.add fp)
-                Modified -> Just (controls.add fp)
-                Removed -> Nothing
+
+
+runAction :: GhciSession.Controls (Eff es) -> DispatchAction -> Eff es LoadResult
+runAction controls = \case
+    Reload -> controls.reload
+    Add fp -> controls.add fp
+    Unadd mn -> controls.unadd mn
 
 
 data NewLoadResult = NewLoadResult
