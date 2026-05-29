@@ -148,7 +148,12 @@ withBuilderSession
     -> (SessionStore.Reloader es -> BuilderSession -> Eff es ())
     -> Eff es Void
 withBuilderSession =
-    SessionStore.withSubSession mkBuilderSession
+    -- 'withReloadingSubSession' (not 'withSubSession') so cabal-file edits
+    -- always restart GHCi, even when the projected fields (command, targets,
+    -- testTargets, watchDirs) didn't change. Most cabal edits change ghc-
+    -- options or deps, which are invisible to the projection but still
+    -- require a fresh GHCi.
+    SessionStore.withReloadingSubSession mkBuilderSession
   where
     mkBuilderSession session =
         BuilderSession

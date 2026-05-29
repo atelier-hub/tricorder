@@ -4,6 +4,7 @@ module Tricorder.Effects.SessionStore
     , get
     , withSession
     , withSubSession
+    , withReloadingSubSession
     , ActiveSession (..)
     , Reloader (..)
     , runSessionStore
@@ -85,6 +86,34 @@ withSubSession mkSubSession initialSession action =
                 Iter.changes
                     initialSubSession
                     (fmap (\(SessionStoreReloaded s) -> mkSubSession s) iter)
+        in  Conc.restartableForkLoop
+                initialSubSession
+                (Iter.next subIter)
+                \cfg -> action (Reloader rawReload) cfg
+
+
+-- | Like 'withSubSession', but restarts the action on every reload regardless
+-- of whether the projected sub-session changed.
+--
+-- Use this when the publisher can't tell from the projection whether a
+-- restart is needed. The motivating case is a cabal-file edit: it may alter
+-- ghc-options, dependencies, or extensions without affecting the resolved
+-- command/targets/watch-dirs that the projection captures.
+withReloadingSubSession
+    :: forall subSession es a
+     . ( Chan :> es
+       , Conc :> es
+       , SessionStore :> es
+       , Sub SessionStoreReloaded :> es
+       )
+    => (Session -> subSession)
+    -> Session
+    -> (Reloader es -> subSession -> Eff es a)
+    -> Eff es Void
+withReloadingSubSession mkSubSession initialSession action =
+    Iter.fromEvents @SessionStoreReloaded \iter ->
+        let initialSubSession = mkSubSession initialSession
+            subIter = fmap (\(SessionStoreReloaded s) -> mkSubSession s) iter
         in  Conc.restartableForkLoop
                 initialSubSession
                 (Iter.next subIter)

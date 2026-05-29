@@ -22,6 +22,7 @@ import Tricorder.Effects.SessionStore
     , SessionStore (..)
     , SessionStoreReloaded (..)
     , runSessionStoreConst
+    , withReloadingSubSession
     , withSession
     )
 import Tricorder.Session (Session (..))
@@ -32,6 +33,7 @@ import Tricorder.Effects.SessionStore qualified as SessionStore
 spec_SessionStore :: Spec
 spec_SessionStore = do
     describe "withSession" testWithSession
+    describe "withReloadingSubSession" testWithReloadingSubSession
 
 
 testWithSession :: Spec
@@ -71,6 +73,30 @@ testWithSession = do
                     throwError StopSignal
         sessions <- reverse <$> IORef.readIORef sessionsRef
         sessions `shouldBe` [session1.command, session2.command]
+
+
+testWithReloadingSubSession :: Spec
+testWithReloadingSubSession = do
+    -- The key difference vs 'withSubSession': re-publishing a session whose
+    -- projection is unchanged still restarts the action.
+    it "restarts the action on every reload, even when the projection is unchanged" do
+        runsRef <- IORef.newIORef (0 :: Int)
+        sessionRef <- IORef.newIORef session1
+        _ <- runMutable sessionRef do
+            withReloadingSubSession project session1 \_reloader _cfg -> do
+                n <- liftIO $ IORef.atomicModifyIORef' runsRef (\x -> (x + 1, x + 1))
+                if n == 1 then do
+                    liftIO $ threadDelay 1_000
+                    -- Same session, same projection — 'withSubSession' would
+                    -- filter this out via 'Iter.changes'; the reloading
+                    -- variant must not.
+                    publish (SessionStoreReloaded session1)
+                else
+                    throwError StopSignal
+        runs <- IORef.readIORef runsRef
+        runs `shouldBe` 2
+  where
+    project s = s.command
 
 
 --------------------------------------------------------------------------------
