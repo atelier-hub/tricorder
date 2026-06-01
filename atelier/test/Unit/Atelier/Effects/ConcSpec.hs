@@ -3,6 +3,7 @@ module Unit.Atelier.Effects.ConcSpec (spec_Conc) where
 import Control.Exception (ErrorCall (..), throwIO)
 import Effectful (IOE, runEff)
 import Effectful.Concurrent (Concurrent, runConcurrent)
+import Effectful.Concurrent.STM (atomically, modifyTVar', newTVarIO, readTVar, retry)
 import Hedgehog (forAll, (===))
 import Test.Hspec (Spec, anyException, context, describe, it, shouldBe, shouldSatisfy, shouldThrow)
 import Test.Hspec.Hedgehog (hedgehog)
@@ -12,10 +13,10 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 
 import Atelier.Effects.Conc (Conc, await, awaitAll, fork, forkTry, fork_, runConc, scoped)
-import Atelier.Effects.Timeout (Timeout, runTimeout, timeout_)
+import Atelier.Effects.Delay (Delay, runDelay)
 import Atelier.Time (Millisecond)
 
-import Atelier.Types.Semaphore qualified as Sem
+import Atelier.Effects.Delay qualified as Delay
 
 
 spec_Conc :: Spec
@@ -24,49 +25,45 @@ spec_Conc = do
         context "without scoped" do
             it "demonstrates thread lifetime" $ runTest do
                 -- This test shows threads live for the duration of their scope
-                counter <- liftIO $ IORef.newIORef (0 :: Int)
-
-                sem <- Sem.new
+                counter <- newTVarIO (0 :: Int)
 
                 -- Thread we fork here will live until the root scope (in
                 -- 'runTest') exits.
-                fork_ $ forever do
-                    liftIO $ IORef.atomicModifyIORef' counter (\n -> (n + 1, ()))
-                    Sem.wait sem
+                fork_ $ forever $ atomically $ modifyTVar' counter (+ 1)
 
-                -- Let it run once
-                Sem.signal sem
-                countAfter <- liftIO $ IORef.readIORef counter
+                let waitFor n = atomically do
+                        v <- readTVar counter
+                        if v >= n then pure v else retry
 
-                -- Let it run once more
-                Sem.signal sem
-                finalCount <- liftIO $ IORef.readIORef counter
+                countAfter <- waitFor 1
+                finalCount <- waitFor (countAfter + 1)
 
                 liftIO $ finalCount `shouldSatisfy` (> countAfter)
 
         context "with scoped" do
             it "kills nested threads when scope exits" $ runTest do
-                counter <- liftIO $ IORef.newIORef (0 :: Int)
+                counter <- newTVarIO (0 :: Int)
 
-                sem <- Sem.new
+                let waitFor n = atomically do
+                        v <- readTVar counter
+                        if v >= n then pure v else retry
 
                 -- Create nested scope that will clean up its threads
-                scoped $ do
-                    fork_ $ forever $ do
-                        liftIO $ IORef.atomicModifyIORef' counter (\n -> (n + 1, ()))
-                        Sem.wait sem
-                    -- Let it run once
-                    Sem.signal sem
+                scoped do
+                    fork_ $ forever $ atomically $ modifyTVar' counter (+ 1)
+                    -- Ensure the thread has incremented at least once
+                    _ <- waitFor 1
+                    pure ()
                 -- Inner scope exits here - thread should be KILLED
 
                 -- Capture count after scope exit
-                countAfter <- liftIO $ IORef.readIORef counter
+                countAfter <- atomically $ readTVar counter
 
-                -- Try to let it run again
-                timeout_ (1 :: Millisecond) $ Sem.signal sem
+                -- Give any leaked thread a brief window to advance the counter
+                Delay.wait (1 :: Millisecond)
 
                 -- Count should NOT increase after scope exit
-                finalCount <- liftIO $ IORef.readIORef counter
+                finalCount <- atomically $ readTVar counter
 
                 liftIO $ finalCount `shouldBe` countAfter
 
@@ -120,8 +117,8 @@ spec_Conc = do
 -- Test Helpers
 --------------------------------------------------------------------------------
 
-runTest :: Eff '[Timeout, Conc, Concurrent, IOE] a -> IO a
-runTest = runEff . runConcurrent . runConc . runTimeout
+runTest :: Eff '[Delay, Conc, Concurrent, IOE] a -> IO a
+runTest = runEff . runConcurrent . runConc . runDelay
 
 
 runTestSimple :: Eff '[Conc, Concurrent, IOE] a -> IO a
