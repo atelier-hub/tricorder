@@ -27,8 +27,6 @@ module Tricorder.BuildState
     , stateLabel
     , CabalChangeDetected (..)
     , SourceChangeDetected (..)
-    , EnteringNewPhase (..)
-    , EnteredNewPhase (..)
     ) where
 
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
@@ -245,11 +243,3 @@ initialBuildState di =
         , phase = Building Nothing
         , daemonInfo = di
         }
-
-
-data EnteringNewPhase = EnteringNewPhase BuildId BuildPhase
-    deriving stock (Eq, Show)
-
-
-data EnteredNewPhase = EnteredNewPhase BuildId BuildPhase
-    deriving stock (Eq, Show)

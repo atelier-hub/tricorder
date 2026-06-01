@@ -8,8 +8,8 @@ import Effectful.Concurrent (runConcurrent)
 import Effectful.Dispatch.Dynamic (interpret_)
 import Effectful.Error.Static (runErrorNoCallStack, throwError)
 import Effectful.Reader.Static (runReader)
-import Effectful.State.Static.Shared (evalState, execState, runState)
-import Effectful.Writer.Static.Shared (execWriter, runWriter)
+import Effectful.State.Static.Shared (evalState, runState)
+import Effectful.Writer.Static.Shared (Writer, execWriter, tell)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList)
 
 import Data.IORef qualified as IORef
@@ -24,7 +24,7 @@ import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Input (runInputConst)
 import Atelier.Effects.Log (runLogNoOp)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
-import Atelier.Effects.Publishing (Pub, publish, runPubSub, runPubWriter)
+import Atelier.Effects.Publishing (Pub, publish, runPubSub)
 import Atelier.Time (Millisecond)
 import Tricorder.BuildState
     ( BuildId (..)
@@ -33,8 +33,6 @@ import Tricorder.BuildState
     , BuildState (..)
     , DaemonInfo (..)
     , Diagnostic (..)
-    , EnteredNewPhase (..)
-    , EnteringNewPhase (..)
     , Severity (..)
     , SourceChangeDetected (..)
     , TestRun (..)
@@ -42,6 +40,7 @@ import Tricorder.BuildState
     )
 import Tricorder.Builder
     ( BuilderSession (..)
+    , EnteringNewPhase (..)
     , NewLoadResult (..)
     , compileLoadResultsIntoBuildResults
     , onRestart
@@ -92,21 +91,25 @@ spec_Builder = do
 
 testRestartOnCabalChange :: Spec
 testRestartOnCabalChange = do
-    it "should publish that it is building" $ run do
-        (phases, _) <- runTest
-        liftIO $ phases `shouldBe` [EnteringNewPhase (BuildId 1) $ Building Nothing]
+    it "transitions BuildStore to the Building phase" do
+        (st, _) <- runTest
+        st.phase `shouldBe` Building Nothing
 
-    it "should increment the build ID" $ run do
+    it "should increment the build ID" do
         (_, buildId) <- runTest
-        liftIO $ buildId `shouldBe` BuildId 2
+        buildId `shouldBe` BuildId 2
   where
     runTest =
-        runState (BuildId 1)
-            . execWriter
-            . runPubWriter @EnteringNewPhase
-            $ onRestart
-
-    run = runEff . runConcurrent . runLogNoOp
+        runEff
+            . runConcurrent
+            . runDelay
+            . runLogNoOp
+            . runInputConst emptyDaemonInfo
+            . BuildStore.runBuildStore
+            . runState (BuildId 1)
+            $ do
+                onRestart
+                BuildStore.getState
 
 
 -- | Reproduces the hpack/cabal-reload bug: when a cabal file change leaves
@@ -195,18 +198,18 @@ testReloadOnSourceChange :: Spec
 testReloadOnSourceChange = do
     describe "Modified" do
         describe "when the file is loaded in GHCi" do
-            it "publishes that it is building" do
-                (_, phases) <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
-                phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Building Nothing]
+            it "transitions through Building then Done" do
+                phases <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
+                phases `shouldBe` flow reloadLr
 
             it "calls controls.reload" do
-                (results, _) <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
-                results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
+                phases <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
+                buildResultsFrom phases `shouldMatchList` [resultFor reloadLr]
 
         describe "when the file is not loaded in GHCi" do
             it "calls controls.add (the editor just wrote a new file)" do
-                (results, _) <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/New.hs" Modified)
-                results `shouldMatchList` [NewLoadResult epoch epoch addLr]
+                phases <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/New.hs" Modified)
+                buildResultsFrom phases `shouldMatchList` [resultFor addLr]
 
         -- Regression test for stale-diagnostics bug: cold-start with a
         -- pre-existing error then fix it. Foo is in :show targets but
@@ -214,37 +217,37 @@ testReloadOnSourceChange = do
         -- avoid issuing a no-op :add.
         describe "when the file is a known target that failed on initial load" do
             it "calls controls.reload, not controls.add" do
-                (results, _) <-
+                phases <-
                     runTest
                         Map.empty
                         (KnownTargetNames (Set.singleton "Foo"))
                         distinctCtrls
                         (SourceChangeDetected "/abs/src/Foo.hs" Modified)
-                results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
+                buildResultsFrom phases `shouldMatchList` [resultFor reloadLr]
 
     describe "Added" do
         describe "when the file is not loaded" $ it "calls controls.add" do
-            (results, _) <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
-            results `shouldMatchList` [NewLoadResult epoch epoch addLr]
+            phases <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
+            buildResultsFrom phases `shouldMatchList` [resultFor addLr]
 
         describe "when the file is already loaded" $ it "calls controls.reload (re-add is a reload)" do
-            (results, _) <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
-            results `shouldMatchList` [NewLoadResult epoch epoch reloadLr]
+            phases <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
+            buildResultsFrom phases `shouldMatchList` [resultFor reloadLr]
 
     describe "Removed" do
         describe "when the file is loaded" $ it "calls controls.unadd" do
-            (results, _) <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Removed)
-            results `shouldMatchList` [NewLoadResult epoch epoch unaddLr]
+            phases <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Removed)
+            buildResultsFrom phases `shouldMatchList` [resultFor unaddLr]
 
         describe "when the file is not loaded" $ it "is a no-op" do
-            (results, phases) <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Unknown.hs" Removed)
-            results `shouldMatchList` []
-            phases `shouldMatchList` []
+            phases <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Unknown.hs" Removed)
+            phases `shouldBe` []
   where
-    runTest initialModuleMap initialTargets ctrls event = do
+    runTest initialModuleMap initialTargets ctrls event =
         runEff
             . runConcurrent
             . runClockConst epoch
+            . runReader (ProjectRoot "/")
             . evalState (BuildId 1)
             . evalState
                 emptyBuilderState
@@ -252,13 +255,28 @@ testReloadOnSourceChange = do
                     , knownTargets = initialTargets
                     }
             . runLogNoOp
-            . runWriter
-            . runPubWriter @EnteringNewPhase
-            . execWriter
-            . runPubWriter @NewLoadResult
+            . execWriter @[EnteringNewPhase]
+            . runBuildStoreCapture
+            . runTestRunnerScripted []
             $ do
                 sem <- Sem.newSet
-                reloadOnSourceChange sem ctrls event
+                reloadOnSourceChange (def @BuilderSession) sem ctrls event
+
+    flow lr =
+        [ EnteringNewPhase (BuildId 1) (Building Nothing)
+        , EnteringNewPhase (BuildId 1) (Done (resultFor lr))
+        ]
+
+    buildResultsFrom phases = [r | EnteringNewPhase _ (Done r) <- phases]
+
+    resultFor lr =
+        BuildResult
+            { completedAt = epoch
+            , duration = 0
+            , moduleCount = lr.moduleCount
+            , diagnostics = []
+            , testRuns = []
+            }
 
     noTargets = KnownTargetNames Set.empty
 
@@ -296,11 +314,9 @@ testReloadOnSourceChange = do
 testSetNewPhase :: Spec
 testSetNewPhase = do
     it "should set build phase" do
-        (state, pubs) <- runEff
+        state <- runEff
             . runConcurrent
             . runDelay
-            . runWriter
-            . runPubWriter
             . runInputConst emptyDaemonInfo
             . BuildStore.runBuildStore
             $ do
@@ -312,7 +328,6 @@ testSetNewPhase = do
                 , phase = Building Nothing
                 , daemonInfo = emptyDaemonInfo
                 }
-        pubs `shouldMatchList` [EnteredNewPhase (BuildId 1) (Building Nothing)]
 
 
 testCompileLoadResultsIntoBuildResults :: Spec
@@ -333,7 +348,7 @@ testCompileLoadResultsIntoBuildResults = do
                                 , diagnostics = []
                                 }
                         }
-        fmap (.duration) r `shouldMatchList` [10_000]
+        r.duration `shouldBe` 10_000
     it "merges with existing results" do
         let (m, _) =
                 runTest (Map.fromList [(errMsg.file, [errMsg])])
@@ -355,8 +370,8 @@ testCompileLoadResultsIntoBuildResults = do
                 , (errMsg.file, [errMsg])
                 ]
 
-    it "publishes a BuildResult" do
-        let (_, rs) =
+    it "returns a BuildResult" do
+        let (_, r) =
                 runTest mempty
                     $ NewLoadResult
                         { startTime = epoch
@@ -378,16 +393,15 @@ testCompileLoadResultsIntoBuildResults = do
                     , diagnostics = [warnMsg]
                     , testRuns = []
                     }
-        rs `shouldMatchList` [expected]
+        r `shouldBe` expected
   where
     runTest acc nlr =
-        first (.diagnosticMap)
-            . runPureEff
-            . runWriter
-            . runPubWriter
-            . runReader (ProjectRoot "/")
-            . execState (emptyBuilderState {diagnosticMap = acc})
-            $ compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]}) nlr
+        let (buildResult, builderState) =
+                runPureEff
+                    . runReader (ProjectRoot "/")
+                    . runState (emptyBuilderState {diagnosticMap = acc})
+                    $ compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]}) nlr
+        in  (builderState.diagnosticMap, buildResult)
 
 
 testRequestTestRunsForNewBuildResults :: Spec
@@ -432,15 +446,16 @@ testRequestTestRunsForNewBuildResults = do
                 ]
         phases `shouldMatchList` expectedPhases
   where
-    runTest testTargets script =
+    runTest testTargets script partial =
         runEff
             . runLogNoOp
             . evalState (BuildId 1)
-            . execWriter
-            . runPubWriter
+            . execWriter @[EnteringNewPhase]
+            . runBuildStoreCapture
             . runTestRunnerScripted script
-            . requestTestRunsForNewBuildResults
+            $ requestTestRunsForNewBuildResults
                 BuilderSession {command = "", targets = [], testTargets, watchDirs = []}
+                partial
 
     mkPhase = EnteringNewPhase (BuildId 1)
     mkTesting = mkPhase . Testing
@@ -803,3 +818,21 @@ emptyDaemonInfo =
         , logFile = ""
         , metricsPort = Nothing
         }
+
+
+-- | A 'BuildStore' interpreter that records every 'setPhase' call into a
+-- 'Writer'. Only the operations used by the Builder pipeline tests are
+-- implemented; the rest error.
+runBuildStoreCapture
+    :: (Writer [EnteringNewPhase] :> es)
+    => Eff (BuildStore.BuildStore : es) a -> Eff es a
+runBuildStoreCapture = interpret_ \case
+    BuildStore.SetPhase bid phase -> tell [EnteringNewPhase bid phase]
+    BuildStore.HasWaiters -> pure False
+    BuildStore.MarkDirty _ -> pure ()
+    BuildStore.GetState -> error "runBuildStoreCapture: GetState unsupported"
+    BuildStore.PutState _ -> error "runBuildStoreCapture: PutState unsupported"
+    BuildStore.WaitUntilDone -> error "runBuildStoreCapture: WaitUntilDone unsupported"
+    BuildStore.WaitForNext _ -> error "runBuildStoreCapture: WaitForNext unsupported"
+    BuildStore.WaitForAnyChange _ -> error "runBuildStoreCapture: WaitForAnyChange unsupported"
+    BuildStore.WaitDirty -> error "runBuildStoreCapture: WaitDirty unsupported"

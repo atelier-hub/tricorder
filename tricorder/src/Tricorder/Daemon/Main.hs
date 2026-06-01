@@ -76,12 +76,8 @@ main =
         . runSessionStore
         . runReader @CacheConfig.Config def
         . runPubSub @Watcher.WatchedFile
-        . runPubSub @Builder.NewLoadResult
-        . runPubSub @BuildState.BuildResult
         . runPubSub @BuildState.CabalChangeDetected
         . runPubSub @BuildState.SourceChangeDetected
-        . runPubSub @BuildState.EnteredNewPhase
-        . runPubSub @BuildState.EnteringNewPhase
         . runDaemonInfo
         . runLogging
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
