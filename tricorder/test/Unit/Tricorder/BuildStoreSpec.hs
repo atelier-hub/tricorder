@@ -125,6 +125,34 @@ testSTM = do
                 waitForNext (BuildId 1)
             result.buildId `shouldBe` BuildId 2
 
+    -- Regression for the bug behind the user's "status --wait waits until
+    -- the LAST cycle finishes" report: a polling-based 'waitUntilDone'
+    -- could miss a transient 'Done' state if the next 'Building' phase
+    -- overwrote the TVar within the poll interval, and an STM-retry
+    -- version still races against the scheduler's wake-up latency. The
+    -- broadcast 'TChan' of transitions makes every phase change a
+    -- discrete message that can't be overwritten — so even if
+    -- 'putState Done >> putState Building' happens back-to-back, the
+    -- waiter observes the Done.
+    describe "atomic transition capture" do
+        it "observes a transient Done even if Building immediately follows" do
+            result <- runStmConc do
+                putState (buildingAt 1)
+                -- The publisher thread fires Done and then immediately
+                -- overwrites it with Building (N+1), the exact pattern the
+                -- coalescing worker produces between two queued cycles.
+                void $ Conc.fork do
+                    liftIO (threadDelay 5_000)
+                    putState (doneAt 1)
+                    putState (buildingAt 2)
+                waitUntilDone
+            -- The waiter must report Done(1), NOT skip past it and report
+            -- the later Done(2) (or block forever).
+            result.buildId `shouldBe` BuildId 1
+            case result.phase of
+                Done _ -> pure ()
+                p -> expectationFailure $ "expected Done phase, got: " <> show p
+
 
 --------------------------------------------------------------------------------
 -- Helpers

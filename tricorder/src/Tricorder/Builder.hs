@@ -8,15 +8,22 @@ module Tricorder.Builder
     , compileLoadResultsIntoBuildResults
     , requestTestRunsForNewBuildResults
     , buildWithGhciOnChange
+    , handleSourceChanges
     , handleInitialBuild
+    , interruptCurrent
     , onRestart
     , reloadOnSourceChange
     , setNewPhase
+    , withCycleLock
+    , newCycleLock
+    , CycleLock
     ) where
 
+import Control.Concurrent.STM (TMVar, newTMVar, putTMVar, readTVar, retry, takeTMVar, writeTVar)
 import Data.Default (Default (..))
 import Data.Time (diffUTCTime)
 import Effectful.Concurrent (Concurrent)
+import Effectful.Concurrent.STM (atomically, newTVar)
 import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, get, modify, put, state)
@@ -33,7 +40,6 @@ import Atelier.Effects.Debounce (Debounce, debounced)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Publishing (Sub)
 import Atelier.Time (Millisecond, nominalDiffTime)
-import Atelier.Types.Semaphore (Semaphore)
 import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)
@@ -65,7 +71,6 @@ import Atelier.Effects.Clock qualified as Clock
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Log qualified as Log
 import Atelier.Effects.Publishing qualified as Sub
-import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.GhciSession qualified as GhciSession
 import Tricorder.Effects.SessionStore qualified as SessionStore
@@ -323,37 +328,63 @@ handleSourceChanges
        )
     => BuilderSession -> GhciSession.Controls (Eff es) -> Eff es Void
 handleSourceChanges config controls = forever $ Conc.scoped do
-    readyToBuildSem <- Sem.newSet
+    -- Coalesce debounced source-change events through a single-slot
+    -- register: the debounced listener writes the latest event into the
+    -- slot, and a single worker fork drains it. Events that arrive while
+    -- the worker is processing the previous one simply overwrite the slot,
+    -- so a burst of N touches collapses into exactly one trailing cycle
+    -- (carrying the most recent event) rather than queueing N back-to-back
+    -- cycles. This matters whenever 'interruptCurrent' can't drop the
+    -- in-flight cycle promptly — e.g. when a 'status --wait' caller has
+    -- registered as a waiter, gating 'interruptCurrent' to a no-op.
+    pending <- atomically (newTVar @(Maybe SourceChangeDetected) Nothing)
     Conc.fork_ $ Sub.listen_ \ev ->
-        debounced 200 "source_change_reloader" $ reloadOnSourceChange config readyToBuildSem controls ev
-    Conc.fork_ $ Sub.listen_ \_ -> interruptCurrent readyToBuildSem controls
+        debounced 200 "source_change_reloader"
+            $ atomically (writeTVar pending (Just ev))
+    Conc.fork_ $ Sub.listen_ \_ -> interruptCurrent controls
+    Conc.fork_ $ forever do
+        ev <- atomically do
+            readTVar pending >>= \case
+                Nothing -> retry
+                Just e -> writeTVar pending Nothing >> pure e
+        reloadOnSourceChange config controls ev
     Conc.awaitAll
 
 
+-- | A mutex serialising one build/test cycle at a time.
+newtype CycleLock = CycleLock (TMVar ())
+
+
+newCycleLock :: (Concurrent :> es) => Eff es CycleLock
+newCycleLock = CycleLock <$> atomically (newTMVar ())
+
+
+-- | Run @action@ under @lock@, blocking if another cycle is already in
+-- flight. The lock is released even if @action@ throws.
+withCycleLock :: (Concurrent :> es) => CycleLock -> Eff es a -> Eff es a
+withCycleLock (CycleLock t) =
+    bracket_ (atomically (takeTMVar t)) (atomically (putTMVar t ()))
+
+
+-- 'controls.interrupt' is a safe no-op when GHCi is idle, and 'GhciSession'
+-- serialises subsequent reloads through its own STM state.
 interruptCurrent
     :: ( BuildStore :> es
-       , Concurrent :> es
        , Log :> es
        , TestRunner :> es
        )
-    => Semaphore -> GhciSession.Controls (Eff es) -> Eff es ()
-interruptCurrent readyToBuildSem controls = do
+    => GhciSession.Controls (Eff es) -> Eff es ()
+interruptCurrent controls = do
     hasWaiters <- BuildStore.hasWaiters
     unless hasWaiters do
         Log.info "Change detected with no waiters. Interrupting current build/tests."
-        isIdle <- Sem.peek readyToBuildSem
-        unless isIdle
-            $ bracket_
-                (Sem.unset readyToBuildSem)
-                (Sem.set readyToBuildSem)
-                controls.interrupt
+        controls.interrupt
         TestRunner.interruptCurrent
 
 
 reloadOnSourceChange
     :: ( BuildStore :> es
        , Clock :> es
-       , Concurrent :> es
        , Log :> es
        , Reader ProjectRoot :> es
        , State BuildId :> es
@@ -361,11 +392,10 @@ reloadOnSourceChange
        , TestRunner :> es
        )
     => BuilderSession
-    -> Semaphore
     -> GhciSession.Controls (Eff es)
     -> SourceChangeDetected
     -> Eff es ()
-reloadOnSourceChange config readyToBuildSem controls (SourceChangeDetected fp event) = do
+reloadOnSourceChange config controls (SourceChangeDetected fp event) = do
     Log.debug $ "Builder: source change detected " <> show event <> " " <> toText fp
     builderState <- get @BuilderState
     let known = Map.lookup (normalise fp) builderState.loadedModules
@@ -380,7 +410,7 @@ reloadOnSourceChange config readyToBuildSem controls (SourceChangeDetected fp ev
             buildId <- get
             setNewPhase $ EnteringNewPhase buildId $ Building Nothing
 
-            res <- trySync $ Sem.withSemaphore readyToBuildSem do
+            res <- trySync do
                 startTime <- Clock.currentTime
                 res <- runAction controls action
                 endTime <- Clock.currentTime

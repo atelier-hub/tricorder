@@ -1,17 +1,22 @@
 module Unit.Tricorder.BuilderSpec (spec_Builder) where
 
+import Control.Concurrent.STM (modifyTVar', newTVarIO, readTVar, retry, writeTVar)
+import Control.Exception (ErrorCall (..), throwIO)
 import Data.Default (def)
 import Data.IORef (IORef)
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian)
 import Effectful (IOE, runEff, runPureEff)
-import Effectful.Concurrent (runConcurrent)
+import Effectful.Concurrent (Concurrent, runConcurrent)
+import Effectful.Concurrent.STM (atomically)
 import Effectful.Dispatch.Dynamic (interpret_)
 import Effectful.Error.Static (runErrorNoCallStack, throwError)
+import Effectful.Exception (trySync)
 import Effectful.Reader.Static (runReader)
 import Effectful.State.Static.Shared (evalState, runState)
 import Effectful.Writer.Static.Shared (Writer, execWriter, tell)
-import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList)
+import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe, shouldMatchList)
 
+import Control.Concurrent.STM qualified as STM
 import Data.IORef qualified as IORef
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -19,12 +24,13 @@ import Data.Set qualified as Set
 import Atelier.Effects.Chan (runChan)
 import Atelier.Effects.Clock (runClockConst)
 import Atelier.Effects.Conc (runConc)
+import Atelier.Effects.Debounce (debounced, runDebounce)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Input (runInputConst)
 import Atelier.Effects.Log (runLogNoOp)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
-import Atelier.Effects.Publishing (Pub, publish, runPubSub)
+import Atelier.Effects.Publishing (Pub, listen_, publish, runPubSub)
 import Atelier.Time (Millisecond)
 import Tricorder.BuildState
     ( BuildId (..)
@@ -62,12 +68,12 @@ import Tricorder.Effects.SessionStore
     ( SessionStore (..)
     , SessionStoreReloaded (..)
     )
-import Tricorder.Effects.TestRunner (runTestRunnerScripted)
+import Tricorder.Effects.TestRunner (TestRunner (..), runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
+import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Delay qualified as Delay
-import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
 import Tricorder.Effects.BuildStore qualified as BuildStore
@@ -85,6 +91,8 @@ spec_Builder = do
     describe "restartOnCabalChange" testRestartOnCabalChange
     describe "rebuildOnChange (cabal reload)" testRebuildOnCabalReload
     describe "reloadOnSourceChange" testReloadOnSourceChange
+    describe "handleSourceChanges (cycle serialization)" testCycleSerialization
+    describe "interruptCurrent" testInterruptCurrent
     describe "resolveKnownTargets" testResolveKnownTargets
     describe "fileMatchesAnyTarget" testFileMatchesAnyTarget
 
@@ -258,9 +266,7 @@ testReloadOnSourceChange = do
             . execWriter @[EnteringNewPhase]
             . runBuildStoreCapture
             . runTestRunnerScripted []
-            $ do
-                sem <- Sem.newSet
-                reloadOnSourceChange (def @BuilderSession) sem ctrls event
+            $ reloadOnSourceChange (def @BuilderSession) ctrls event
 
     flow lr =
         [ EnteringNewPhase (BuildId 1) (Building Nothing)
@@ -445,9 +451,43 @@ testRequestTestRunsForNewBuildResults = do
                       ]
                 ]
         phases `shouldMatchList` expectedPhases
+
+    -- Regression for the abort handling in 'runTestsIfClean': when an
+    -- interrupt arrives mid-run loop, 'isAborted' becomes True and the loop
+    -- returns 'Nothing'. The caller MUST then skip the 'Done' transition —
+    -- otherwise the BuildStore briefly publishes a Done with a partial
+    -- testRuns list, and a 'status --wait' caller reads that stale result
+    -- before the new cycle starts.
+    it "does not transition to Done when the run is aborted mid-flight" do
+        phases <-
+            runEff
+                . runConcurrent
+                . runLogNoOp
+                . evalState (BuildId 1)
+                . execWriter @[EnteringNewPhase]
+                . runBuildStoreCapture
+                . runTestRunnerAbortAfterFirst (mkTestRun "test:foo")
+                $ requestTestRunsForNewBuildResults
+                    BuilderSession
+                        { command = ""
+                        , targets = []
+                        , testTargets = ["test:foo", "test:bar"]
+                        , watchDirs = []
+                        }
+                    expected
+        -- The critical assertion: no Done phase, because the run was
+        -- aborted before completing the second suite. A Done here would
+        -- briefly publish a half-finished testRuns list that a
+        -- 'status --wait' caller could observe.
+        length [() | EnteringNewPhase _ (Done _) <- phases] `shouldBe` 0
+        -- Sanity: only the initial Testing transition was published; the
+        -- run loop short-circuited after the first 'isAborted' check, so
+        -- the post-foo Testing update never fired.
+        length phases `shouldBe` 1
   where
     runTest testTargets script partial =
         runEff
+            . runConcurrent
             . runLogNoOp
             . evalState (BuildId 1)
             . execWriter @[EnteringNewPhase]
@@ -818,6 +858,241 @@ emptyDaemonInfo =
         , logFile = ""
         , metricsPort = Nothing
         }
+
+
+--------------------------------------------------------------------------------
+-- Cycle serialization (withCycleLock)
+--
+-- Regression for the parallel-cycles bug. When two source-change events
+-- arrive more than 200ms apart, debounce fires both callbacks, and if the
+-- first 'reloadOnSourceChange' is still in flight when the second fires,
+-- the two cycles (including their test loops) would run concurrently
+-- without the lock. The user-visible symptom was the previous build's
+-- test suite still running alongside the new build's.
+--
+-- 'handleSourceChanges' wraps each 'reloadOnSourceChange' invocation in
+-- 'withCycleLock'. Here we exercise the lock primitive itself with
+-- multiple concurrent acquisitions, asserting that at no point are two
+-- holders in the critical section simultaneously.
+--------------------------------------------------------------------------------
+
+testCycleSerialization :: Spec
+testCycleSerialization = do
+    it "serialises concurrent acquisitions (max one holder at a time)" do
+        inProgressRef <- newTVarIO (0 :: Int)
+        maxConcurrentRef <- newTVarIO (0 :: Int)
+        let worker lock = Builder.withCycleLock lock do
+                atomically do
+                    modifyTVar' inProgressRef (+ 1)
+                    cur <- readTVar inProgressRef
+                    modifyTVar' maxConcurrentRef (max cur)
+                Delay.wait (10 :: Millisecond)
+                atomically (modifyTVar' inProgressRef (subtract 1))
+        runEff . runConcurrent . runDelay . runConc $ do
+            lock <- Builder.newCycleLock
+            Conc.scoped do
+                threads <- replicateM 5 (Conc.fork (worker lock))
+                traverse_ Conc.await threads
+        finalMax <- STM.atomically (readTVar maxConcurrentRef)
+        finalMax `shouldBe` 1
+
+    it "releases the lock even if the action throws" do
+        result <- runEff . runConcurrent . runDelay $ do
+            lock <- Builder.newCycleLock
+            firstAttempt <-
+                trySync
+                    $ Builder.withCycleLock lock
+                    $ liftIO
+                    $ throwIO (ErrorCall "boom")
+            -- A second acquisition must succeed — if 'withCycleLock' had
+            -- failed to release on exception, this would deadlock.
+            Builder.withCycleLock lock (pure ())
+            pure firstAttempt
+        case result of
+            Left _ -> pure ()
+            Right () -> expectationFailure "expected the exception to propagate"
+
+    -- Whenever 'interruptCurrent' cannot drop the in-flight cycle promptly
+    -- (e.g. a 'status --wait' caller has registered as a waiter, gating
+    -- 'interruptCurrent' to a no-op), additional source-change events would
+    -- previously each queue their own follow-up cycle behind 'withCycleLock'.
+    -- N touches spaced wider than the 200ms debounce window therefore
+    -- produced N back-to-back cycles after the in-flight one finished — and
+    -- a 'status --wait' caller wouldn't see "Done" until the last queued
+    -- cycle completed.
+    --
+    -- Desired behaviour: while a cycle is in flight, additional source
+    -- changes coalesce into AT MOST ONE trailing cycle, regardless of how
+    -- many events arrived. This mirrors the single-slot register +
+    -- single-worker pattern that 'handleSourceChanges' uses.
+    it "coalesces source-change events into one follow-up cycle while busy" do
+        cycleRunsRef <- newTVarIO (0 :: Int)
+        releaseFirst <- STM.newEmptyTMVarIO @()
+        isFirstRef <- newTVarIO True
+        let onEvent _ = do
+                atomically (modifyTVar' cycleRunsRef (+ 1))
+                -- The first invocation blocks until released, simulating
+                -- the in-flight cycle. Subsequent invocations return
+                -- immediately.
+                wasFirst <- atomically (STM.swapTVar isFirstRef False)
+                when wasFirst $ atomically (STM.takeTMVar releaseFirst)
+        result <-
+            runEff
+                . runConcurrent
+                . runTracingNoOp
+                . runClockConst epoch
+                . runChan
+                . runDelay
+                . runPubSub @SourceChangeDetected
+                . runErrorNoCallStack @StopSignal
+                . runConc
+                . runDebounce @Text
+                $ do
+                    pending <- atomically (STM.newTVar @(Maybe SourceChangeDetected) Nothing)
+                    Conc.scoped do
+                        -- Listener: debounce + write the latest event into
+                        -- the single-slot register.
+                        Conc.fork_
+                            $ listen_ \(ev :: SourceChangeDetected) ->
+                                debounced
+                                    (200 :: Millisecond)
+                                    ("source_change_reloader" :: Text)
+                                    (atomically (writeTVar pending (Just ev)))
+                        -- Worker: drain the register, run the action.
+                        -- Bursts of events that arrive while 'onEvent' is in
+                        -- flight overwrite the slot, so the worker sees only
+                        -- the most recent one.
+                        Conc.fork_ $ forever do
+                            ev <- atomically do
+                                readTVar pending >>= \case
+                                    Nothing -> retry
+                                    Just e -> writeTVar pending Nothing >> pure e
+                            onEvent ev
+                        -- Let the listener's 'dupChan' subscribe before we
+                        -- start publishing — otherwise the first event is
+                        -- dropped because no subscriber sees it.
+                        Delay.wait (50 :: Millisecond)
+                        -- Four events spaced wider than 200ms so the
+                        -- debounce window does NOT collapse them by itself.
+                        -- The first becomes the in-flight cycle; the rest
+                        -- must collapse into ONE trailing invocation.
+                        publish (SourceChangeDetected "/x" Modified)
+                        Delay.wait (250 :: Millisecond)
+                        publish (SourceChangeDetected "/y" Modified)
+                        Delay.wait (250 :: Millisecond)
+                        publish (SourceChangeDetected "/z" Modified)
+                        Delay.wait (250 :: Millisecond)
+                        publish (SourceChangeDetected "/w" Modified)
+                        -- Let the last debounce window expire so the latest
+                        -- event lands in the slot.
+                        Delay.wait (300 :: Millisecond)
+                        -- Release the in-flight cycle; the slot drains and
+                        -- the trailing cycle runs.
+                        atomically (STM.putTMVar releaseFirst ())
+                        Delay.wait (300 :: Millisecond)
+                        throwError StopSignal
+        case result of
+            Left StopSignal -> pure ()
+            Right () -> pure ()
+        runs <- STM.atomically (readTVar cycleRunsRef)
+        -- 1 in-flight + 1 coalesced trailing = 2.
+        runs `shouldBe` 2
+
+
+-- | Pins down the abort path on every source change: when no 'status --wait'
+-- caller is holding the build, 'interruptCurrent' must drive both
+-- 'controls.interrupt' (which terminates the in-flight GHCi command) and
+-- 'TestRunner.interruptCurrent' (which terminates the in-flight test
+-- process). When a waiter IS present, both are suppressed so the waiter
+-- gets the result it's blocked on rather than a half-cancelled cycle.
+testInterruptCurrent :: Spec
+testInterruptCurrent = do
+    it "drives controls.interrupt and TestRunner.interruptCurrent when no waiter" do
+        (ctrls, testRun) <- runInterruptCurrent False
+        ctrls `shouldBe` 1
+        testRun `shouldBe` 1
+
+    it "suppresses both interrupts when a waiter is present" do
+        (ctrls, testRun) <- runInterruptCurrent True
+        ctrls `shouldBe` 0
+        testRun `shouldBe` 0
+  where
+    runInterruptCurrent waiterPresent = do
+        ctrlsCalled <- newTVarIO (0 :: Int)
+        trCalled <- newTVarIO (0 :: Int)
+        -- Wrap the unused fields in 'pure' so the 'error' is the Eff
+        -- \*action*, not the field value — Controls uses StrictData, which
+        -- would otherwise force the bottoms when the record is constructed.
+        let mockCtrls =
+                Controls
+                    { reload = pure (error "interruptCurrent must not call reload")
+                    , interrupt = atomically (modifyTVar' ctrlsCalled (+ 1))
+                    , add = \_ -> pure (error "interruptCurrent must not call add")
+                    , unadd = \_ -> pure (error "interruptCurrent must not call unadd")
+                    }
+        runEff
+            . runConcurrent
+            . runLogNoOp
+            . runHasWaitersConst waiterPresent
+            . runTestRunnerInterruptCounter trCalled
+            $ Builder.interruptCurrent mockCtrls
+        (,)
+            <$> STM.atomically (readTVar ctrlsCalled)
+            <*> STM.atomically (readTVar trCalled)
+
+    -- 'interruptCurrent' only calls 'hasWaiters' on the BuildStore — every
+    -- other op is unreachable from this code path, so we trap them.
+    runHasWaitersConst
+        :: Bool
+        -> Eff (BuildStore.BuildStore : es) a
+        -> Eff es a
+    runHasWaitersConst hasWaiters = interpret_ \case
+        BuildStore.HasWaiters -> pure hasWaiters
+        BuildStore.SetPhase _ _ -> error "interruptCurrent must not setPhase"
+        BuildStore.MarkDirty _ -> error "interruptCurrent must not markDirty"
+        BuildStore.GetState -> error "interruptCurrent must not getState"
+        BuildStore.PutState _ -> error "interruptCurrent must not putState"
+        BuildStore.WaitUntilDone -> error "interruptCurrent must not waitUntilDone"
+        BuildStore.WaitForNext _ -> error "interruptCurrent must not waitForNext"
+        BuildStore.WaitForAnyChange _ -> error "interruptCurrent must not waitForAnyChange"
+        BuildStore.WaitDirty -> error "interruptCurrent must not waitDirty"
+
+    -- Counts 'InterruptCurrent' invocations; the other ops are unreachable
+    -- from 'Builder.interruptCurrent'.
+    runTestRunnerInterruptCounter
+        :: (Concurrent :> es)
+        => STM.TVar Int
+        -> Eff (TestRunner : es) a
+        -> Eff es a
+    runTestRunnerInterruptCounter counter = interpret_ \case
+        InterruptCurrent -> atomically (modifyTVar' counter (+ 1))
+        RunTestSuite _ -> error "Builder.interruptCurrent must not runTestSuite"
+        ResetAbort -> error "Builder.interruptCurrent must not resetAbort"
+        IsAborted -> error "Builder.interruptCurrent must not isAborted"
+
+
+-- | A 'TestRunner' interpreter that returns the same result for every
+-- 'RunTestSuite' call, but latches 'IsAborted' to True after the first one
+-- — simulating an external interrupt that arrives between two test suites.
+runTestRunnerAbortAfterFirst
+    :: (Concurrent :> es)
+    => TestRun -> Eff (TestRunner : es) a -> Eff es a
+runTestRunnerAbortAfterFirst result act = do
+    callCountRef <- atomically (STM.newTVar (0 :: Int))
+    abortedRef <- atomically (STM.newTVar False)
+    interpret_
+        ( \case
+            RunTestSuite _ -> do
+                n <- atomically do
+                    modifyTVar' callCountRef (+ 1)
+                    readTVar callCountRef
+                when (n == 1) $ atomically (writeTVar abortedRef True)
+                pure result
+            InterruptCurrent -> atomically (writeTVar abortedRef True)
+            ResetAbort -> atomically (writeTVar abortedRef False)
+            IsAborted -> atomically (readTVar abortedRef)
+        )
+        act
 
 
 -- | A 'BuildStore' interpreter that records every 'setPhase' call into a

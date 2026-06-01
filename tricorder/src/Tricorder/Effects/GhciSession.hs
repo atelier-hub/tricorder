@@ -117,7 +117,7 @@ runGhciSession = interpret $ \env -> \case
                     $ Building
                     $ Just
                     $ BuildProgress {compiled = loading.index, total = loading.total}
-        withGhciProcess def cmd dir onProgress \process startupLines ->
+        withGhciProcess def cmd dir onProgress (\_ -> pure ()) \process startupLines ->
             localLift env (ConcUnlift Persistent Unlimited) \liftEff ->
                 localUnlift env (ConcUnlift Persistent Unlimited) \unlift -> do
                     let doReload = liftEff $ reloadGhci process dir onProgress

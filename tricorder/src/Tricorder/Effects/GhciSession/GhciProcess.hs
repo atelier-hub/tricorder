@@ -1,10 +1,14 @@
 module Tricorder.Effects.GhciSession.GhciProcess
     ( Config (..)
-    , GhciProcess
+    , GhciProcess (..)
     , GhciProcessError (..)
+    , SessionState (..)
+    , InterruptDecision (..)
+    , decideInterrupt
     , withGhciProcess
     , execGhci
     , interruptGhci
+    , terminateGhciProcess
     , collectGhciResult
     , reloadGhci
     , addGhci
@@ -81,6 +85,27 @@ instance Default Config where
 
 
 data SessionState = Idle Int | Busy Int
+    deriving stock (Eq, Show)
+
+
+-- | The outcome of consulting the 'SessionState' when an interrupt arrives.
+--
+-- 'NoOpIdle' means the GHCi session is at the prompt — sending SIGINT and a
+-- sync marker would dirty the buffers and desync the next 'execGhci'.
+-- 'SendInterruptFor n' means a command was in flight (state 'Busy n') and
+-- the caller should SIGINT the process group and write @markerFor (n + 1)@
+-- to unblock the in-progress 'drainUntil'.
+data InterruptDecision
+    = NoOpIdle
+    | SendInterruptFor Int
+    deriving stock (Eq, Show)
+
+
+-- | Pure state machine for 'interruptGhci'. Returns the new 'SessionState'
+-- to install along with the 'InterruptDecision' the caller should act on.
+decideInterrupt :: SessionState -> (SessionState, InterruptDecision)
+decideInterrupt s@(Idle _) = (s, NoOpIdle)
+decideInterrupt (Busy n) = (Idle (n + 1), SendInterruptFor n)
 
 
 -- | A handle to a running GHCi subprocess.
@@ -122,8 +147,13 @@ startGhciProcess
     -- ^ Called as each @[N of M] Compiling …@ line is streamed during the
     -- initial-build drain, so the UI can update the progress bar live
     -- instead of replaying everything once compilation finishes.
+    -> (GhciProcess -> Eff es ())
+    -- ^ @onReady@. Called once the 'GhciProcess' is constructed but before
+    -- the initial-build drain runs — so callers can register the process
+    -- for interruption while the slow @cabal repl@ recompilation is still
+    -- in progress.
     -> Eff es (GhciProcess, [Text])
-startGhciProcess config cmd dir onProgress = do
+startGhciProcess config cmd dir onProgress onReady = do
     p <-
         liftIO
             $ startProcess
@@ -171,6 +201,8 @@ startGhciProcess config cmd dir onProgress = do
                 , stateVar = stateVar
                 }
 
+    onReady ghciProcess
+
     -- Sync: drain until marker 1 seen, then set counter to 2.
     -- Capture lines from both streams — the stderr output contains the initial
     -- compilation progress and any startup diagnostics. The line hook fires
@@ -196,18 +228,22 @@ startGhciProcess config cmd dir onProgress = do
 -- during the startup sync (stdout ++ stderr). These lines contain the initial
 -- compilation progress and any startup diagnostics. The @onProgress@ callback
 -- fires for each @[N of M] Compiling …@ line as GHCi emits it during the
--- initial build, so the UI can update its progress bar in real time.
+-- initial build, so the UI can update its progress bar in real time. The
+-- @onReady@ callback (see 'startGhciProcess') fires once the underlying
+-- process exists but before the initial-load drain — useful for registering
+-- the process for early termination while initial compilation is in flight.
 withGhciProcess
     :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es, Timeout :> es)
     => Config
     -> Text
     -> FilePath
     -> (GhciLoading -> Eff es ())
+    -> (GhciProcess -> Eff es ())
     -> (GhciProcess -> [Text] -> Eff es a)
     -> Eff es a
-withGhciProcess config cmd dir onProgress action =
+withGhciProcess config cmd dir onProgress onReady action =
     bracket
-        (startGhciProcess config cmd dir onProgress)
+        (startGhciProcess config cmd dir onProgress onReady)
         (stopGhciProcess config . fst)
         (uncurry action)
 
@@ -236,7 +272,14 @@ execGhci ghciProcess command onProgress = do
         liftIO $ TIO.hPutStrLn ghciProcess.stdin command
         File.hFlush ghciProcess.stdin
         sendSyncCommand ghciProcess.stdin marker
-        (stdoutLines, stderrLines) <- do
+        -- Scoped so that an exception from one drain (e.g. 'UnexpectedExit'
+        -- when the underlying process is terminated mid-command) is
+        -- contained here, re-raised by 'await', and caught by the caller's
+        -- 'trySync'. Without 'scoped', Ki propagates the exception to the
+        -- \*ambient* scope — typically the builder's listener scope — which
+        -- tears down the whole builder loop instead of just failing this
+        -- one command.
+        (stdoutLines, stderrLines) <- Conc.scoped do
             stdoutThread <- Conc.fork $ drainUntil ghciProcess.stdout marker hook
             stderrThread <- Conc.fork $ drainUntil ghciProcess.stderr marker hook
             (,) <$> Conc.await stdoutThread <*> Conc.await stderrThread
@@ -245,17 +288,35 @@ execGhci ghciProcess command onProgress = do
 
 -- | Interrupt the currently running GHCi command (if any).
 --
--- Sends SIGINT to the GHCi process group and writes a new sync marker so
--- that any in-progress 'drainUntil' unblocks.
+-- If a command is in progress (state 'Busy'), sends SIGINT to the GHCi
+-- process group and writes a new sync marker so that the in-progress
+-- 'drainUntil' unblocks. When GHCi is 'Idle' this is a true no-op: sending
+-- SIGINT and a stale sync marker to an idle GHCi leaves leftover marker
+-- output in the buffers that would desync the next 'execGhci'.
 interruptGhci :: (Concurrent :> es, File :> es, IOE :> es) => GhciProcess -> Eff es ()
 interruptGhci ghciProcess = do
-    n <- atomically do
+    decision <- atomically do
         s <- readTVar ghciProcess.stateVar
-        let n = case s of Idle n' -> n'; Busy n' -> n'
-        writeTVar ghciProcess.stateVar (Idle (n + 1))
-        pure n
-    liftIO $ interruptProcessGroupOf (unsafeProcessHandle ghciProcess.handle)
-    sendSyncCommand ghciProcess.stdin (markerFor (n + 1))
+        let (s', d) = decideInterrupt s
+        writeTVar ghciProcess.stateVar s'
+        pure d
+    case decision of
+        NoOpIdle -> pure ()
+        SendInterruptFor n -> do
+            liftIO $ interruptProcessGroupOf (unsafeProcessHandle ghciProcess.handle)
+            sendSyncCommand ghciProcess.stdin (markerFor (n + 1))
+
+
+-- | Forcefully terminate the GHCi process, closing its handles.
+--
+-- Stronger than 'interruptGhci': intended for one-shot processes (such as
+-- the per-suite @cabal repl test:…@ used by the test runner) where SIGINT
+-- is insufficient — test frameworks like @hspec@ and @tasty@ install
+-- SIGINT handlers that finalise the current run rather than aborting it.
+-- After this, any 'execGhci' drain raises 'UnexpectedExit' on the now-closed
+-- handles.
+terminateGhciProcess :: (IOE :> es) => GhciProcess -> Eff es ()
+terminateGhciProcess ghciProcess = liftIO $ stopProcess ghciProcess.handle
 
 
 -- | Stop the GHCi process gracefully, falling back to forced termination.
