@@ -4,7 +4,6 @@ import Control.Concurrent.MVar (modifyMVar_, newMVar, readMVar)
 import Data.Dynamic (fromDynamic, toDyn)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
-import Effectful.Concurrent.STM (atomically)
 import Test.Hspec
 
 import Data.IORef qualified as IORef
@@ -21,13 +20,11 @@ import Atelier.Effects.Debounce
     , runDebounce
     )
 import Atelier.Effects.Delay (runDelay)
-import Atelier.Effects.Timeout (runTimeout)
 import Atelier.Time (Millisecond)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Console qualified as Console
 import Atelier.Effects.Delay qualified as Delay
-import Atelier.Types.Semaphore.STM qualified as Sem
 
 
 spec_Debounce :: Spec
@@ -50,12 +47,6 @@ testEnsureEntry = do
             entry <- runSTM $ mkEntry 1 42 state (+)
             (entry.arg >>= fromDynamic) `shouldBe` Just @Int 42
 
-        it "starts with empty waiting TMVar" do
-            state <- runSTM Map.new
-            entry <- runSTM $ mkEntry 1 42 state (+)
-            result <- runSTM $ Sem.peek entry.cancelled
-            result `shouldBe` False
-
     describe "existing key" do
         it "increments generation" do
             state <- runSTM Map.new
@@ -68,20 +59,6 @@ testEnsureEntry = do
             _ <- runSTM $ mkEntry 1 5 state (+)
             entry <- runSTM $ mkEntry 1 10 state (+)
             (entry.arg >>= fromDynamic) `shouldBe` Just @Int 15
-
-        it "signals old waiting TMVar" do
-            state <- runSTM Map.new
-            entry1 <- runSTM $ mkEntry 1 42 state (+)
-            _ <- runSTM $ mkEntry 1 99 state (+)
-            result <- runSTM $ Sem.peek entry1.cancelled
-            result `shouldBe` True
-
-        it "new waiting TMVar is empty" do
-            state <- runSTM Map.new
-            _ <- runSTM $ mkEntry 1 42 state (+)
-            entry2 <- runSTM $ mkEntry 1 99 state (+)
-            result <- runSTM $ Sem.peek entry2.cancelled
-            result `shouldBe` False
 
     describe "multiple updates" do
         it "accumulates generation" do
@@ -114,21 +91,31 @@ testEnsureEntry = do
 
 testEnsureCallback :: Spec
 testEnsureCallback = do
-    it "fires callback after settle delay" do
+    it "fires callback when entry's generation still matches" do
         actual <- runCallbackTest do
-            cancelled <- atomically Sem.new
+            state <- STM.atomically Map.new
+            STM.atomically $ Map.insert (entry 0) (1 :: Int) state
             ref <- liftIO $ IORef.newIORef @Int 0
-            t <- Conc.fork $ ensureCallback 1 (entry cancelled) $ liftIO . IORef.writeIORef ref
-            Delay.wait @Millisecond 5
+            t <-
+                Conc.fork
+                    $ ensureCallback @Int @Int 1 state 1 0
+                    $ liftIO . IORef.writeIORef ref
             Conc.await t
             liftIO $ IORef.readIORef ref
         actual `shouldBe` 10
-    it "can be cancelled" do
+    it "skips callback when generation has been bumped" do
         runCallbackTest do
-            cancelled <- atomically Sem.newSet
-            ensureCallback @Int 100 (entry cancelled) \_ ->
+            state <- STM.atomically Map.new
+            -- A newer event has already bumped generation to 1
+            STM.atomically $ Map.insert (entry 1) (1 :: Int) state
+            -- This fork was scheduled for generation 0; it should skip
+            ensureCallback @Int @Int 1 state 1 0 \_ ->
                 liftIO $ False `shouldBe` True
-            Delay.wait @Millisecond 150
+    it "skips callback when entry has been removed" do
+        runCallbackTest do
+            state <- STM.atomically Map.new
+            ensureCallback @Int @Int 1 state 1 0 \_ ->
+                liftIO $ False `shouldBe` True
   where
     runCallbackTest =
         runEff
@@ -136,11 +123,9 @@ testEnsureCallback = do
             . Console.runConsole
             . Delay.runDelay
             . runConc
-            . runTimeout
-    entry cancelled =
+    entry generation =
         Entry
-            { generation = 0
-            , cancelled
+            { generation
             , arg = Just $ toDyn @Int 10
             }
 
@@ -240,5 +225,4 @@ testRunDebounce = do
             . runConcurrent
             . runConc
             . runDelay
-            . runTimeout
             . runDebounce
