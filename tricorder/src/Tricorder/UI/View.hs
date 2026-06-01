@@ -59,11 +59,11 @@ view kc ws =
         Just ViewHelp ->
             viewHelp kc
         Just ViewDaemonInfo ->
-            withBuildState ws (viewDaemonInfoPanel ws.timeZone)
+            withHint $ withBuildState ws (viewDaemonInfoPanel ws.timeZone)
         Just (ViewTestResults tv) ->
-            withBuildState ws (viewTestResultsPanel ws.timeZone tv)
+            withHint $ withBuildState ws (viewTestResultsPanel ws.timeZone tv)
         Nothing ->
-            withBuildState ws (viewDefaultPanel ws.timeZone)
+            withHint $ withBuildState ws (viewDefaultPanel ws.timeZone)
     ]
 
 
@@ -71,19 +71,21 @@ withBuildState :: State -> (BuildState -> Widget Viewports) -> Widget Viewports
 withBuildState ws render =
     case ws.buildState of
         Waiting ->
-            vBoxSpaced 1 [txt "Waiting for build...", viewHint]
+            txt "Waiting for build..."
         Failure reason ->
-            vBoxSpaced 1 [txt $ "Error when contacting daemon: " <> reason, viewHint]
+            txt $ "Error when contacting daemon: " <> reason
         Success bs ->
             render bs
 
 
+withHint :: Widget n -> Widget n
+withHint content = vBox [padBottom Max content, viewHint]
+
+
 viewHelp :: KeyConfig KeyEvent -> Widget n
 viewHelp kc =
-    vBoxSpaced
-        1
-        [ ok $ txt "Keymap:"
-        , viewKeybindings kc handlers
+    vBox
+        [ padBottom Max $ vBoxSpaced 1 [ok $ txt "Keymap:", viewKeybindings kc handlers]
         , subtle $ txt "Press 'h' to go back"
         ]
   where
@@ -91,7 +93,7 @@ viewHelp kc =
 
 
 viewDefaultPanel :: TimeZone -> BuildState -> Widget Viewports
-viewDefaultPanel tz bs = vBoxSpaced 1 [viewBuildPhase tz bs.phase, viewHint]
+viewDefaultPanel tz bs = viewBuildPhase tz bs.phase
 
 
 viewDaemonInfoPanel :: TimeZone -> BuildState -> Widget Viewports
@@ -99,8 +101,7 @@ viewDaemonInfoPanel tz bs =
     vBoxSpaced
         1
         [ viewBuildPhaseLine tz bs.phase
-        , padBottom (Pad 1) $ viewExpandedDaemonInfo bs.daemonInfo
-        , viewHint
+        , viewExpandedDaemonInfo bs.daemonInfo
         ]
 
 
@@ -110,7 +111,6 @@ viewTestResultsPanel tz tv bs =
         1
         [ viewBuildPhaseLine tz bs.phase
         , viewTestPanel tv (phaseTestRuns bs.phase)
-        , viewHint
         ]
 
 
@@ -350,18 +350,7 @@ phaseTestRuns _ = []
 
 viewTestPanel :: TestView -> [TestRun] -> Widget Viewports
 viewTestPanel _ [] = subtle $ txt "No test results."
-viewTestPanel TestViewFailOnly runs =
-    if null failedRuns then
-        vBoxSpaced
-            1
-            [ ok $ txt "All passed."
-            , padLeft (Pad 2) $ vBox $ subtle . txt . testRunTarget <$> runs
-            ]
-    else
-        scrollableRuns TestViewFailOnly failedRuns
-  where
-    failedRuns = filter isFailedRun runs
-viewTestPanel TestViewFull runs = scrollableRuns TestViewFull runs
+viewTestPanel tv runs = scrollableRuns tv runs
 
 
 scrollableRuns :: TestView -> [TestRun] -> Widget Viewports
@@ -390,6 +379,7 @@ viewTestOutput :: TestView -> TestRunCompletion -> Widget n
 viewTestOutput TestViewFull c =
     padLeft (Pad 2) $ vBox $ txt <$> stripGhciNoise (T.lines c.output)
 viewTestOutput TestViewFailOnly c
+    | not (any isCaseFailed c.testCases) && c.passed = emptyWidget
     | null c.testCases =
         padLeft (Pad 2)
             $ vBox
@@ -398,18 +388,6 @@ viewTestOutput TestViewFailOnly c
                 ]
     | otherwise =
         padLeft (Pad 2) $ vBox $ viewFailedCase <$> filter isCaseFailed c.testCases
-
-
-isFailedRun :: TestRun -> Bool
-isFailedRun (TestRunCompleted c) = not c.passed
-isFailedRun (TestRunErrored _) = True
-isFailedRun (TestRunning _ _) = False
-
-
-testRunTarget :: TestRun -> Text
-testRunTarget (TestRunning t _) = t
-testRunTarget (TestRunErrored e) = e.target
-testRunTarget (TestRunCompleted c) = c.target
 
 
 isCaseFailed :: TestCase -> Bool
