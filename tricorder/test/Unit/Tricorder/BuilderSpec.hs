@@ -414,12 +414,12 @@ testRequestTestRunsForNewBuildResults = do
         length phases `shouldBe` 4
         let expectedPhases =
                 [ mkTesting . buildWithTests
-                    $ [ TestRunning "test:foo"
-                      , TestRunning "test:bar"
+                    $ [ TestRunning "test:foo" Nothing
+                      , TestRunning "test:bar" Nothing
                       ]
                 , mkTesting . buildWithTests
                     $ [ mkTestRun "test:foo"
-                      , TestRunning "test:bar"
+                      , TestRunning "test:bar" Nothing
                       ]
                 , mkTesting . buildWithTests
                     $ [ mkTestRun "test:foo"

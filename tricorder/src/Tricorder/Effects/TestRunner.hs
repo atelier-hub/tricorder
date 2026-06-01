@@ -34,7 +34,17 @@ import Data.Text qualified as T
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.File (File)
 import Atelier.Effects.Timeout (Timeout, timeout)
-import Tricorder.BuildState (TestRun (..), TestRunCompletion (..), TestRunError (..))
+import Tricorder.BuildState
+    ( BuildPhase (..)
+    , BuildProgress (..)
+    , BuildResult (..)
+    , BuildState (..)
+    , TestRun (..)
+    , TestRunCompletion (..)
+    , TestRunError (..)
+    )
+import Tricorder.Effects.BuildStore (BuildStore, getState, setPhase)
+import Tricorder.Effects.GhciSession.GhciParser (GhciLoading (..))
 import Tricorder.Effects.GhciSession.GhciProcess (GhciProcess, execGhci, interruptGhci, withGhciProcess)
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (ProjectRoot (..))
@@ -65,7 +75,8 @@ makeEffect ''TestRunner
 -- process for each suite, feeds @:main\\n:quit\\n@ to stdin, captures combined
 -- stdout+stderr, and detects the outcome via 'detectOutcome'.
 runTestRunnerIO
-    :: ( Conc :> es
+    :: ( BuildStore :> es
+       , Conc :> es
        , Concurrent :> es
        , File :> es
        , IOE :> es
@@ -92,14 +103,16 @@ runTestRunnerIO act = do
                 pure $ TestRunErrored $ TestRunError {target, message = "Test run aborted"}
             else do
                 Session {testTimeout} <- SessionStore.get
-                result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot \ghci _ ->
+                let onProgress = reportTestProgress target
+                    noProgress = \_ -> pure ()
+                result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot onProgress \ghci _ ->
                     bracket_
                         (atomically (writeTVar currentProcRef (Just ghci)))
                         (atomically (writeTVar currentProcRef Nothing))
                         $ case testTimeout of
-                            secs | secs <= 0 -> Right <$> execGhci ghci ":main"
+                            secs | secs <= 0 -> Right <$> execGhci ghci ":main" noProgress
                             secs ->
-                                timeout (fromIntegral secs :: Second) (execGhci ghci ":main") >>= \case
+                                timeout (fromIntegral secs :: Second) (execGhci ghci ":main" noProgress) >>= \case
                                     Nothing -> pure (Left secs)
                                     Just ls -> pure (Right ls)
                 pure $ case result of
@@ -145,6 +158,31 @@ runTestRunnerScripted results = reinterpret (evalState results) $ \_ ->
             InterruptCurrent -> pure ()
             ResetAbort -> pure ()
             IsAborted -> pure False
+
+
+-- | Patch live compile progress for a test suite into the current 'Testing'
+-- phase of the build state.
+--
+-- A test suite's @cabal repl@ session typically recompiles a slice of the
+-- project before running @:main@. Mirroring the main-build progress bar, we
+-- update the matching 'TestRunning' entry as each @[N of M] Compiling …@
+-- line arrives so the UI shows @running... (N/M)@ live.
+--
+-- The update is best-effort: if the phase has moved on (e.g. a source change
+-- triggered 'Restarting' or 'Building'), the progress event is dropped rather
+-- than reverting the phase.
+reportTestProgress
+    :: (BuildStore :> es) => Text -> GhciLoading -> Eff es ()
+reportTestProgress target loading = do
+    state <- getState
+    case state.phase of
+        Testing partialResult ->
+            let progress = BuildProgress {compiled = loading.index, total = loading.total}
+                updateRun (TestRunning t _) | t == target = TestRunning t (Just progress)
+                updateRun r = r
+                newRuns = map updateRun partialResult.testRuns
+            in  setPhase state.buildId (Testing partialResult {testRuns = newRuns})
+        _ -> pure ()
 
 
 data GhciOutcome

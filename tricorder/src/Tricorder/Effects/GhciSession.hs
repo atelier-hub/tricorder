@@ -110,18 +110,18 @@ runGhciSession
        )
     => Eff (GhciSession : es) a -> Eff es a
 runGhciSession = interpret $ \env -> \case
-    WithGhci cmd (ProjectRoot dir) handler ->
-        withGhciProcess def cmd dir \process startupLines ->
+    WithGhci cmd (ProjectRoot dir) handler -> do
+        let onProgress loading = do
+                buildState <- getState
+                setPhase buildState.buildId
+                    $ Building
+                    $ Just
+                    $ BuildProgress {compiled = loading.index, total = loading.total}
+        withGhciProcess def cmd dir onProgress \process startupLines ->
             localLift env (ConcUnlift Persistent Unlimited) \liftEff ->
                 localUnlift env (ConcUnlift Persistent Unlimited) \unlift -> do
-                    let onProgress loading = do
-                            buildState <- getState
-                            setPhase buildState.buildId
-                                $ Building
-                                $ Just
-                                $ BuildProgress {compiled = loading.index, total = loading.total}
-                        doReload = liftEff $ reloadGhci process dir onProgress
-                    initialResult <- unlift $ liftEff $ collectGhciResult process startupLines dir onProgress
+                    let doReload = liftEff $ reloadGhci process dir onProgress
+                    initialResult <- unlift $ liftEff $ collectGhciResult process startupLines dir
                     unlift
                         $ handler
                             initialResult

@@ -84,10 +84,10 @@ main =
         . runPubSub @BuildState.EnteringNewPhase
         . runDaemonInfo
         . runLogging
-        . runTestRunnerIO
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.SourceQuery) @(Text, [SourceLookup.ReExport])
         . runBuildStore
+        . runTestRunnerIO
         . runGhcPkgIO
         . runUnixSocketIO
         . runGhciSession

@@ -7,6 +7,7 @@ module Tricorder.Effects.GhciSession.GhciParser
     , LoadedModule (..)
     , Position (..)
     , collectResultCustom
+    , parseProgressLine
     , parseReload
     , parseShowModules
     , parseShowTargets
@@ -313,6 +314,21 @@ reloadItem =
         , -- Fallback: skip any other line
           fmap (const Nothing) anySingle
         ]
+
+
+-- | Parse a single line as a "[N of M] Compiling …" progress event.
+--
+-- Returns 'Nothing' for any line that is not a loading line. Used to stream
+-- progress updates as GHCi emits them, rather than parsing the whole reload
+-- output after the fact.
+parseProgressLine :: Text -> Maybe GhciLoading
+parseProgressLine line =
+    let stripped = stripAnsi line
+    in  if "[" `T.isPrefixOf` stripped then case runTP loadingLineP stripped of
+            Just (GLoading l) -> Just l
+            _ -> Nothing
+        else
+            Nothing
 
 
 -- | Parse a "[N of M] Compiling Mod ( file, ... )" loading line.

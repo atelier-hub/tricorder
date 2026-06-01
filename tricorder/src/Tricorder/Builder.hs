@@ -489,11 +489,11 @@ runTestsIfClean (BuilderSession {testTargets}) bid partialResult
         TestRunner.resetAbort
         publish
             $ EnteringNewPhase bid
-            $ Testing partialResult {testRuns = map TestRunning testTargets}
+            $ Testing partialResult {testRuns = map (`TestRunning` Nothing) testTargets}
 
         Log.info $ "Running " <> show (length testTargets) <> " test suite(s)"
 
-        let initial = (\t -> (t, TestRunning t)) <$> testTargets
+        let initial = (\t -> (t, TestRunning t Nothing)) <$> testTargets
         runLoop initial testTargets
   where
     runLoop acc [] = pure (Just (snd <$> acc))
