@@ -3,7 +3,7 @@ module Tricorder.UI.Event
     , handleEvent
     ) where
 
-import Brick (BrickEvent (..), EventM)
+import Brick (BrickEvent (..), EventM, vScrollBy, viewportScroll)
 import Brick.Keybindings (KeyDispatcher, handleKey)
 import Control.Monad.State (modify)
 
@@ -23,6 +23,8 @@ data Event
 handleEvent :: KeyDispatcher KeyEvent (EventM Viewports State) -> BrickEvent Viewports Event -> EventM Viewports State ()
 handleEvent _ (AppEvent ev) = handleAppEvent ev
 handleEvent d (VtyEvent (Vty.EvKey key modifiers)) = void $ handleKey d key modifiers
+handleEvent _ (MouseDown vp Vty.BScrollUp _ _) = vScrollBy (viewportScroll vp) (-1)
+handleEvent _ (MouseDown vp Vty.BScrollDown _ _) = vScrollBy (viewportScroll vp) 1
 handleEvent _ _ = pure ()
 
 
