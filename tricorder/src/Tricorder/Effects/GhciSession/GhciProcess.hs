@@ -45,10 +45,10 @@ import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.File (File)
 import Atelier.Effects.Timeout (Timeout, timeout)
 import Tricorder.Effects.GhciSession.GhciParser
-    ( GhciLoad (..)
-    , GhciLoading (..)
+    ( GhciLoading (..)
     , LoadResult (..)
     , collectResultCustom
+    , parseProgressLine
     , parseReload
     , parseShowModules
     , parseShowTargets
@@ -115,8 +115,15 @@ startGhciProcess
        , IOE :> es
        , Timeout :> es
        )
-    => Config -> Text -> FilePath -> Eff es (GhciProcess, [Text])
-startGhciProcess config cmd dir = do
+    => Config
+    -> Text
+    -> FilePath
+    -> (GhciLoading -> Eff es ())
+    -- ^ Called as each @[N of M] Compiling …@ line is streamed during the
+    -- initial-build drain, so the UI can update the progress bar live
+    -- instead of replaying everything once compilation finishes.
+    -> Eff es (GhciProcess, [Text])
+startGhciProcess config cmd dir onProgress = do
     p <-
         liftIO
             $ startProcess
@@ -166,12 +173,15 @@ startGhciProcess config cmd dir = do
 
     -- Sync: drain until marker 1 seen, then set counter to 2.
     -- Capture lines from both streams — the stderr output contains the initial
-    -- compilation progress and any startup diagnostics.
+    -- compilation progress and any startup diagnostics. The line hook fires
+    -- 'onProgress' for each "[N of M] Compiling …" line as it arrives, so the
+    -- UI can update the progress bar live during the initial build.
     let marker1 = markerFor 1
+        hook = progressLineHook onProgress
     sendSyncCommand inp marker1
     initialLines <- Conc.scoped do
-        stdoutThread <- Conc.fork $ drainUntil out marker1
-        stderrThread <- Conc.fork $ drainUntil err marker1
+        stdoutThread <- Conc.fork $ drainUntil out marker1 hook
+        stderrThread <- Conc.fork $ drainUntil err marker1 hook
         stdoutLines <- Conc.await stdoutThread
         stderrLines <- Conc.await stderrThread
         pure (stdoutLines ++ stderrLines)
@@ -184,30 +194,36 @@ startGhciProcess config cmd dir = do
 --
 -- The action receives both the process handle and the output lines captured
 -- during the startup sync (stdout ++ stderr). These lines contain the initial
--- compilation progress and any startup diagnostics.
+-- compilation progress and any startup diagnostics. The @onProgress@ callback
+-- fires for each @[N of M] Compiling …@ line as GHCi emits it during the
+-- initial build, so the UI can update its progress bar in real time.
 withGhciProcess
     :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es, Timeout :> es)
     => Config
     -> Text
     -> FilePath
+    -> (GhciLoading -> Eff es ())
     -> (GhciProcess -> [Text] -> Eff es a)
     -> Eff es a
-withGhciProcess config cmd dir action =
+withGhciProcess config cmd dir onProgress action =
     bracket
-        (startGhciProcess config cmd dir)
+        (startGhciProcess config cmd dir onProgress)
         (stopGhciProcess config . fst)
         (uncurry action)
 
 
--- | Execute a command in GHCi and return the combined stdout+stderr output lines.
+-- | Execute a command in GHCi and return the combined stdout+stderr output
+-- lines. The @onProgress@ callback fires for each @[N of M] Compiling …@ line
+-- as it arrives, so reload/add/unadd progress is streamed live to the UI.
+-- Pass @\\_ -> pure ()@ for commands that do not trigger compilation.
 execGhci
     :: ( Conc :> es
        , Concurrent :> es
        , File :> es
        , IOE :> es
        )
-    => GhciProcess -> Text -> Eff es [Text]
-execGhci ghciProcess command = do
+    => GhciProcess -> Text -> (GhciLoading -> Eff es ()) -> Eff es [Text]
+execGhci ghciProcess command onProgress = do
     n <- atomically do
         readTVar ghciProcess.stateVar >>= \case
             Idle n -> writeTVar ghciProcess.stateVar (Busy n) $> n
@@ -216,12 +232,13 @@ execGhci ghciProcess command = do
   where
     doExec n = do
         let marker = markerFor n
+            hook = progressLineHook onProgress
         liftIO $ TIO.hPutStrLn ghciProcess.stdin command
         File.hFlush ghciProcess.stdin
         sendSyncCommand ghciProcess.stdin marker
         (stdoutLines, stderrLines) <- do
-            stdoutThread <- Conc.fork $ drainUntil ghciProcess.stdout marker
-            stderrThread <- Conc.fork $ drainUntil ghciProcess.stderr marker
+            stdoutThread <- Conc.fork $ drainUntil ghciProcess.stdout marker hook
+            stderrThread <- Conc.fork $ drainUntil ghciProcess.stderr marker hook
             (,) <$> Conc.await stdoutThread <*> Conc.await stderrThread
         pure (stdoutLines ++ stderrLines)
 
@@ -297,11 +314,13 @@ sendSyncCommand h marker = do
 -- | Read lines from a handle until any finish marker is seen (or EOF).
 --
 -- Stops on any line containing the marker prefix, so an interrupt that writes
--- a later marker will unblock a drain waiting for an earlier one.
+-- a later marker will unblock a drain waiting for an earlier one. Each
+-- non-marker line is passed to @onLine@ as it arrives, so callers can stream
+-- progress without waiting for the full drain to complete.
 -- Returns accumulated non-marker lines in order. Throws 'UnexpectedExit' on
 -- EOF before a marker is seen.
-drainUntil :: (File :> es) => Handle -> Text -> Eff es [Text]
-drainUntil h command = go []
+drainUntil :: (File :> es) => Handle -> Text -> (Text -> Eff es ()) -> Eff es [Text]
+drainUntil h command onLine = go []
   where
     go acc = do
         result <- try @E.IOException $ File.hGetLine h
@@ -311,8 +330,15 @@ drainUntil h command = go []
             Right line ->
                 if markerPrefix `T.isInfixOf` line then
                     pure (reverse acc)
-                else
+                else do
+                    onLine line
                     go (line : acc)
+
+
+-- | Convert a 'GhciLoading' progress callback into a per-line hook suitable
+-- for 'drainUntil'. Non-progress lines are ignored.
+progressLineHook :: (GhciLoading -> Eff es ()) -> Text -> Eff es ()
+progressLineHook onProgress line = traverse_ onProgress (parseProgressLine line)
 
 
 -- | Wait up to the given number of seconds for a GHCi version banner on the
@@ -346,21 +372,22 @@ waitForBanner delay h = do
                     go
 
 
--- | Parse GHCi output lines into a 'LoadResult', fetching the current module
--- list via @:show modules@. Emits a progress callback for each
--- @[N of M] Compiling …@ line.
+-- | Parse already-drained GHCi output lines into a 'LoadResult', fetching the
+-- current module list via @:show modules@.
+--
+-- Progress is emitted live by 'drainUntil' as lines arrive, so no replay
+-- callback is needed here — this function only assembles the final result.
 collectGhciResult
     :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
     => GhciProcess
     -> [Text]
     -> FilePath
-    -> (GhciLoading -> Eff es ())
     -> Eff es LoadResult
-collectGhciResult process lines' projectRoot onProgress = do
+collectGhciResult process lines' projectRoot = do
     let loads = parseReload lines'
-    for_ [l | GLoading l <- loads] onProgress
-    moduleLines <- execGhci process ":show modules"
-    targetLines <- execGhci process ":show targets"
+        noProgress = \_ -> pure ()
+    moduleLines <- execGhci process ":show modules" noProgress
+    targetLines <- execGhci process ":show targets" noProgress
     pure
         $ collectResultCustom
             projectRoot
@@ -369,8 +396,8 @@ collectGhciResult process lines' projectRoot onProgress = do
             (parseShowTargets targetLines)
 
 
--- | Execute @:reload@ and return the assembled 'LoadResult', emitting a
--- progress callback for each @[N of M] Compiling …@ line.
+-- | Execute @:reload@ and return the assembled 'LoadResult'. Progress events
+-- fire live via @onProgress@ as each @[N of M] Compiling …@ line is read.
 reloadGhci
     :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
     => GhciProcess
@@ -378,12 +405,12 @@ reloadGhci
     -> (GhciLoading -> Eff es ())
     -> Eff es LoadResult
 reloadGhci process projectRoot onProgress = do
-    reloadLines <- execGhci process ":reload"
-    collectGhciResult process reloadLines projectRoot onProgress
+    reloadLines <- execGhci process ":reload" onProgress
+    collectGhciResult process reloadLines projectRoot
 
 
--- | Execute @:add@ for the given file and return the assembled 'LoadResult',
--- emitting a progress callback for each @[N of M] Compiling …@ line.
+-- | Execute @:add@ for the given file and return the assembled 'LoadResult'.
+-- Progress events fire live via @onProgress@ as compilation proceeds.
 addGhci
     :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
     => GhciProcess
@@ -392,12 +419,13 @@ addGhci
     -> (GhciLoading -> Eff es ())
     -> Eff es LoadResult
 addGhci process filePath projectRoot onProgress = do
-    addLines <- execGhci process (":add " <> T.pack filePath)
-    collectGhciResult process addLines projectRoot onProgress
+    addLines <- execGhci process (":add " <> T.pack filePath) onProgress
+    collectGhciResult process addLines projectRoot
 
 
--- | Execute @:unadd@ for the given module and return the assembled 'LoadResult',
--- emitting a progress callback for each @[N of M] Compiling …@ line.
+-- | Execute @:unadd@ for the given module and return the assembled
+-- 'LoadResult'. Progress events fire live via @onProgress@ as compilation
+-- proceeds.
 unaddGhci
     :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
     => GhciProcess
@@ -406,5 +434,5 @@ unaddGhci
     -> (GhciLoading -> Eff es ())
     -> Eff es LoadResult
 unaddGhci process moduleName projectRoot onProgress = do
-    unaddLines <- execGhci process (":unadd " <> moduleName)
-    collectGhciResult process unaddLines projectRoot onProgress
+    unaddLines <- execGhci process (":unadd " <> moduleName) onProgress
+    collectGhciResult process unaddLines projectRoot

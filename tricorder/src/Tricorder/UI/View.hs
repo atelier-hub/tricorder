@@ -270,7 +270,9 @@ viewTestRuns runs = vBox $ viewTestRun <$> runs
 
 
 viewTestRun :: TestRun -> Widget n
-viewTestRun (TestRunning t) = hBox [txt t, txt "  ", warn $ txt "running..."]
+viewTestRun (TestRunning t Nothing) = hBox [txt t, txt "  ", warn $ txt "running..."]
+viewTestRun (TestRunning t (Just p)) =
+    hBox [txt t, txt "  ", warn $ txt $ "running... (" <> show p.compiled <> "/" <> show p.total <> ")"]
 viewTestRun (TestRunErrored e) = hBox [txt e.target, txt "  ", err $ txt "error: ", txt e.message]
 viewTestRun (TestRunCompleted c) = hBox [txt c.target, txt "  ", viewCompletionStatus c]
 
@@ -373,7 +375,9 @@ scrollableRuns tv runs =
 
 
 viewTestRunDetail :: TestView -> TestRun -> Widget n
-viewTestRunDetail _ (TestRunning t) = hBox [txt t, txt "  ", warn $ txt "running..."]
+viewTestRunDetail _ (TestRunning t Nothing) = hBox [txt t, txt "  ", warn $ txt "running..."]
+viewTestRunDetail _ (TestRunning t (Just p)) =
+    hBox [txt t, txt "  ", warn $ txt $ "running... (" <> show p.compiled <> "/" <> show p.total <> ")"]
 viewTestRunDetail _ (TestRunErrored e) = hBoxSpaced 1 [txt e.target, err $ txt "error:", txt e.message]
 viewTestRunDetail tv (TestRunCompleted c) =
     vBox
@@ -399,11 +403,11 @@ viewTestOutput TestViewFailOnly c
 isFailedRun :: TestRun -> Bool
 isFailedRun (TestRunCompleted c) = not c.passed
 isFailedRun (TestRunErrored _) = True
-isFailedRun (TestRunning _) = False
+isFailedRun (TestRunning _ _) = False
 
 
 testRunTarget :: TestRun -> Text
-testRunTarget (TestRunning t) = t
+testRunTarget (TestRunning t _) = t
 testRunTarget (TestRunErrored e) = e.target
 testRunTarget (TestRunCompleted c) = c.target
 

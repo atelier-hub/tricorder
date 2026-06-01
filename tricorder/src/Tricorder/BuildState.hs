@@ -135,7 +135,7 @@ data TestRunCompletion = TestRunCompletion
 
 
 data TestRun
-    = TestRunning Text
+    = TestRunning Text (Maybe BuildProgress)
     | TestRunErrored TestRunError
     | TestRunCompleted TestRunCompletion
     deriving stock (Eq, Generic, Show)

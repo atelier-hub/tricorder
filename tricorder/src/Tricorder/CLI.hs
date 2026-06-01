@@ -29,6 +29,7 @@ import Tricorder.Arguments
     )
 import Tricorder.BuildState
     ( BuildPhase (..)
+    , BuildProgress (..)
     , BuildResult (..)
     , BuildState (..)
     , Diagnostic (..)
@@ -122,7 +123,8 @@ showStatus opts = do
 
     printTestRun verbosity tr = do
         Console.putTextLn $ case tr of
-            TestRunning t -> t <> "  running..."
+            TestRunning t Nothing -> t <> "  running..."
+            TestRunning t (Just p) -> t <> "  running... (" <> show p.compiled <> "/" <> show p.total <> ")"
             TestRunErrored e -> e.target <> "  error: " <> e.message
             TestRunCompleted c -> c.target <> "  " <> completionSummary c
         when (verbosity == Verbose) $ case tr of
@@ -135,7 +137,7 @@ showStatus opts = do
       where
         isFailedRun (TestRunCompleted c) = not c.passed
         isFailedRun (TestRunErrored _) = True
-        isFailedRun (TestRunning _) = False
+        isFailedRun (TestRunning _ _) = False
 
     buildSummary tz r =
         let errs = length $ filter ((== SError) . (.severity)) r.diagnostics
@@ -219,15 +221,17 @@ showTests opts = do
 
     isFailed (TestRunCompleted c) = not c.passed
     isFailed (TestRunErrored _) = True
-    isFailed (TestRunning _) = False
+    isFailed (TestRunning _ _) = False
 
-    testRunTarget (TestRunning t) = t
+    testRunTarget (TestRunning t _) = t
     testRunTarget (TestRunErrored e) = e.target
     testRunTarget (TestRunCompleted c) = c.target
 
     printTestOutput tr = case tr of
-        TestRunning t ->
+        TestRunning t Nothing ->
             Console.putTextLn $ t <> "  running..."
+        TestRunning t (Just p) ->
+            Console.putTextLn $ t <> "  running... (" <> show p.compiled <> "/" <> show p.total <> ")"
         TestRunErrored e ->
             Console.putTextLn $ e.target <> "  error: " <> e.message
         TestRunCompleted c -> do
