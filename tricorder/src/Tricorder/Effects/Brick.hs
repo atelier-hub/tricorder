@@ -9,6 +9,7 @@ import Brick.Main (App, customMain)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (interpret_)
 import Effectful.TH (makeEffect)
+import Graphics.Vty (Mode (Mouse), outputIface, setMode)
 import Graphics.Vty.Config (userConfig)
 import Graphics.Vty.CrossPlatform (mkVty)
 
@@ -35,7 +36,9 @@ runBrick = interpret_ \case
     RunBrickApp chan app initialState -> liftIO do
         let buildVty = do
                 cfg <- userConfig
-                mkVty cfg
+                vty <- mkVty cfg
+                setMode (outputIface vty) Mouse True
+                pure vty
         initialVty <- liftIO buildVty
         customMain
             initialVty
