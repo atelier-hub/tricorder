@@ -42,12 +42,11 @@ import Effectful.Concurrent.STM qualified as STM
 import StmContainers.Map qualified as Map
 
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.Timeout (Timeout, timeout)
+import Atelier.Effects.Delay (Delay)
 import Atelier.Time (Millisecond)
-import Atelier.Types.Semaphore.STM (Semaphore)
 
 import Atelier.Effects.Conc qualified as Conc
-import Atelier.Types.Semaphore.STM qualified as Sem
+import Atelier.Effects.Delay qualified as Delay
 
 
 data Debounce key :: Effect where
@@ -77,7 +76,6 @@ debounced settleMs key action = debouncedWith settleMs (\_ _ -> ()) key () (\_ -
 data Entry = Entry
     { arg :: Maybe Dynamic
     , generation :: Int
-    , cancelled :: Semaphore
     }
 
 
@@ -89,8 +87,8 @@ runDebounce
     :: forall key es a
      . ( Conc :> es
        , Concurrent :> es
+       , Delay :> es
        , Hashable key
-       , Timeout :> es
        )
     => Eff (Debounce key : es) a
     -> Eff es a
@@ -102,31 +100,38 @@ runDebounce eff = do
             localUnlift env (ConcUnlift Persistent (Limited 1)) \unlift ->
                 void
                     $ Conc.fork
-                    $ ensureCallback settleMs entry \arg' -> do
-                        STM.atomically $ Map.delete key state
-                        unlift $ callback arg'
+                    $ ensureCallback settleMs state key entry.generation
+                    $ unlift . callback
 
 
+-- | Sleep for @settleMs@, then atomically check whether this fork's
+-- @generation@ is still the latest in the map for @key@. If yes, take the
+-- (possibly merged) argument, remove the entry, and fire the callback. If a
+-- newer call has bumped the generation in the meantime, exit silently.
 ensureCallback
-    :: forall arg es a
+    :: forall key arg es a
      . ( Concurrent :> es
-       , Timeout :> es
+       , Delay :> es
+       , Hashable key
        , Typeable arg
        )
     => Millisecond
-    -> Entry
+    -> Map.Map key Entry
+    -> key
+    -> Int
     -> (arg -> Eff es a)
     -> Eff es ()
-ensureCallback settleMs entry callback = do
-    res <- timeout settleMs do
-        STM.atomically $ Sem.wait entry.cancelled
-
-    -- If res /= Nothing, then it was cancelled
-    when (res == Nothing) do
-        case fromDynamic =<< entry.arg of
-            Nothing -> pure ()
-            Just arg -> do
-                void $ callback arg
+ensureCallback settleMs state key myGeneration callback = do
+    Delay.wait settleMs
+    fire <- STM.atomically do
+        Map.lookup key state >>= \case
+            Just e | e.generation == myGeneration -> do
+                Map.delete key state
+                pure $ fromDynamic =<< e.arg
+            _ -> pure Nothing
+    case fire of
+        Just arg -> void $ callback arg
+        Nothing -> pure ()
 
 
 ensureEntry
@@ -138,28 +143,17 @@ ensureEntry
     -> STM Entry
 ensureEntry key value state merge = do
     current <- Map.lookup key state
-    entry <- case current of
-        Nothing -> do
-            cancelled <- Sem.new
-            pure
-                $ Entry
-                    { arg = Nothing
-                    , generation = 0
-                    , cancelled
-                    }
-        Just e -> do
-            void $ Sem.set e.cancelled
-            cancelled <- Sem.new
-            pure
-                $ e
-                    { generation = e.generation + 1
-                    , cancelled
-                    }
-    let prior = current >>= (.arg) >>= fromDynamic
+    let (gen, prior) = case current of
+            Nothing -> (0, Nothing)
+            Just e -> (e.generation + 1, e.arg >>= fromDynamic)
     let merged = case prior of
             Just p -> merge p value
             Nothing -> value
-    let updatedEntry = entry {arg = Just (toDyn merged)}
+    let updatedEntry =
+            Entry
+                { arg = Just (toDyn merged)
+                , generation = gen
+                }
     Map.insert updatedEntry key state
     pure updatedEntry
 
