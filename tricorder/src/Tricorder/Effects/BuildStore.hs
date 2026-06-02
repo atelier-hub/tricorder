@@ -12,8 +12,6 @@ module Tricorder.Effects.BuildStore
     , hasWaiters
 
       -- * Interpreters
-    , runBuildStoreSTM
-    , runBuildStoreRef
     , runBuildStoreScripted
     , runBuildStore
     ) where
@@ -21,7 +19,7 @@ module Tricorder.Effects.BuildStore
 import Effectful (Effect)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (TChan, TVar, atomically, dupTChan, modifyTVar, newBroadcastTChan, newTVar, readTChan, readTVar, retry, writeTChan, writeTVar)
-import Effectful.Dispatch.Dynamic (interpret_, reinterpret)
+import Effectful.Dispatch.Dynamic (interpretWith_, reinterpret)
 import Effectful.Exception (bracket_)
 import Effectful.State.Static.Shared (State, evalState, get, modify, put)
 import Effectful.TH (makeEffect)
@@ -31,7 +29,6 @@ import Tricorder.BuildState
     ( BuildId
     , BuildPhase (..)
     , BuildState (..)
-    , BuildStateRef (..)
     , ChangeKind (..)
     , DaemonInfo (..)
     , initialBuildState
@@ -63,71 +60,34 @@ data BuildStore :: Effect where
 makeEffect ''BuildStore
 
 
--- | Production interpreter backed by a 'TVar'.
---
--- Blocking operations use STM @retry@ rather than polling, so a transient
--- 'Done' state cannot be missed by a poll cycle landing on the surrounding
--- 'Building' phases. 'atomically' is interruptible, so async exceptions
--- (e.g. Ki's @ScopeClosing@) propagate during daemon shutdown.
-runBuildStoreSTM :: (Concurrent :> es) => Eff (BuildStore : es) a -> Eff es a
-runBuildStoreSTM eff = do
-    ref <- atomically (newTVar (initialBuildState emptyDaemonInfo))
-    dirtyRef <- atomically $ newTVar @(Maybe ChangeKind) Nothing
-    waitersRef <- atomically $ newTVar @Int 0
-    transitions <- atomically (newBroadcastTChan @BuildState)
-    interpret_
-        ( \case
-            GetState -> atomically (readTVar ref)
-            PutState s -> setState ref transitions s
-            WaitUntilDone ->
-                bracket_
-                    (atomically (modifyTVar waitersRef (+ 1)))
-                    (atomically (modifyTVar waitersRef (subtract 1)))
-                    (waitForState ref transitions (not . isBuilding))
-            WaitForNext bid ->
-                waitForState ref transitions \s -> not (isBuilding s) && s.buildId /= bid
-            WaitForAnyChange prev -> waitForState ref transitions (/= prev)
-            SetPhase bid phase -> atomically do
-                modifyTVar ref \bs -> bs {buildId = bid, phase = phase}
-                readTVar ref >>= writeTChan transitions
-            MarkDirty ck -> atomically (modifyTVar dirtyRef (max (Just ck)))
-            WaitDirty -> takeDirty dirtyRef
-            HasWaiters -> fmap (> 0) $ atomically (readTVar waitersRef)
-        )
-        eff
-  where
-    emptyDaemonInfo = DaemonInfo {targets = [], watchDirs = [], sockPath = "", logFile = "", metricsPort = Nothing}
+-- | Mutable state shared between the production interpreters and writers
+-- (e.g. 'GhciSession'). Internal to this module.
+data BuildStateRef = BuildStateRef
+    { stateRef :: TVar BuildState
+    , dirtyRef :: TVar (Maybe ChangeKind)
+    , waitersRef :: TVar Int
+    , transitions :: TChan BuildState
+    -- ^ Broadcast channel of every phase transition. Writers (setPhase /
+    -- putState) atomically update 'stateRef' AND broadcast on this chan in
+    -- the same STM transaction; waiters 'dupTChan' it on entry and consume
+    -- every transition. A transient 'Done' followed immediately by
+    -- 'Building (N+1)' is therefore observable as two messages on the
+    -- channel — the waiter can't be woken on the 'Done' and then miss it
+    -- because the 'Building' overwrote 'stateRef' before the waiter re-ran.
+    }
 
 
--- | Production interpreter that shares a 'BuildStateRef' TVar with writers
--- (e.g. 'GhciSession'). Use this in the daemon instead of 'runBuildStoreSTM'.
-runBuildStoreRef
-    :: ( Concurrent :> es
-       , Input DaemonInfo :> es
-       )
-    => BuildStateRef -> Eff (BuildStore : es) a -> Eff es a
-runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef, waitersRef, transitions} =
-    interpret_
-        ( \case
-            GetState -> atomically (readTVar ref)
-            PutState s -> setState ref transitions s
-            WaitUntilDone ->
-                bracket_
-                    (atomically (modifyTVar waitersRef (+ 1)))
-                    (atomically (modifyTVar waitersRef (subtract 1)))
-                    (waitForState ref transitions (not . isBuilding))
-            WaitForNext bid ->
-                waitForState ref transitions \s -> not (isBuilding s) && s.buildId /= bid
-            WaitForAnyChange prev -> waitForState ref transitions (/= prev)
-            SetPhase bid phase -> do
-                daemonInfo <- input
-                atomically do
-                    modifyTVar ref \bs -> bs {buildId = bid, phase = phase, daemonInfo}
-                    readTVar ref >>= writeTChan transitions
-            MarkDirty ck -> atomically (modifyTVar dirtyRef (max (Just ck)))
-            WaitDirty -> takeDirty dirtyRef
-            HasWaiters -> fmap (> 0) $ atomically (readTVar waitersRef)
-        )
+-- | Allocate the shared STM state, seeding the build state from @di@. The
+-- record's field types pin the otherwise-polymorphic 'newTVar' and
+-- 'newBroadcastTChan' results.
+newBuildStateRef :: (Concurrent :> es) => DaemonInfo -> Eff es BuildStateRef
+newBuildStateRef di =
+    atomically
+        $ BuildStateRef
+            <$> newTVar (initialBuildState di)
+            <*> newTVar Nothing
+            <*> newTVar 0
+            <*> newBroadcastTChan
 
 
 isBuilding :: BuildState -> Bool
@@ -217,10 +177,14 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
                 | otherwise -> put rest >> advance predicate
 
 
--- | Production interpreter for use in the daemon.
+-- | Production interpreter backed by a 'TVar', sharing its STM state with
+-- writers (e.g. 'GhciSession'). Seeds the state with 'initialBuildState' for
+-- the current 'DaemonInfo' and refreshes it on every phase change.
 --
--- Creates a 'TVar' initialised with 'initialBuildState' for the given
--- 'DaemonInfo' and runs the supplied action under 'runBuildStoreRef'.
+-- Blocking operations use STM @retry@ rather than polling, so a transient
+-- 'Done' state cannot be missed by a poll cycle landing on the surrounding
+-- 'Building' phases. 'atomically' is interruptible, so async exceptions
+-- (e.g. Ki's @ScopeClosing@) propagate during daemon shutdown.
 runBuildStore
     :: ( Concurrent :> es
        , Input DaemonInfo :> es
@@ -228,8 +192,23 @@ runBuildStore
     => Eff (BuildStore : es) a -> Eff es a
 runBuildStore eff = do
     di <- input
-    ref <- atomically (newTVar (initialBuildState di))
-    dirtyRef <- atomically (newTVar Nothing)
-    waitersRef <- atomically (newTVar (0 :: Int))
-    transitions <- atomically newBroadcastTChan
-    runBuildStoreRef BuildStateRef {stateRef = ref, dirtyRef, waitersRef, transitions} eff
+    refs <- newBuildStateRef di
+    interpretWith_ eff \case
+        GetState -> atomically (readTVar refs.stateRef)
+        PutState s -> setState refs.stateRef refs.transitions s
+        WaitUntilDone ->
+            bracket_
+                (atomically (modifyTVar refs.waitersRef (+ 1)))
+                (atomically (modifyTVar refs.waitersRef (subtract 1)))
+                (waitForState refs.stateRef refs.transitions (not . isBuilding))
+        WaitForNext bid ->
+            waitForState refs.stateRef refs.transitions \s -> not (isBuilding s) && s.buildId /= bid
+        WaitForAnyChange prev -> waitForState refs.stateRef refs.transitions (/= prev)
+        SetPhase bid phase -> do
+            daemonInfo <- input
+            atomically do
+                modifyTVar refs.stateRef \bs -> bs {buildId = bid, phase = phase, daemonInfo}
+                readTVar refs.stateRef >>= writeTChan refs.transitions
+        MarkDirty ck -> atomically (modifyTVar refs.dirtyRef (max (Just ck)))
+        WaitDirty -> takeDirty refs.dirtyRef
+        HasWaiters -> fmap (> 0) $ atomically (readTVar refs.waitersRef)

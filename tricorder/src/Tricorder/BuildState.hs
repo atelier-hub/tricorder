@@ -21,7 +21,6 @@ module Tricorder.BuildState
     , runDaemonInfo
     , Diagnostic (..)
     , Severity (..)
-    , BuildStateRef (..)
     , ChangeKind (..)
     , initialBuildState
     , stateLabel
@@ -31,7 +30,6 @@ module Tricorder.BuildState
 
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Time (UTCTime)
-import Effectful.Concurrent.STM (TChan, TVar)
 import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (makeRelative)
 
@@ -227,21 +225,6 @@ data CabalChangeDetected = CabalChangeDetected
     deriving stock (Eq, Show)
 data SourceChangeDetected = SourceChangeDetected FilePath FileEvent
     deriving stock (Eq, Show)
-
-
-data BuildStateRef = BuildStateRef
-    { stateRef :: TVar BuildState
-    , dirtyRef :: TVar (Maybe ChangeKind)
-    , waitersRef :: TVar Int
-    , transitions :: TChan BuildState
-    -- ^ Broadcast channel of every phase transition. Writers (setPhase /
-    -- putState) atomically update 'stateRef' AND broadcast on this chan in
-    -- the same STM transaction; waiters 'dupTChan' it on entry and consume
-    -- every transition. A transient 'Done' followed immediately by
-    -- 'Building (N+1)' is therefore observable as two messages on the
-    -- channel — the waiter can't be woken on the 'Done' and then miss it
-    -- because the 'Building' overwrote 'stateRef' before the waiter re-ran.
-    }
 
 
 initialBuildState :: DaemonInfo -> BuildState

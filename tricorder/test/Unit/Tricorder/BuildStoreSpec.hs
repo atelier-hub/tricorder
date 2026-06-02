@@ -8,12 +8,13 @@ import Test.Hspec
 
 import Atelier.Effects.Conc (Conc, runConc)
 import Atelier.Effects.Delay (Delay, runDelay)
+import Atelier.Effects.Input (Input, runInputConst)
 import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..))
 import Tricorder.Effects.BuildStore
     ( BuildStore
     , getState
     , putState
-    , runBuildStoreSTM
+    , runBuildStore
     , runBuildStoreScripted
     , waitForNext
     , waitUntilDone
@@ -178,9 +179,9 @@ runScripted :: [BuildState] -> Eff '[BuildStore] a -> a
 runScripted states = runPureEff . runBuildStoreScripted states
 
 
-runStm :: Eff '[BuildStore, Delay, Concurrent, IOE] a -> IO a
-runStm = runEff . runConcurrent . runDelay . runBuildStoreSTM
+runStm :: Eff '[BuildStore, Input DaemonInfo, Delay, Concurrent, IOE] a -> IO a
+runStm = runEff . runConcurrent . runDelay . runInputConst emptyDaemonInfo . runBuildStore
 
 
-runStmConc :: Eff '[Conc, BuildStore, Delay, Concurrent, IOE] a -> IO a
-runStmConc = runEff . runConcurrent . runDelay . runBuildStoreSTM . runConc
+runStmConc :: Eff '[Conc, BuildStore, Input DaemonInfo, Delay, Concurrent, IOE] a -> IO a
+runStmConc = runEff . runConcurrent . runDelay . runInputConst emptyDaemonInfo . runBuildStore . runConc
