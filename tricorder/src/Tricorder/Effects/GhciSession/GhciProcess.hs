@@ -5,6 +5,7 @@ module Tricorder.Effects.GhciSession.GhciProcess
     , SessionState (..)
     , InterruptDecision (..)
     , decideInterrupt
+    , waitForBannerOrFail
     , withGhciProcess
     , execGhci
     , interruptGhci
@@ -15,7 +16,7 @@ module Tricorder.Effects.GhciSession.GhciProcess
     , unaddGhci
     ) where
 
-import Control.Concurrent.STM (TVar, readTVar, retry, writeTVar)
+import Control.Concurrent.STM (TVar, modifyTVar', readTVar, retry, writeTVar)
 import Data.Default (Default (..))
 import Data.Time.Units (Second)
 import Effectful (IOE)
@@ -122,6 +123,11 @@ data GhciProcess = GhciProcess
 data GhciProcessError
     = StartupTimeout
     | UnexpectedExit Text (Maybe Text)
+    | -- | The build command exited (or printed nothing parseable) before GHCi
+      -- produced its version banner. The 'Text' is the captured stderr+stdout
+      -- output so callers can surface a useful error (e.g. cabal's dependency
+      -- resolution failure).
+      StartupFailed Text
     deriving stock (Eq, Show)
 
 
@@ -174,11 +180,10 @@ startGhciProcess config cmd dir onProgress onReady = do
     liftIO $ TIO.hPutStrLn inp ""
     File.hFlush inp
 
-    -- Wait for the version banner
-    bannerSeen <- waitForBanner config.startupTimeout out
-    unless bannerSeen do
-        liftIO $ stopProcess p
-        throwIO StartupTimeout
+    -- Wait for the version banner. We concurrently capture stderr so that if
+    -- the build command exits before printing a banner (e.g. cabal's
+    -- dependency resolution fails) we can surface its error output.
+    waitForBannerOrFail config.startupTimeout out err p
 
     -- Send fixed setup commands (protocol requirements)
     liftIO $ TIO.hPutStrLn inp ":set prompt \"\""
@@ -402,18 +407,49 @@ progressLineHook :: (GhciLoading -> Eff es ()) -> Text -> Eff es ()
 progressLineHook onProgress line = traverse_ onProgress (parseProgressLine line)
 
 
--- | Wait up to the given number of seconds for a GHCi version banner on the
--- given handle.
+-- | Wait up to the given number of seconds for a GHCi version banner on
+-- stdout, capturing stderr (and any non-banner stdout lines) in case the
+-- build command fails before printing a banner.
 --
--- Returns 'True' if the banner was seen, 'False' on timeout.
-waitForBanner
-    :: ( File :> es
+-- Throws 'StartupFailed' with the captured output if stdout EOFs (the build
+-- command exited) or 'StartupTimeout' if the banner never arrives.
+waitForBannerOrFail
+    :: ( Conc :> es
+       , Concurrent :> es
+       , File :> es
+       , IOE :> es
        , Timeout :> es
        )
-    => Second -> Handle -> Eff es Bool
-waitForBanner delay h = do
-    result <- timeout delay go
-    pure (isJust result)
+    => Second -> Handle -> Handle -> Process Handle Handle Handle -> Eff es ()
+waitForBannerOrFail delay out err p = do
+    capturedVar <- newTVarIO ([] :: [Text])
+    let captureLine line = atomically $ modifyTVar' capturedVar (line :)
+        drainStderr = drainUntilEof err captureLine
+        watchStdout = waitForBannerStdout out captureLine
+
+    Conc.scoped do
+        stderrThread <- Conc.fork drainStderr
+        result <- timeout delay $ trySync watchStdout
+        case result of
+            Just (Right ()) -> pure ()
+            Just (Left ex) -> do
+                -- stdout EOF before the banner: the build command exited. Wait
+                -- for the stderr drain to reach EOF too (bounded, in case the
+                -- pipe lingers) so we surface its *complete* output — e.g.
+                -- cabal's dependency-resolution error — rather than whatever
+                -- the drain happened to have read so far.
+                _ <- timeout (1 :: Second) (Conc.await stderrThread)
+                captured <- atomically $ readTVar capturedVar
+                liftIO $ stopProcess p
+                throwIO $ StartupFailed $ fromMaybe (startupExitedMessage ex) (renderCapturedLines captured)
+            Nothing -> do
+                captured <- atomically $ readTVar capturedVar
+                liftIO $ stopProcess p
+                throwIO $ maybe StartupTimeout StartupFailed (renderCapturedLines captured)
+
+
+waitForBannerStdout :: (File :> es) => Handle -> (Text -> Eff es ()) -> Eff es ()
+waitForBannerStdout h captureLine = go
   where
     isVersionLine :: Text -> Bool
     isVersionLine line =
@@ -429,8 +465,35 @@ waitForBanner delay h = do
             Right line ->
                 if isVersionLine line then
                     pure ()
-                else
+                else do
+                    captureLine line
                     go
+
+
+drainUntilEof :: (File :> es) => Handle -> (Text -> Eff es ()) -> Eff es ()
+drainUntilEof h onLine = go
+  where
+    go = do
+        result <- try @E.IOException $ File.hGetLine h
+        case result of
+            Left _ -> pure ()
+            Right line -> onLine line >> go
+
+
+-- | Render the captured (reverse-order) output lines into an error message,
+-- stripping ANSI escapes and dropping blank lines. Returns 'Nothing' when
+-- nothing useful remains, so callers can fall back to a generic message.
+renderCapturedLines :: [Text] -> Maybe Text
+renderCapturedLines capturedRev =
+    let cleaned = filter (not . T.null . T.strip) (map stripAnsi (reverse capturedRev))
+    in  if null cleaned then Nothing else Just (T.intercalate "\n" cleaned)
+
+
+-- | Fallback message when the build command exited before the banner without
+-- printing anything we could capture.
+startupExitedMessage :: SomeException -> Text
+startupExitedMessage ex =
+    "Build command exited before GHCi started: " <> toText (displayException ex)
 
 
 -- | Parse already-drained GHCi output lines into a 'LoadResult', fetching the

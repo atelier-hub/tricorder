@@ -98,6 +98,7 @@ isBuilding s = case s.phase of
     Restarting -> True
     Testing _ -> True
     Done _ -> False
+    BuildFailed _ -> False
 
 
 -- | Block until the build state satisfies @predicate@, then return it.

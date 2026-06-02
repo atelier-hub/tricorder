@@ -226,6 +226,7 @@
             (hsPkgs."effectful-core" or (errorHandler.buildDepError "effectful-core"))
             (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))
             (hsPkgs."hspec" or (errorHandler.buildDepError "hspec"))
+            (hsPkgs."process" or (errorHandler.buildDepError "process"))
             (hsPkgs."stm" or (errorHandler.buildDepError "stm"))
             (hsPkgs."tasty" or (errorHandler.buildDepError "tasty"))
             (hsPkgs."tasty-discover" or (errorHandler.buildDepError "tasty-discover"))

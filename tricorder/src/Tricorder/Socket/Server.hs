@@ -166,6 +166,7 @@ respondWhenDone h = awaitResult >>= sendJson h
             Restarting -> waitUntilDone
             Testing _ -> waitUntilDone
             Done _ -> awaitBuildStart (5 :: Int) s
+            BuildFailed _ -> pure s
 
     -- Poll up to n × 50ms for a build to start, then wait for it to finish.
     awaitBuildStart 0 s = pure s
@@ -177,6 +178,7 @@ respondWhenDone h = awaitResult >>= sendJson h
             Restarting -> waitUntilDone
             Testing _ -> waitUntilDone
             Done _ -> awaitBuildStart (n - 1) s'
+            BuildFailed _ -> pure s'
 
 
 -- | Stream a JSON object after each state change (loops until handle closes or error).
@@ -206,7 +208,10 @@ respondDiagnostic idx h = do
                         <> show (length r.diagnostics)
                         <> ")"
             Just d -> sendJson h (d :: Diagnostic)
-        _ -> sendJson h $ ErrorResponse "Build in progress"
+        BuildFailed msg -> sendJson h $ ErrorResponse $ "Build command failed:\n" <> msg
+        Building _ -> sendJson h $ ErrorResponse "Build in progress"
+        Restarting -> sendJson h $ ErrorResponse "Build in progress"
+        Testing _ -> sendJson h $ ErrorResponse "Build in progress"
 
 
 -- | Look up source for each requested module and send the results as a JSON array.

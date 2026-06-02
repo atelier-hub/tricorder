@@ -3,9 +3,8 @@ module Unit.Tricorder.BuilderSpec (spec_Builder) where
 import Control.Concurrent.STM (modifyTVar', newTVarIO, readTVar, retry, writeTVar)
 import Control.Exception (ErrorCall (..), throwIO)
 import Data.Default (def)
-import Data.IORef (IORef)
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian)
-import Effectful (IOE, runEff, runPureEff)
+import Effectful (runEff, runPureEff)
 import Effectful.Concurrent (Concurrent, runConcurrent)
 import Effectful.Concurrent.STM (atomically)
 import Effectful.Dispatch.Dynamic (interpret_)
@@ -14,29 +13,29 @@ import Effectful.Exception (trySync)
 import Effectful.Reader.Static (runReader)
 import Effectful.State.Static.Shared (evalState, runState)
 import Effectful.Writer.Static.Shared (Writer, execWriter, tell)
-import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe, shouldMatchList)
+import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe, shouldMatchList, shouldSatisfy)
 
 import Control.Concurrent.STM qualified as STM
-import Data.IORef qualified as IORef
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
 import Atelier.Effects.Chan (runChan)
 import Atelier.Effects.Clock (runClockConst)
 import Atelier.Effects.Conc (runConc)
-import Atelier.Effects.Debounce (debounced, runDebounce)
+import Atelier.Effects.Debounce (debounced, runDebounce, runDebounceNoOp)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.FileWatcher (FileEvent (..))
 import Atelier.Effects.Input (runInputConst)
 import Atelier.Effects.Log (runLogNoOp)
 import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
-import Atelier.Effects.Publishing (Pub, listen_, publish, runPubSub)
+import Atelier.Effects.Publishing (listen_, publish, runPubSub)
 import Atelier.Time (Millisecond)
 import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)
     , BuildResult (..)
     , BuildState (..)
+    , CabalChangeDetected (..)
     , DaemonInfo (..)
     , Diagnostic (..)
     , Severity (..)
@@ -62,22 +61,16 @@ import Tricorder.Builder.Dispatch
     , filterToWatchDirs
     , mergeDiagnostics
     )
-import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..))
+import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..), runGhciSessionScripted)
 import Tricorder.Effects.GhciSession.GhciParser (extractTitle, resolveKnownTargets)
-import Tricorder.Effects.SessionStore
-    ( SessionStore (..)
-    , SessionStoreReloaded (..)
-    )
 import Tricorder.Effects.TestRunner (TestRunner (..), runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Session (..))
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Delay qualified as Delay
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
 import Tricorder.Effects.BuildStore qualified as BuildStore
-import Tricorder.Effects.SessionStore qualified as SessionStore
 
 
 spec_Builder :: Spec
@@ -89,7 +82,8 @@ spec_Builder = do
     describe "requestTestRunsForNewBuildResults" testRequestTestRunsForNewBuildResults
     describe "setNewPhase" testSetNewPhase
     describe "restartOnCabalChange" testRestartOnCabalChange
-    describe "rebuildOnChange (cabal reload)" testRebuildOnCabalReload
+    describe "withCabalChangeRestarts" testWithCabalChangeRestarts
+    describe "buildWithGhciOnChange (startup-failure recovery)" testBuildWithGhciRecovery
     describe "reloadOnSourceChange" testReloadOnSourceChange
     describe "handleSourceChanges (cycle serialization)" testCycleSerialization
     describe "interruptCurrent" testInterruptCurrent
@@ -120,66 +114,97 @@ testRestartOnCabalChange = do
                 BuildStore.getState
 
 
--- | Reproduces the hpack/cabal-reload bug: when a cabal file change leaves
--- 'BuilderSession's projected fields (command, targets, testTargets, watchDirs)
--- unchanged, 'reloader.reload' silently no-ops and the builder action is never
--- restarted. In the live daemon this manifests as the UI staying on the
--- previous build's "Done" with no rebuild kicked off after hpack rewrites
--- @tricorder.cabal@.
-testRebuildOnCabalReload :: Spec
-testRebuildOnCabalReload = do
-    it "restarts the builder action when a cabal reload arrives" do
-        runsRef <- IORef.newIORef (0 :: Int)
-        -- Two sessions with identical BuilderSession projections, differing
-        -- only in a field that the projection ignores (outputFile). Mirrors
-        -- the real scenario where hpack rewrites the cabal file without
-        -- changing GHCi targets.
-        let baseSession = mkSession Nothing
-            sameProjection = mkSession (Just "/other")
-        sessionRef <- IORef.newIORef baseSession
+testWithCabalChangeRestarts :: Spec
+testWithCabalChangeRestarts = do
+    it "restarts the supervised action when CabalChangeDetected is published" do
+        countVar <- newTVarIO @Int 0
 
-        _ <- runMutable sessionRef do
-            Builder.withBuilderSession baseSession \reloader _cfg -> do
-                n <- liftIO $ IORef.atomicModifyIORef' runsRef (\x -> (x + 1, x + 1))
-                if n == 1 then do
-                    -- Let the inner Iter.fromEvents iterator subscribe.
-                    Delay.wait (1 :: Millisecond)
-                    liftIO $ IORef.writeIORef sessionRef sameProjection
-                    reloader.reload
-                    -- Give the restart a chance to fire (it won't, with the bug).
-                    Delay.wait (1 :: Millisecond)
-                    throwError StopSignal
-                else
-                    throwError StopSignal
-
-        runs <- IORef.readIORef runsRef
-        runs `shouldBe` 2
+        runTest do
+            Conc.scoped do
+                _ <-
+                    Conc.fork
+                        $ Builder.withCabalChangeRestarts
+                            (pure ())
+                            (pure ())
+                            ( \_ -> do
+                                atomically (modifyTVar' countVar (+ 1))
+                                -- Block forever; we want to verify the action is
+                                -- cancelled and re-entered, not that it returns.
+                                forever (Delay.wait (10 :: Millisecond))
+                            )
+                Delay.wait (20 :: Millisecond) -- let the first iteration land
+                publish CabalChangeDetected
+                Delay.wait (50 :: Millisecond) -- let the restart land
+        finalCount <- STM.atomically (readTVar countVar)
+        finalCount `shouldBe` 2
   where
-    -- Constructor syntax avoids the -Wambiguous-fields warning that record
-    -- update would trigger (Session and Config in Tricorder.Session share
-    -- field names).
-    mkSession outputFile =
-        Session
-            { command = "cmd"
-            , targets = []
-            , testTargets = []
-            , watchDirs = []
-            , outputFile
-            , replBuildDir = "/tmp"
-            , testTimeout = 10
-            }
-
-    runMutable ref =
+    runTest =
         runEff
             . runConcurrent
             . runTracingNoOp
             . runClockConst epoch
             . runChan
             . runDelay
-            . runPubSub @SessionStoreReloaded
-            . runSessionStoreMutable ref
-            . runErrorNoCallStack @StopSignal
+            . runLogNoOp
+            . runPubSub @CabalChangeDetected
             . runConc
+
+
+-- | Regression for the startup-failure dead-end: when the build command
+-- fails to start, 'buildWithGhciOnChange' must surface 'BuildFailed' and then
+-- stay able to retry once a source file changes. The original code parked on
+-- 'atomically retry' after 'BuildFailed', so it could only ever recover via a
+-- *cabal* change (the coordinator cancelling its scope) — a source edit that
+-- fixed the underlying problem was ignored and the daemon stayed stuck.
+testBuildWithGhciRecovery :: Spec
+testBuildWithGhciRecovery = do
+    it "retries the build on a source change after a startup failure" do
+        phases <-
+            runTest
+                -- First launch throws (startup failure); the retry succeeds.
+                [ Left (toException (ErrorCall "ghci failed to start"))
+                , Right successLoad
+                ]
+                do
+                    Conc.scoped do
+                        Conc.fork_ (Builder.buildWithGhciOnChange (def @BuilderSession))
+                        Delay.wait (40 :: Millisecond) -- let the first launch fail + subscribe
+                        publish (SourceChangeDetected "/abs/path/Foo.hs" Modified)
+                        Delay.wait (60 :: Millisecond) -- let the retry land
+                        -- The failed launch reports BuildFailed exactly once.
+        length [() | EnteringNewPhase _ (BuildFailed _) <- phases] `shouldBe` 1
+        -- The source change drove a second, successful launch to completion.
+        -- With the bug the builder is parked, so no Done is ever emitted.
+        length [() | EnteringNewPhase _ (Done _) <- phases] `shouldSatisfy` (>= 1)
+  where
+    successLoad =
+        LoadResult
+            { moduleCount = 1
+            , compiledFiles = Set.empty
+            , loadedModules = Map.empty
+            , targetNames = []
+            , diagnostics = []
+            }
+
+    runTest script body =
+        runEff
+            . runConcurrent
+            . runTracingNoOp
+            . runClockConst epoch
+            . runChan
+            . runDelay
+            . runReader (ProjectRoot "/")
+            . evalState (BuildId 1)
+            . evalState emptyBuilderState
+            . runLogNoOp
+            . execWriter @[EnteringNewPhase]
+            . runBuildStoreCapture
+            . runTestRunnerScripted []
+            . runGhciSessionScripted script
+            . runPubSub @SourceChangeDetected
+            . runConc
+            . runDebounceNoOp
+            $ body
 
 
 --------------------------------------------------------------------------------
@@ -188,18 +213,6 @@ testRebuildOnCabalReload = do
 
 data StopSignal = StopSignal
     deriving stock (Show)
-
-
-runSessionStoreMutable
-    :: (IOE :> es, Pub SessionStoreReloaded :> es)
-    => IORef Session
-    -> Eff (SessionStore : es) a
-    -> Eff es a
-runSessionStoreMutable ref = interpret_ \case
-    Get -> liftIO $ IORef.readIORef ref
-    RawReload -> do
-        session <- liftIO $ IORef.readIORef ref
-        publish (SessionStoreReloaded session)
 
 
 testReloadOnSourceChange :: Spec

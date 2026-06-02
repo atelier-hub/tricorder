@@ -250,6 +250,7 @@ tests:
     - data-default
     - effectful
     - hspec
+    - process
     - stm
     - tasty
     - tasty-discover

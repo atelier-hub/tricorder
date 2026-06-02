@@ -58,6 +58,14 @@ import Tricorder.TestOutput (stripGhciNoise)
 import Atelier.Effects.Console qualified as Console
 
 
+-- | Print a build-command failure message and exit non-zero.
+reportBuildFailed :: (Console :> es, Exit :> es) => Text -> Eff es a
+reportBuildFailed msg = do
+    Console.putTextLn "Build command failed:"
+    Console.putTextLn msg
+    exitFailure
+
+
 showStatus
     :: ( Clock :> es
        , Console :> es
@@ -94,6 +102,7 @@ showStatus opts = do
         Building _ -> Console.putStrLn "Building..."
         Restarting -> Console.putStrLn "Restarting..."
         Testing _ -> Console.putStrLn "Testing..."
+        BuildFailed msg -> reportBuildFailed msg
         Done r -> do
             tz <- currentTimeZone
             case expand of
@@ -203,6 +212,7 @@ showTests opts = do
                 Restarting -> Console.putStrLn "Daemon restarting, no test results yet."
                 Testing r -> renderTestRuns r.testRuns
                 Done r -> renderTestRuns r.testRuns
+                BuildFailed msg -> reportBuildFailed msg
   where
     renderTestRuns [] = Console.putStrLn "No test results."
     renderTestRuns testRuns
