@@ -517,6 +517,7 @@ test-suite tricorder-test
     , effectful-core
     , effectful-plugin
     , hspec
+    , process
     , stm
     , tasty
     , tasty-discover

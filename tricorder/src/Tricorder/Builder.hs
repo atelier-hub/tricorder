@@ -1,6 +1,5 @@
 module Tricorder.Builder
     ( component
-    , withBuilderSession
     , BuilderSession (..)
     , NewLoadResult (..)
     , EnteringNewPhase (..)
@@ -14,17 +13,18 @@ module Tricorder.Builder
     , onRestart
     , reloadOnSourceChange
     , setNewPhase
+    , withCabalChangeRestarts
     , withCycleLock
     , newCycleLock
     , CycleLock
     ) where
 
-import Control.Concurrent.STM (TMVar, newTMVar, putTMVar, readTVar, retry, takeTMVar, writeTVar)
+import Control.Concurrent.STM (TMVar, check, newTMVar, putTMVar, readTVar, retry, takeTMVar, writeTVar)
 import Data.Default (Default (..))
 import Data.Time (diffUTCTime)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (atomically, newTVar)
-import Effectful.Exception (bracket_, trySync)
+import Effectful.Exception (bracket_, finally, trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, get, modify, put, state)
 import System.FilePath (normalise)
@@ -33,7 +33,6 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
 import Atelier.Component (Component (..), defaultComponent)
-import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce, debounced)
@@ -62,7 +61,8 @@ import Tricorder.Builder.Dispatch
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
 import Tricorder.Effects.GhciSession.GhciParser (resolveKnownTargets)
-import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
+import Tricorder.Effects.GhciSession.GhciProcess (GhciProcessError (..))
+import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
@@ -82,7 +82,6 @@ import Tricorder.Effects.TestRunner qualified as TestRunner
 -- from the watcher.
 component
     :: ( BuildStore :> es
-       , Chan :> es
        , Clock :> es
        , Conc :> es
        , Concurrent :> es
@@ -94,7 +93,6 @@ component
        , State BuildId :> es
        , State BuilderState :> es
        , Sub CabalChangeDetected :> es
-       , Sub SessionStoreReloaded :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
@@ -102,9 +100,7 @@ component
 component =
     defaultComponent
         { name = "Builder"
-        , listeners = do
-            session <- SessionStore.get
-            pure [withBuilderSession session restartableListeners]
+        , listeners = pure [coordinator]
         }
 
 
@@ -130,35 +126,64 @@ instance Default BuilderSession where
         session = def @Session
 
 
--- | Tracks the parts of 'Session' that 'Builder' cares about, and restarts the
--- passed function whenever those parts change.
-withBuilderSession
-    :: ( Chan :> es
-       , Conc :> es
-       , SessionStore :> es
-       , Sub SessionStoreReloaded :> es
+-- | Project the parts of 'Session' the Builder cares about.
+mkBuilderSession :: Session -> BuilderSession
+mkBuilderSession session =
+    BuilderSession
+        { command = session.command
+        , targets = session.targets
+        , testTargets = session.testTargets
+        , watchDirs = session.watchDirs
+        }
+
+
+-- | Run @action@ in a loop that restarts whenever a 'CabalChangeDetected'
+-- event arrives. At most one iteration of @action@ runs at any moment: cabal
+-- events arriving during a restart collapse into a single next iteration.
+--
+-- A TVar flag funnels the events: the cabal listener writes 'True' to it; a
+-- single coordinator drains it via 'restartableForkWith', runs @preRestart@,
+-- and exits the inner scope. Scope teardown cancels the current @action@
+-- (including the 'cabal repl' subprocess via its bracket) and waits for it to
+-- finish before the next iteration starts — so we never have two builders
+-- racing for the same dist-newstyle directory.
+withCabalChangeRestarts
+    :: ( Conc :> es
+       , Concurrent :> es
+       , Log :> es
+       , Sub CabalChangeDetected :> es
        )
-    => Session
-    -> (SessionStore.Reloader es -> BuilderSession -> Eff es ())
+    => Eff es ()
+    -- ^ Pre-restart hook: runs in the coordinator thread after the flag has
+    -- been drained but before the inner scope is torn down. Use this to set
+    -- the UI to 'Restarting' and reload the session.
+    -> Eff es r
+    -- ^ Setup: runs at the start of each iteration, before @action@ is forked.
+    -> (r -> Eff es Void)
+    -- ^ Inner action. Must never return.
     -> Eff es Void
-withBuilderSession =
-    -- 'withReloadingSubSession' (not 'withSubSession') so cabal-file edits
-    -- always restart GHCi, even when the projected fields (command, targets,
-    -- testTargets, watchDirs) didn't change. Most cabal edits change ghc-
-    -- options or deps, which are invisible to the projection but still
-    -- require a fresh GHCi.
-    SessionStore.withReloadingSubSession mkBuilderSession
+withCabalChangeRestarts preRestart setup action = do
+    needsRestart <- atomically (newTVar False)
+    Conc.scoped do
+        Conc.fork_ $ Conc.restartableForkWith (signal needsRestart) setup action
+        Sub.listen_ @CabalChangeDetected $ \_ -> do
+            Log.info "Cabal file changed; queued restart"
+            atomically (writeTVar needsRestart True)
   where
-    mkBuilderSession session =
-        BuilderSession
-            { command = session.command
-            , targets = session.targets
-            , testTargets = session.testTargets
-            , watchDirs = session.watchDirs
-            }
+    signal needsRestart = do
+        atomically do
+            check =<< readTVar needsRestart
+            writeTVar needsRestart False
+        preRestart
 
 
-restartableListeners
+-- | Owns the Builder's lifecycle.
+--
+-- Cabal-change events flip a TVar; the coordinator consumes the flag,
+-- transitions the UI to 'Restarting', reloads the session, then exits the
+-- inner scope which cancels the in-flight builder. The next iteration
+-- forks a fresh builder with the reloaded session.
+coordinator
     :: ( BuildStore :> es
        , Clock :> es
        , Conc :> es
@@ -167,20 +192,35 @@ restartableListeners
        , GhciSession :> es
        , Log :> es
        , Reader ProjectRoot :> es
+       , SessionStore :> es
        , State BuildId :> es
        , State BuilderState :> es
        , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
-    => SessionStore.Reloader es
-    -> BuilderSession
-    -> Eff es ()
-restartableListeners reloader config = bracket_ (pure ()) onRestart do
-    ProjectRoot projectRoot <- ask
-    Log.info $ "Builder.component: resolved command = " <> config.command
-    Log.info $ "Builder.component: projectRoot = " <> toText projectRoot
-    void $ buildWithGhciOnChange reloader config
+    => Eff es Void
+coordinator = withCabalChangeRestarts preRestart setup action
+  where
+    preRestart = do
+        -- Flip the UI to 'Restarting' immediately so the user sees the change
+        -- has been picked up before scope teardown (which kills cabal repl
+        -- and waits for graceful exit).
+        buildId <- get
+        setNewPhase $ EnteringNewPhase buildId Restarting
+        -- Pick up cabal/package.yaml edits before the next iteration starts.
+        SessionStore.rawReload
+
+    setup = do
+        session <- SessionStore.get
+        let config = mkBuilderSession session
+        ProjectRoot projectRoot <- ask
+        Log.info $ "Builder.component: resolved command = " <> config.command
+        Log.info $ "Builder.component: projectRoot = " <> toText projectRoot
+        pure config
+
+    action config =
+        buildWithGhciOnChange config `finally` onRestart
 
 
 onRestart
@@ -231,21 +271,19 @@ buildWithGhciOnChange
        , Reader ProjectRoot :> es
        , State BuildId :> es
        , State BuilderState :> es
-       , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
-    => SessionStore.Reloader es
-    -> BuilderSession
+    => BuilderSession
     -> Eff es Void
-buildWithGhciOnChange reloader config = forever do
+buildWithGhciOnChange config = forever do
     put emptyBuilderState
     projectRoot <- ask
     BuildId n <- get
     Log.info $ "Starting GHCi session #" <> show n <> ": " <> config.command
 
     initialStartTime <- Clock.currentTime
-    GhciSession.withGhci config.command projectRoot \initialLoad controls -> do
+    result <- trySync $ GhciSession.withGhci config.command projectRoot \initialLoad controls -> do
         initialEndTime <- Clock.currentTime
         handleInitialBuild config initialStartTime initialEndTime initialLoad
         modify \s ->
@@ -253,7 +291,31 @@ buildWithGhciOnChange reloader config = forever do
                 { loadedModules = resolveKnownTargets Map.empty initialLoad
                 , knownTargets = KnownTargetNames (Set.fromList initialLoad.targetNames)
                 }
-        rebuildOnChange reloader config controls
+        rebuildOnChange config controls
+    case result of
+        Right _ -> pure ()
+        Left ex -> do
+            buildId <- get
+            Log.err $ "GHCi session failed to start: " <> show ex
+            setNewPhase $ EnteringNewPhase buildId $ BuildFailed $ renderStartupError ex
+            -- Wait for a source change, then loop to retry the launch. A cabal
+            -- change is handled out-of-band by the coordinator cancelling this
+            -- scope. Without this, a startup failure was a dead end: the user
+            -- could fix the offending source file and nothing would happen,
+            -- because no 'SourceChangeDetected' listener is active on this path.
+            Log.info "Build command failed; waiting for a source change to retry"
+            void $ Sub.listenOnce_ @SourceChangeDetected
+
+
+renderStartupError :: SomeException -> Text
+renderStartupError ex = case fromException ex of
+    Just (StartupFailed msg) -> msg
+    Just StartupTimeout -> "Build command did not produce a GHCi banner before timing out."
+    Just (UnexpectedExit cmd lastLine) ->
+        "Build command exited unexpectedly: "
+            <> cmd
+            <> maybe "" (\l -> "\n" <> l) lastLine
+    Nothing -> toText (displayException ex)
 
 
 handleInitialBuild
@@ -295,21 +357,15 @@ rebuildOnChange
        , Reader ProjectRoot :> es
        , State BuildId :> es
        , State BuilderState :> es
-       , Sub CabalChangeDetected :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
-    => SessionStore.Reloader es
-    -> BuilderSession
+    => BuilderSession
     -> GhciSession.Controls (Eff es)
     -> Eff es Void
-rebuildOnChange reloader config controls = Conc.scoped do
+rebuildOnChange config controls = Conc.scoped do
     BuildId n <- get
     Log.debug $ "Builder: waiting for dirty flag (build #" <> show n <> ")"
-    Conc.fork_ $ Sub.listen_ @CabalChangeDetected $ \_ -> do
-        Log.info "Cabal file changed; reloading session"
-        -- Signals to `withBuilderSession` that the session should be reloaded.
-        reloader.reload
     handleSourceChanges config controls
 
 

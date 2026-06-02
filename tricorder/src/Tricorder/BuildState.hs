@@ -162,6 +162,7 @@ data BuildPhase
     | Restarting
     | Testing BuildResult
     | Done BuildResult
+    | BuildFailed Text
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
 
@@ -213,6 +214,7 @@ stateLabel (Done result)
     | any (\m -> m.severity == SError) result.diagnostics = "error"
     | any (\m -> m.severity == SWarning) result.diagnostics = "warning"
     | otherwise = "ok"
+stateLabel (BuildFailed _) = "error"
 
 
 -- | Classifies what kind of file change triggered a dirty signal.

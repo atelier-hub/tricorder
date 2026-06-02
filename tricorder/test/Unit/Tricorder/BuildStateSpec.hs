@@ -55,6 +55,20 @@ spec_BuildState = do
                 bs = mkBuildState [msg]
             eitherDecode (encode bs) `shouldBe` Right bs
 
+        -- Guards the wire format for the BuildFailed phase: the captured
+        -- cabal/build error (multi-line, Unicode) must round-trip intact so
+        -- the CLI/UI clients can render it.
+        it "survives a BuildFailed phase with a multi-line message" do
+            let bs =
+                    mkBuildState [] :: BuildState
+                failed =
+                    bs
+                        { phase =
+                            BuildFailed
+                                "cabal: Could not resolve dependencies:\n[__0] trying: \8216base\8217\nrejecting: ..."
+                        }
+            eitherDecode (encode failed) `shouldBe` Right failed
+
 
 mkBuildState :: [Diagnostic] -> BuildState
 mkBuildState msgs =

@@ -3,6 +3,7 @@ module Unit.Tricorder.Effects.GhciSession.GhciProcessSpec (spec_GhciProcess) whe
 import Control.Concurrent.STM (newTVarIO)
 import Control.Exception (catch)
 import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.Time.Units (Second)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
 import Effectful.Exception (trySync)
@@ -21,6 +22,9 @@ import System.Process.Typed
     )
 import Test.Hspec
 
+import Data.Text qualified as T
+import System.Process qualified as Process
+
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.File (runFile)
@@ -28,20 +32,80 @@ import Atelier.Effects.Timeout (runTimeout)
 import Atelier.Time (Millisecond)
 import Tricorder.Effects.GhciSession.GhciProcess
     ( GhciProcess (..)
+    , GhciProcessError (..)
     , InterruptDecision (..)
     , SessionState (..)
     , decideInterrupt
     , execGhci
+    , waitForBannerOrFail
     )
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Delay qualified as Delay
+import Atelier.Effects.File qualified as File
 
 
 spec_GhciProcess :: Spec
 spec_GhciProcess = do
     describe "decideInterrupt" testDecideInterrupt
     describe "execGhci" testExecGhciScope
+    describe "waitForBannerOrFail" testWaitForBannerOrFail
+
+
+-- | Regression: when the build command exits before printing a GHCi banner,
+-- 'waitForBannerOrFail' must surface the *complete* stderr output in the
+-- 'StartupFailed' error. The original implementation snapshotted the captured
+-- lines as soon as the process exited (it waited on 'waitExitCode'), racing
+-- the concurrent stderr drain — so a burst of error lines still buffered in
+-- the pipe was truncated, and the real cabal/build failure was lost.
+testWaitForBannerOrFail :: Spec
+testWaitForBannerOrFail =
+    it "captures the full stderr output when the command exits before the banner" do
+        let lineCount = 200 :: Int
+            lastLine = "err line " <> show lineCount
+        -- 'true' exits immediately. We only need it for the 'Process' handle
+        -- that 'waitForBannerOrFail' stops on the failure path; the banner and
+        -- error streams are pipes we drive ourselves, so the timing is
+        -- deterministic rather than a race against the OS pipe buffer.
+        p <-
+            startProcess
+                $ setStdin createPipe
+                $ setStdout createPipe
+                $ setStderr createPipe
+                $ shell "true"
+        _ <- waitExitCode p
+        (bannerOut, bannerOutW) <- Process.createPipe
+        (errR, errW) <- Process.createPipe
+        result <-
+            runEff
+                . runConcurrent
+                . runTimeout
+                . runDelay
+                . runFile
+                . runConc
+                $ do
+                    -- No banner will ever arrive: close the write end so the
+                    -- wait sees EOF at once and takes the "command exited"
+                    -- failure branch.
+                    File.hClose bannerOutW
+                    -- Producer: pause long enough that a snapshot-at-exit reads
+                    -- an empty buffer, THEN stream the whole error log and
+                    -- close so the drain sees EOF. A correct implementation
+                    -- awaits that drain before reading the captured lines.
+                    _ <- Conc.fork do
+                        Delay.wait (30 :: Millisecond)
+                        for_ [1 .. lineCount] \i ->
+                            File.hPutBsLn errW (encodeUtf8 ("err line " <> show i :: Text))
+                        File.hClose errW
+                    trySync (waitForBannerOrFail (5 :: Second) bannerOut errR p)
+        _ <- (Right <$> stopProcess p) `catch` \(_ :: SomeException) -> pure (Left ())
+        case result of
+            Right () -> expectationFailure "expected waitForBannerOrFail to throw a startup error"
+            Left ex -> case fromException ex of
+                Just (StartupFailed msg) ->
+                    (lastLine `T.isInfixOf` msg) `shouldBe` True
+                other ->
+                    expectationFailure ("expected StartupFailed, got: " <> show other)
 
 
 testDecideInterrupt :: Spec

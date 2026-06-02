@@ -201,6 +201,25 @@ viewBuildPhase tz = \case
     Restarting -> warn $ txt "Restarting..."
     Testing result -> vBoxSpaced 1 [viewBuildResult tz result, viewTestRuns result.testRuns]
     Done result -> vBoxSpaced 1 [viewBuildResult tz result, viewTestRuns result.testRuns]
+    BuildFailed msg -> viewBuildFailed msg
+
+
+viewBuildFailed :: Text -> Widget Viewports
+viewBuildFailed msg =
+    vBox
+        [ err $ txt "Build command failed"
+        , vScrollViewport DiagnosticViewport (txtWrap <$> T.lines msg)
+        ]
+
+
+-- | A vertically-scrollable viewport with clickable scrollbars on the right.
+vScrollViewport :: Viewports -> [Widget Viewports] -> Widget Viewports
+vScrollViewport vp children =
+    withClickableVScrollBars (\_ _ -> vp)
+        $ withVScrollBarHandles
+        $ withVScrollBars OnRight
+        $ viewport vp Vertical
+        $ vBox children
 
 
 viewBuildResult :: TimeZone -> BuildResult -> Widget Viewports
@@ -229,12 +248,7 @@ viewBuildResult tz result
                     , viewDuration result.duration
                     , viewTimestamp tz result.completedAt
                     ]
-                , withClickableVScrollBars (\_ _ -> DiagnosticViewport)
-                    $ withVScrollBarHandles
-                    $ withVScrollBars OnRight
-                    $ viewport DiagnosticViewport Vertical
-                    $ vBox
-                    $ viewDiagnostic <$> msgs
+                , vScrollViewport DiagnosticViewport (viewDiagnostic <$> msgs)
                 ]
 
 
@@ -320,6 +334,7 @@ viewBuildPhaseLine tz = \case
     Restarting -> warn $ txt "Restarting..."
     Testing result -> viewBuildResultLine tz result
     Done result -> viewBuildResultLine tz result
+    BuildFailed _ -> err $ txt "Build command failed"
 
 
 viewBuildResultLine :: TimeZone -> BuildResult -> Widget n
@@ -355,12 +370,7 @@ viewTestPanel tv runs = scrollableRuns tv runs
 
 scrollableRuns :: TestView -> [TestRun] -> Widget Viewports
 scrollableRuns tv runs =
-    withClickableVScrollBars (\_ _ -> TestViewport)
-        $ withVScrollBarHandles
-        $ withVScrollBars OnRight
-        $ viewport TestViewport Vertical
-        $ vBox
-        $ viewTestRunDetail tv <$> runs
+    vScrollViewport TestViewport (viewTestRunDetail tv <$> runs)
 
 
 viewTestRunDetail :: TestView -> TestRun -> Widget n
