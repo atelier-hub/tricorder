@@ -1,6 +1,6 @@
 module Tricorder.Effects.TestRunner
     ( -- * Effect
-      TestRunner
+      TestRunner (..)
     , runTestSuite
     , interruptCurrent
     , resetAbort
@@ -13,9 +13,13 @@ module Tricorder.Effects.TestRunner
       -- * Parsing utilities
     , GhciOutcome (..)
     , detectOutcome
+
+      -- * Internal helpers (exported for testing)
+    , abortGatedProgress
+    , reportTestProgress
     ) where
 
-import Control.Concurrent.STM (readTVar, writeTVar)
+import Control.Concurrent.STM (TVar, readTVar, writeTVar)
 import Control.Exception (throwIO)
 import Data.Default (def)
 import Data.Time.Units (Second)
@@ -43,9 +47,9 @@ import Tricorder.BuildState
     , TestRunCompletion (..)
     , TestRunError (..)
     )
-import Tricorder.Effects.BuildStore (BuildStore, getState, setPhase)
+import Tricorder.Effects.BuildStore (BuildStore, modifyPhase)
 import Tricorder.Effects.GhciSession.GhciParser (GhciLoading (..))
-import Tricorder.Effects.GhciSession.GhciProcess (GhciProcess, execGhci, interruptGhci, withGhciProcess)
+import Tricorder.Effects.GhciSession.GhciProcess (GhciProcess, execGhci, terminateGhciProcess, withGhciProcess)
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
@@ -91,10 +95,17 @@ runTestRunnerIO act = do
     abortedRef <- newTVarIO False
     interpretWith_ act \case
         InterruptCurrent -> do
+            -- Terminate (not just SIGINT) the test process: hspec/tasty
+            -- install their own SIGINT handlers that finalise the current
+            -- run rather than aborting it. Each test runs in its own
+            -- short-lived @cabal repl@ process, so killing it outright is
+            -- safe and gets a prompt abort. 'execGhci' then raises
+            -- 'UnexpectedExit', 'trySync' catches it, and the run loop
+            -- short-circuits on @abortedRef@.
             mProc <- atomically do
                 writeTVar abortedRef True
                 readTVar currentProcRef
-            for_ mProc interruptGhci
+            for_ mProc terminateGhciProcess
         ResetAbort -> atomically (writeTVar abortedRef False)
         IsAborted -> atomically (readTVar abortedRef)
         RunTestSuite target -> do
@@ -103,18 +114,37 @@ runTestRunnerIO act = do
                 pure $ TestRunErrored $ TestRunError {target, message = "Test run aborted"}
             else do
                 Session {testTimeout} <- SessionStore.get
-                let onProgress = reportTestProgress target
+                let onProgress = abortGatedProgress abortedRef target
                     noProgress = \_ -> pure ()
-                result <- trySync $ withGhciProcess def ("cabal repl " <> target) projectRoot onProgress \ghci _ ->
-                    bracket_
-                        (atomically (writeTVar currentProcRef (Just ghci)))
+                    -- Register the process as soon as 'startGhciProcess'
+                    -- constructs it — before the initial @cabal repl@
+                    -- compile drain runs. Without this, an interrupt that
+                    -- arrives during that drain would find
+                    -- 'currentProcRef' empty and have nothing to kill, so
+                    -- the new build's cycle would have to wait several
+                    -- seconds for the doomed @cabal repl@ to finish
+                    -- compiling its test code before the cycle lock was
+                    -- released.
+                    onReady ghci = atomically (writeTVar currentProcRef (Just ghci))
+                -- Outer bracket: always clear 'currentProcRef' on exit,
+                -- whether 'withGhciProcess' completed normally or threw.
+                result <- trySync
+                    $ bracket_
+                        (pure ())
                         (atomically (writeTVar currentProcRef Nothing))
-                        $ case testTimeout of
-                            secs | secs <= 0 -> Right <$> execGhci ghci ":main" noProgress
-                            secs ->
-                                timeout (fromIntegral secs :: Second) (execGhci ghci ":main" noProgress) >>= \case
-                                    Nothing -> pure (Left secs)
-                                    Just ls -> pure (Right ls)
+                    $ withGhciProcess def ("cabal repl " <> target) projectRoot onProgress onReady \ghci _ ->
+                        atomically (readTVar abortedRef) >>= \case
+                            -- An interrupt may have landed during the
+                            -- @cabal repl@ load. The returned value is
+                            -- discarded by the run loop once it sees
+                            -- 'abortedRef'.
+                            True -> pure (Right [])
+                            False -> case testTimeout of
+                                secs | secs <= 0 -> Right <$> execGhci ghci ":main" noProgress
+                                secs ->
+                                    timeout (fromIntegral secs :: Second) (execGhci ghci ":main" noProgress) >>= \case
+                                        Nothing -> pure (Left secs)
+                                        Just ls -> pure (Right ls)
                 pure $ case result of
                     Left ex ->
                         TestRunErrored $ TestRunError {target, message = show ex}
@@ -142,22 +172,44 @@ runTestRunnerIO act = do
 -- 'Left' results are re-thrown as exceptions, simulating process failures.
 runTestRunnerScripted
     :: forall es a
-     . (IOE :> es)
+     . (Concurrent :> es, IOE :> es)
     => [Either SomeException TestRun]
     -> Eff (TestRunner : es) a
     -> Eff es a
-runTestRunnerScripted results = reinterpret (evalState results) $ \_ ->
-    let popResult :: Eff (State [Either SomeException TestRun] : es) TestRun
-        popResult =
-            get >>= \case
-                [] -> error "TestRunnerScripted: no more results in queue"
-                Left ex : rest -> put rest >> liftIO (throwIO ex)
-                Right r : rest -> put rest >> pure r
-    in  \case
+runTestRunnerScripted results act = do
+    -- Mirror the IO interpreter's abort semantics so tests that drive
+    -- 'runTestsIfClean' through an interrupt can actually observe the
+    -- short-circuit via 'isAborted'. A hard-coded 'pure False' would
+    -- silently mask any regression in that flow.
+    abortedRef <- newTVarIO False
+    reinterpret
+        (evalState results)
+        ( \_ -> \case
             RunTestSuite _ -> popResult
-            InterruptCurrent -> pure ()
-            ResetAbort -> pure ()
-            IsAborted -> pure False
+            InterruptCurrent -> atomically (writeTVar abortedRef True)
+            ResetAbort -> atomically (writeTVar abortedRef False)
+            IsAborted -> atomically (readTVar abortedRef)
+        )
+        act
+  where
+    popResult :: Eff (State [Either SomeException TestRun] : es) TestRun
+    popResult =
+        get >>= \case
+            [] -> error "TestRunnerScripted: no more results in queue"
+            Left ex : rest -> put rest >> liftIO (throwIO ex)
+            Right r : rest -> put rest >> pure r
+
+
+-- | Progress callback used while a test suite is running. Reads the test
+-- runner's abort flag before applying the update so that pipe-buffered
+-- '[N of M] Compiling' lines emitted by a dying test process — after the
+-- user has already touched a file — do not push the counter forward.
+abortGatedProgress
+    :: (BuildStore :> es, Concurrent :> es)
+    => TVar Bool -> Text -> GhciLoading -> Eff es ()
+abortGatedProgress abortedRef target loading = do
+    aborted <- atomically (readTVar abortedRef)
+    unless aborted $ reportTestProgress target loading
 
 
 -- | Patch live compile progress for a test suite into the current 'Testing'
@@ -173,16 +225,15 @@ runTestRunnerScripted results = reinterpret (evalState results) $ \_ ->
 -- than reverting the phase.
 reportTestProgress
     :: (BuildStore :> es) => Text -> GhciLoading -> Eff es ()
-reportTestProgress target loading = do
-    state <- getState
-    case state.phase of
+reportTestProgress target loading =
+    modifyPhase \state -> case state.phase of
         Testing partialResult ->
             let progress = BuildProgress {compiled = loading.index, total = loading.total}
                 updateRun (TestRunning t _) | t == target = TestRunning t (Just progress)
                 updateRun r = r
                 newRuns = map updateRun partialResult.testRuns
-            in  setPhase state.buildId (Testing partialResult {testRuns = newRuns})
-        _ -> pure ()
+            in  Testing partialResult {testRuns = newRuns}
+        other -> other
 
 
 data GhciOutcome

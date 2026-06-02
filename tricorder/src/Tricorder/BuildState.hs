@@ -21,19 +21,15 @@ module Tricorder.BuildState
     , runDaemonInfo
     , Diagnostic (..)
     , Severity (..)
-    , BuildStateRef (..)
     , ChangeKind (..)
     , initialBuildState
     , stateLabel
     , CabalChangeDetected (..)
     , SourceChangeDetected (..)
-    , EnteringNewPhase (..)
-    , EnteredNewPhase (..)
     ) where
 
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Time (UTCTime)
-import Effectful.Concurrent.STM (TVar)
 import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (makeRelative)
 
@@ -231,13 +227,6 @@ data SourceChangeDetected = SourceChangeDetected FilePath FileEvent
     deriving stock (Eq, Show)
 
 
-data BuildStateRef = BuildStateRef
-    { stateRef :: TVar BuildState
-    , dirtyRef :: TVar (Maybe ChangeKind)
-    , waitersRef :: TVar Int
-    }
-
-
 initialBuildState :: DaemonInfo -> BuildState
 initialBuildState di =
     BuildState
@@ -245,11 +234,3 @@ initialBuildState di =
         , phase = Building Nothing
         , daemonInfo = di
         }
-
-
-data EnteringNewPhase = EnteringNewPhase BuildId BuildPhase
-    deriving stock (Eq, Show)
-
-
-data EnteredNewPhase = EnteredNewPhase BuildId BuildPhase
-    deriving stock (Eq, Show)

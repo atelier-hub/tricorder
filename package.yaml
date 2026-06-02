@@ -257,4 +257,5 @@ tests:
     - text
     - time
     - time-units
+    - typed-process
     - unagi-chan

@@ -234,6 +234,7 @@
             (hsPkgs."time" or (errorHandler.buildDepError "time"))
             (hsPkgs."time-units" or (errorHandler.buildDepError "time-units"))
             (hsPkgs."tricorder" or (errorHandler.buildDepError "tricorder"))
+            (hsPkgs."typed-process" or (errorHandler.buildDepError "typed-process"))
             (hsPkgs."unagi-chan" or (errorHandler.buildDepError "unagi-chan"))
           ];
           build-tools = [

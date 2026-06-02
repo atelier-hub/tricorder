@@ -8,13 +8,14 @@ import Test.Hspec
 
 import Atelier.Effects.Conc (Conc, runConc)
 import Atelier.Effects.Delay (Delay, runDelay)
+import Atelier.Effects.Input (Input, runInputConst)
 import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..))
 import Tricorder.Effects.BuildStore
     ( BuildStore
     , getState
-    , putState
-    , runBuildStoreSTM
+    , runBuildStore
     , runBuildStoreScripted
+    , setPhase
     , waitForNext
     , waitUntilDone
     )
@@ -42,13 +43,6 @@ testScripted = do
         it "does not consume the state" do
             let result = runScripted [doneAt 1] do
                     _ <- getState
-                    getState
-            result.buildId `shouldBe` BuildId 1
-
-    describe "putState" do
-        it "makes the new state the current head" do
-            let result = runScripted [] do
-                    putState (doneAt 1)
                     getState
             result.buildId `shouldBe` BuildId 1
 
@@ -93,37 +87,65 @@ testSTM = do
             result <- runStm getState
             result `shouldBe` buildingAt 0
 
-    describe "putState / getState" do
+    describe "setPhase / getState" do
         it "reflects a written state" do
             result <- runStm do
-                putState (doneAt 1)
+                setPhase (BuildId 1) donePhase
                 getState
             result `shouldBe` doneAt 1
 
     describe "waitUntilDone" do
         it "returns immediately when state is already Done" do
             result <- runStm do
-                putState (doneAt 1)
+                setPhase (BuildId 1) donePhase
                 waitUntilDone
             result.buildId `shouldBe` BuildId 1
 
-        it "blocks until putState Done is called from another thread" do
+        it "blocks until a Done phase is set from another thread" do
             result <- runStmConc do
                 void $ Conc.fork do
                     liftIO (threadDelay 10_000)
-                    putState (doneAt 1)
+                    setPhase (BuildId 1) donePhase
                 waitUntilDone
             result.buildId `shouldBe` BuildId 1
 
     describe "waitForNext" do
         it "blocks until a Done state with a different buildId appears" do
             result <- runStmConc do
-                putState (doneAt 1)
+                setPhase (BuildId 1) donePhase
                 void $ Conc.fork do
                     liftIO (threadDelay 10_000)
-                    putState (doneAt 2)
+                    setPhase (BuildId 2) donePhase
                 waitForNext (BuildId 1)
             result.buildId `shouldBe` BuildId 2
+
+    -- Regression for the bug behind the user's "status --wait waits until
+    -- the LAST cycle finishes" report: a polling-based 'waitUntilDone'
+    -- could miss a transient 'Done' state if the next 'Building' phase
+    -- overwrote the TVar within the poll interval, and an STM-retry
+    -- version still races against the scheduler's wake-up latency. The
+    -- broadcast 'TChan' of transitions makes every phase change a
+    -- discrete message that can't be overwritten — so even if
+    -- 'setPhase Done >> setPhase Building' happens back-to-back, the
+    -- waiter observes the Done.
+    describe "atomic transition capture" do
+        it "observes a transient Done even if Building immediately follows" do
+            result <- runStmConc do
+                setPhase (BuildId 1) (Building Nothing)
+                -- The publisher thread fires Done and then immediately
+                -- overwrites it with Building (N+1), the exact pattern the
+                -- coalescing worker produces between two queued cycles.
+                void $ Conc.fork do
+                    liftIO (threadDelay 5_000)
+                    setPhase (BuildId 1) donePhase
+                    setPhase (BuildId 2) (Building Nothing)
+                waitUntilDone
+            -- The waiter must report Done(1), NOT skip past it and report
+            -- the later Done(2) (or block forever).
+            result.buildId `shouldBe` BuildId 1
+            case result.phase of
+                Done _ -> pure ()
+                p -> expectationFailure $ "expected Done phase, got: " <> show p
 
 
 --------------------------------------------------------------------------------
@@ -138,8 +160,12 @@ buildingAt :: Int -> BuildState
 buildingAt n = BuildState (BuildId n) (Building Nothing) emptyDaemonInfo
 
 
+donePhase :: BuildPhase
+donePhase = Done (BuildResult {completedAt = epoch, duration = 0, moduleCount = 0, diagnostics = [], testRuns = []})
+
+
 doneAt :: Int -> BuildState
-doneAt n = BuildState (BuildId n) (Done (BuildResult {completedAt = epoch, duration = 0, moduleCount = 0, diagnostics = [], testRuns = []})) emptyDaemonInfo
+doneAt n = BuildState (BuildId n) donePhase emptyDaemonInfo
 
 
 epoch :: UTCTime
@@ -150,9 +176,9 @@ runScripted :: [BuildState] -> Eff '[BuildStore] a -> a
 runScripted states = runPureEff . runBuildStoreScripted states
 
 
-runStm :: Eff '[BuildStore, Delay, Concurrent, IOE] a -> IO a
-runStm = runEff . runConcurrent . runDelay . runBuildStoreSTM
+runStm :: Eff '[BuildStore, Input DaemonInfo, Delay, Concurrent, IOE] a -> IO a
+runStm = runEff . runConcurrent . runDelay . runInputConst emptyDaemonInfo . runBuildStore
 
 
-runStmConc :: Eff '[Conc, BuildStore, Delay, Concurrent, IOE] a -> IO a
-runStmConc = runEff . runConcurrent . runDelay . runBuildStoreSTM . runConc
+runStmConc :: Eff '[Conc, BuildStore, Input DaemonInfo, Delay, Concurrent, IOE] a -> IO a
+runStmConc = runEff . runConcurrent . runDelay . runInputConst emptyDaemonInfo . runBuildStore . runConc

@@ -3,18 +3,27 @@ module Tricorder.Builder
     , withBuilderSession
     , BuilderSession (..)
     , NewLoadResult (..)
+    , EnteringNewPhase (..)
+    , afterLoad
     , compileLoadResultsIntoBuildResults
     , requestTestRunsForNewBuildResults
     , buildWithGhciOnChange
+    , handleSourceChanges
     , handleInitialBuild
+    , interruptCurrent
     , onRestart
     , reloadOnSourceChange
     , setNewPhase
+    , withCycleLock
+    , newCycleLock
+    , CycleLock
     ) where
 
+import Control.Concurrent.STM (TMVar, newTMVar, putTMVar, readTVar, retry, takeTMVar, writeTVar)
 import Data.Default (Default (..))
 import Data.Time (diffUTCTime)
 import Effectful.Concurrent (Concurrent)
+import Effectful.Concurrent.STM (atomically, newTVar)
 import Effectful.Exception (bracket_, trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, get, modify, put, state)
@@ -29,17 +38,14 @@ import Atelier.Effects.Clock (Clock, UTCTime)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Debounce (Debounce, debounced)
 import Atelier.Effects.Log (Log)
-import Atelier.Effects.Publishing (Pub, Sub, publish)
+import Atelier.Effects.Publishing (Sub)
 import Atelier.Time (Millisecond, nominalDiffTime)
-import Atelier.Types.Semaphore (Semaphore)
 import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)
     , BuildResult (..)
     , CabalChangeDetected (..)
     , Diagnostic (..)
-    , EnteredNewPhase (..)
-    , EnteringNewPhase (..)
     , Severity (..)
     , SourceChangeDetected (..)
     , TestRun (..)
@@ -65,7 +71,6 @@ import Atelier.Effects.Clock qualified as Clock
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Log qualified as Log
 import Atelier.Effects.Publishing qualified as Sub
-import Atelier.Types.Semaphore qualified as Sem
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.GhciSession qualified as GhciSession
 import Tricorder.Effects.SessionStore qualified as SessionStore
@@ -84,18 +89,11 @@ component
        , Debounce Text :> es
        , GhciSession :> es
        , Log :> es
-       , Pub BuildResult :> es
-       , Pub EnteredNewPhase :> es
-       , Pub EnteringNewPhase :> es
-       , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
        , SessionStore :> es
        , State BuildId :> es
        , State BuilderState :> es
-       , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
-       , Sub EnteringNewPhase :> es
-       , Sub NewLoadResult :> es
        , Sub SessionStoreReloaded :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
@@ -168,54 +166,58 @@ restartableListeners
        , Debounce Text :> es
        , GhciSession :> es
        , Log :> es
-       , Pub BuildResult :> es
-       , Pub EnteredNewPhase :> es
-       , Pub EnteringNewPhase :> es
-       , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
        , State BuildId :> es
        , State BuilderState :> es
-       , Sub BuildResult :> es
        , Sub CabalChangeDetected :> es
-       , Sub EnteringNewPhase :> es
-       , Sub NewLoadResult :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
     => SessionStore.Reloader es
     -> BuilderSession
     -> Eff es ()
-restartableListeners reloader config = bracket_ (pure ()) (onRestart) $ Conc.scoped do
+restartableListeners reloader config = bracket_ (pure ()) onRestart do
     ProjectRoot projectRoot <- ask
     Log.info $ "Builder.component: resolved command = " <> config.command
     Log.info $ "Builder.component: projectRoot = " <> toText projectRoot
-    Conc.fork_ $ Sub.listen_ $ compileLoadResultsIntoBuildResults config
-    Conc.fork_ $ Sub.listen_ $ requestTestRunsForNewBuildResults config
-    Conc.fork_ $ buildWithGhciOnChange reloader config
-    Conc.fork_ $ Sub.listen_ setNewPhase
-    Conc.awaitAll
+    void $ buildWithGhciOnChange reloader config
 
 
 onRestart
-    :: ( Log :> es
-       , Pub EnteringNewPhase :> es
+    :: ( BuildStore :> es
+       , Log :> es
        , State BuildId :> es
        )
     => Eff es ()
 onRestart = do
     Log.info "Restarting builder..."
-    buildId <- state (\b -> (b, b + 1))
-    publish $ EnteringNewPhase buildId $ Building Nothing
+    buildId <- get
+    modify @BuildId (+ 1)
+    setNewPhase $ EnteringNewPhase buildId $ Building Nothing
 
 
 setNewPhase
-    :: ( BuildStore :> es
-       , Pub EnteredNewPhase :> es
-       )
+    :: (BuildStore :> es)
     => EnteringNewPhase -> Eff es ()
-setNewPhase (EnteringNewPhase bid phase) = do
+setNewPhase (EnteringNewPhase bid phase) =
     BuildStore.setPhase bid phase
-    publish $ EnteredNewPhase bid phase
+
+
+-- | Run the post-load pipeline synchronously: compile diagnostics into a
+-- 'BuildResult', then (optionally) run tests and transition through the
+-- corresponding phases.
+afterLoad
+    :: ( BuildStore :> es
+       , Log :> es
+       , Reader ProjectRoot :> es
+       , State BuildId :> es
+       , State BuilderState :> es
+       , TestRunner :> es
+       )
+    => BuilderSession -> NewLoadResult -> Eff es ()
+afterLoad config newLoadResult = do
+    buildResult <- compileLoadResultsIntoBuildResults config newLoadResult
+    requestTestRunsForNewBuildResults config buildResult
 
 
 buildWithGhciOnChange
@@ -226,8 +228,6 @@ buildWithGhciOnChange
        , Debounce Text :> es
        , GhciSession :> es
        , Log :> es
-       , Pub EnteringNewPhase :> es
-       , Pub NewLoadResult :> es
        , Reader ProjectRoot :> es
        , State BuildId :> es
        , State BuilderState :> es
@@ -253,14 +253,16 @@ buildWithGhciOnChange reloader config = forever do
                 { loadedModules = resolveKnownTargets Map.empty initialLoad
                 , knownTargets = KnownTargetNames (Set.fromList initialLoad.targetNames)
                 }
-        rebuildOnChange reloader controls
+        rebuildOnChange reloader config controls
 
 
 handleInitialBuild
-    :: ( Log :> es
-       , Pub NewLoadResult :> es
+    :: ( BuildStore :> es
+       , Log :> es
        , Reader ProjectRoot :> es
        , State BuildId :> es
+       , State BuilderState :> es
+       , TestRunner :> es
        )
     => BuilderSession
     -> UTCTime
@@ -280,12 +282,7 @@ handleInitialBuild config startTime endTime loadResult = do
             , show $ length filteredMsgs
             , " diagnostics"
             ]
-    publish
-        NewLoadResult
-            { startTime
-            , endTime
-            , loadResult
-            }
+    afterLoad config NewLoadResult {startTime, endTime, loadResult}
 
 
 rebuildOnChange
@@ -295,8 +292,7 @@ rebuildOnChange
        , Concurrent :> es
        , Debounce Text :> es
        , Log :> es
-       , Pub EnteringNewPhase :> es
-       , Pub NewLoadResult :> es
+       , Reader ProjectRoot :> es
        , State BuildId :> es
        , State BuilderState :> es
        , Sub CabalChangeDetected :> es
@@ -304,16 +300,17 @@ rebuildOnChange
        , TestRunner :> es
        )
     => SessionStore.Reloader es
+    -> BuilderSession
     -> GhciSession.Controls (Eff es)
     -> Eff es Void
-rebuildOnChange reloader controls = Conc.scoped do
+rebuildOnChange reloader config controls = Conc.scoped do
     BuildId n <- get
     Log.debug $ "Builder: waiting for dirty flag (build #" <> show n <> ")"
     Conc.fork_ $ Sub.listen_ @CabalChangeDetected $ \_ -> do
         Log.info "Cabal file changed; reloading session"
         -- Signals to `withBuilderSession` that the session should be reloaded.
         reloader.reload
-    handleSourceChanges controls
+    handleSourceChanges config controls
 
 
 handleSourceChanges
@@ -323,53 +320,82 @@ handleSourceChanges
        , Concurrent :> es
        , Debounce Text :> es
        , Log :> es
-       , Pub EnteringNewPhase :> es
-       , Pub NewLoadResult :> es
+       , Reader ProjectRoot :> es
        , State BuildId :> es
        , State BuilderState :> es
        , Sub SourceChangeDetected :> es
        , TestRunner :> es
        )
-    => GhciSession.Controls (Eff es) -> Eff es Void
-handleSourceChanges controls = forever $ Conc.scoped do
-    readyToBuildSem <- Sem.newSet
+    => BuilderSession -> GhciSession.Controls (Eff es) -> Eff es Void
+handleSourceChanges config controls = forever $ Conc.scoped do
+    -- Coalesce debounced source-change events through a single-slot
+    -- register: the debounced listener writes the latest event into the
+    -- slot, and a single worker fork drains it. Events that arrive while
+    -- the worker is processing the previous one simply overwrite the slot,
+    -- so a burst of N touches collapses into exactly one trailing cycle
+    -- (carrying the most recent event) rather than queueing N back-to-back
+    -- cycles. This matters whenever 'interruptCurrent' can't drop the
+    -- in-flight cycle promptly — e.g. when a 'status --wait' caller has
+    -- registered as a waiter, gating 'interruptCurrent' to a no-op.
+    pending <- atomically (newTVar @(Maybe SourceChangeDetected) Nothing)
     Conc.fork_ $ Sub.listen_ \ev ->
-        debounced 200 "source_change_reloader" $ reloadOnSourceChange readyToBuildSem controls ev
-    Conc.fork_ $ Sub.listen_ \_ -> interruptCurrent readyToBuildSem controls
+        debounced 200 "source_change_reloader"
+            $ atomically (writeTVar pending (Just ev))
+    Conc.fork_ $ Sub.listen_ \_ -> interruptCurrent controls
+    Conc.fork_ $ forever do
+        ev <- atomically do
+            readTVar pending >>= \case
+                Nothing -> retry
+                Just e -> writeTVar pending Nothing >> pure e
+        reloadOnSourceChange config controls ev
     Conc.awaitAll
 
 
+-- | A mutex serialising one build/test cycle at a time.
+newtype CycleLock = CycleLock (TMVar ())
+
+
+newCycleLock :: (Concurrent :> es) => Eff es CycleLock
+newCycleLock = CycleLock <$> atomically (newTMVar ())
+
+
+-- | Run @action@ under @lock@, blocking if another cycle is already in
+-- flight. The lock is released even if @action@ throws.
+withCycleLock :: (Concurrent :> es) => CycleLock -> Eff es a -> Eff es a
+withCycleLock (CycleLock t) =
+    bracket_ (atomically (takeTMVar t)) (atomically (putTMVar t ()))
+
+
+-- 'controls.interrupt' is a safe no-op when GHCi is idle, and 'GhciSession'
+-- serialises subsequent reloads through its own STM state.
 interruptCurrent
     :: ( BuildStore :> es
-       , Concurrent :> es
        , Log :> es
        , TestRunner :> es
        )
-    => Semaphore -> GhciSession.Controls (Eff es) -> Eff es ()
-interruptCurrent readyToBuildSem controls = do
+    => GhciSession.Controls (Eff es) -> Eff es ()
+interruptCurrent controls = do
     hasWaiters <- BuildStore.hasWaiters
     unless hasWaiters do
         Log.info "Change detected with no waiters. Interrupting current build/tests."
-        isIdle <- Sem.peek readyToBuildSem
-        unless isIdle
-            $ bracket_
-                (Sem.unset readyToBuildSem)
-                (Sem.set readyToBuildSem)
-                controls.interrupt
+        controls.interrupt
         TestRunner.interruptCurrent
 
 
 reloadOnSourceChange
-    :: ( Clock :> es
-       , Concurrent :> es
+    :: ( BuildStore :> es
+       , Clock :> es
        , Log :> es
-       , Pub EnteringNewPhase :> es
-       , Pub NewLoadResult :> es
+       , Reader ProjectRoot :> es
        , State BuildId :> es
        , State BuilderState :> es
+       , TestRunner :> es
        )
-    => Semaphore -> GhciSession.Controls (Eff es) -> SourceChangeDetected -> Eff es ()
-reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = do
+    => BuilderSession
+    -> GhciSession.Controls (Eff es)
+    -> SourceChangeDetected
+    -> Eff es ()
+reloadOnSourceChange config controls (SourceChangeDetected fp event) = do
     Log.debug $ "Builder: source change detected " <> show event <> " " <> toText fp
     builderState <- get @BuilderState
     let known = Map.lookup (normalise fp) builderState.loadedModules
@@ -382,9 +408,9 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
                     <> toText fp
         Just action -> do
             buildId <- get
-            publish $ EnteringNewPhase buildId $ Building Nothing
+            setNewPhase $ EnteringNewPhase buildId $ Building Nothing
 
-            res <- trySync $ Sem.withSemaphore readyToBuildSem do
+            res <- trySync do
                 startTime <- Clock.currentTime
                 res <- runAction controls action
                 endTime <- Clock.currentTime
@@ -400,7 +426,7 @@ reloadOnSourceChange readyToBuildSem controls (SourceChangeDetected fp event) = 
                             { loadedModules = resolveKnownTargets s.loadedModules loadResult
                             , knownTargets = KnownTargetNames (Set.fromList loadResult.targetNames)
                             }
-                    publish $ NewLoadResult {startTime, endTime, loadResult}
+                    afterLoad config NewLoadResult {startTime, endTime, loadResult}
 
 
 runAction :: GhciSession.Controls (Eff es) -> DispatchAction -> Eff es LoadResult
@@ -418,14 +444,18 @@ data NewLoadResult = NewLoadResult
     deriving stock (Eq, Show)
 
 
+-- | A pending phase transition. Carried by 'setNewPhase' into the 'BuildStore'.
+data EnteringNewPhase = EnteringNewPhase BuildId BuildPhase
+    deriving stock (Eq, Show)
+
+
 compileLoadResultsIntoBuildResults
-    :: ( Pub BuildResult :> es
-       , Reader ProjectRoot :> es
+    :: ( Reader ProjectRoot :> es
        , State BuilderState :> es
        )
     => BuilderSession
     -> NewLoadResult
-    -> Eff es ()
+    -> Eff es BuildResult
 compileLoadResultsIntoBuildResults session newLoadResult = do
     ProjectRoot projectRoot <- ask
     let filteredResult =
@@ -438,7 +468,7 @@ compileLoadResultsIntoBuildResults session newLoadResult = do
         let merged = mergeDiagnostics s.diagnosticMap filteredResult
         in  (merged, s {diagnosticMap = merged})
 
-    publish
+    pure
         BuildResult
             { completedAt = endTime
             , duration = nominalDiffTime (diffUTCTime endTime startTime) :: Millisecond
@@ -452,8 +482,8 @@ compileLoadResultsIntoBuildResults session newLoadResult = do
 
 
 requestTestRunsForNewBuildResults
-    :: ( Log :> es
-       , Pub EnteringNewPhase :> es
+    :: ( BuildStore :> es
+       , Log :> es
        , State BuildId :> es
        , TestRunner :> es
        )
@@ -463,20 +493,20 @@ requestTestRunsForNewBuildResults
 requestTestRunsForNewBuildResults config partialResult = do
     buildId <- get
     runTestsIfClean config buildId partialResult >>= \case
-        Nothing -> Log.info "Test run aborted by source change; skipping Done publish."
+        Nothing -> Log.info "Test run aborted by source change; skipping Done transition."
         Just testRuns ->
-            publish $ EnteringNewPhase buildId $ Done partialResult {testRuns}
+            setNewPhase $ EnteringNewPhase buildId $ Done partialResult {testRuns}
 
 
 -- Run all configured test suites if the build has no errors.
 -- Transitions to 'Testing' phase while suites are running.
 --
 -- Returns 'Nothing' if the run was aborted mid-flight by a source change
--- (the caller should not publish a Done phase in that case). Returns
+-- (the caller should not transition to a Done phase in that case). Returns
 -- 'Just' with the collected results otherwise.
 runTestsIfClean
-    :: ( Log :> es
-       , Pub EnteringNewPhase :> es
+    :: ( BuildStore :> es
+       , Log :> es
        , TestRunner :> es
        )
     => BuilderSession
@@ -487,7 +517,7 @@ runTestsIfClean (BuilderSession {testTargets}) bid partialResult
     | null testTargets || any (\d -> d.severity == SError) partialResult.diagnostics = pure (Just [])
     | otherwise = do
         TestRunner.resetAbort
-        publish
+        setNewPhase
             $ EnteringNewPhase bid
             $ Testing partialResult {testRuns = map (`TestRunning` Nothing) testTargets}
 
@@ -505,7 +535,7 @@ runTestsIfClean (BuilderSession {testTargets}) bid partialResult
             pure Nothing
         else do
             let acc' = insert target result acc
-            publish
+            setNewPhase
                 $ EnteringNewPhase bid
                 $ Testing partialResult {testRuns = snd <$> acc'}
             runLoop acc' rest

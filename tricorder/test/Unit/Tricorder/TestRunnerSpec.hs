@@ -1,24 +1,53 @@
 module Unit.Tricorder.TestRunnerSpec (spec_TestRunner) where
 
+import Control.Concurrent.STM (newTVarIO, writeTVar)
 import Control.Exception (ErrorCall (..))
+import Data.Time (UTCTime (..), fromGregorian)
 import Effectful (IOE, runEff)
+import Effectful.Concurrent (Concurrent, runConcurrent)
+import Effectful.Concurrent.STM (atomically)
 import Effectful.Exception (try)
+import Effectful.Reader.Static (runReader)
+import Effectful.State.Static.Shared (evalState)
 import Test.Hspec
 
-import Tricorder.BuildState (TestRun (..), TestRunCompletion (..))
+import Atelier.Effects.Clock (runClockConst)
+import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.Input (runInputConst)
+import Atelier.Effects.Log (runLogNoOp)
+import Tricorder.BuildState
+    ( BuildId (..)
+    , BuildPhase (..)
+    , BuildProgress (..)
+    , BuildResult (..)
+    , BuildState (..)
+    , DaemonInfo (..)
+    , TestRun (..)
+    , TestRunCompletion (..)
+    )
+import Tricorder.Effects.BuildStore (getState)
+import Tricorder.Effects.GhciSession.GhciParser (GhciLoading (..))
 import Tricorder.Effects.TestRunner
     ( GhciOutcome (..)
     , TestRunner
+    , abortGatedProgress
     , detectOutcome
+    , interruptCurrent
+    , isAborted
+    , resetAbort
     , runTestRunnerScripted
     , runTestSuite
     )
+import Tricorder.Runtime (ProjectRoot (..))
+
+import Tricorder.Effects.BuildStore qualified as BuildStore
 
 
 spec_TestRunner :: Spec
 spec_TestRunner = do
     describe "detectOutcome" testDetectOutcome
     describe "runTestRunnerScripted" testScripted
+    describe "abortGatedProgress" testAbortGatedProgress
 
 
 --------------------------------------------------------------------------------
@@ -127,6 +156,29 @@ testScripted = do
             fst result `shouldBe` Left boom
             snd result `shouldBe` passingRun
 
+    describe "abort flag" do
+        -- The scripted interpreter must mirror 'runTestRunnerIO': any test
+        -- that exercises the 'runTestsIfClean' abort short-circuit through
+        -- the scripted runner relies on 'isAborted' reflecting prior calls
+        -- to 'interruptCurrent'/'resetAbort'. Hard-coding 'pure False' here
+        -- silently masks regressions in that flow.
+        it "defaults to not aborted" do
+            aborted <- runScripted [] isAborted
+            aborted `shouldBe` False
+
+        it "interruptCurrent sets the flag" do
+            aborted <- runScripted [] do
+                interruptCurrent
+                isAborted
+            aborted `shouldBe` True
+
+        it "resetAbort clears the flag" do
+            aborted <- runScripted [] do
+                interruptCurrent
+                resetAbort
+                isAborted
+            aborted `shouldBe` False
+
 
 --------------------------------------------------------------------------------
 -- Helpers
@@ -160,5 +212,108 @@ failingRun =
             }
 
 
-runScripted :: [Either SomeException TestRun] -> Eff '[TestRunner, IOE] a -> IO a
-runScripted results = runEff . runTestRunnerScripted results
+runScripted :: [Either SomeException TestRun] -> Eff '[TestRunner, Concurrent, IOE] a -> IO a
+runScripted results = runEff . runConcurrent . runTestRunnerScripted results
+
+
+--------------------------------------------------------------------------------
+-- abortGatedProgress tests
+--
+-- Regression for the "module counter glitches after interrupt" bug: after
+-- the test runner sets 'abortedRef' = True and terminates a test process,
+-- the dying process can still push pipe-buffered '[N of M] Compiling …'
+-- lines through the drain, and each one used to call 'reportTestProgress'
+-- and tick the UI counter forward. 'abortGatedProgress' must drop those
+-- updates instead.
+--------------------------------------------------------------------------------
+
+testAbortGatedProgress :: Spec
+testAbortGatedProgress = do
+    it "applies the progress update when abortedRef is False" do
+        finalRuns <- runProgress False progress42 startingRuns
+        finalRuns `shouldBe` [TestRunning "test:foo" (Just expected42)]
+
+    it "drops the progress update when abortedRef is True" do
+        finalRuns <- runProgress True progress42 startingRuns
+        finalRuns `shouldBe` startingRuns
+
+    it "drops every update applied while abortedRef stays True" do
+        abortedRef <- newTVarIO True
+        let loadings = [mkLoading i 10 | i <- [1 .. 5]]
+        finalRuns <- runStore do
+            BuildStore.setPhase (BuildId 1) (Testing (partialResultWith startingRuns))
+            for_ loadings (abortGatedProgress abortedRef "test:foo")
+            phaseTestRuns <$> getState
+        finalRuns `shouldBe` startingRuns
+
+    it "flips behaviour mid-run if abortedRef is set between updates" do
+        abortedRef <- newTVarIO False
+        finalRuns <- runStore do
+            BuildStore.setPhase (BuildId 1) (Testing (partialResultWith startingRuns))
+            -- This one applies.
+            abortGatedProgress abortedRef "test:foo" (mkLoading 3 10)
+            -- Simulate the interrupt firing.
+            atomically (writeTVar abortedRef True)
+            -- These should now be dropped.
+            abortGatedProgress abortedRef "test:foo" (mkLoading 8 10)
+            abortGatedProgress abortedRef "test:foo" (mkLoading 9 10)
+            phaseTestRuns <$> getState
+        finalRuns
+            `shouldBe` [TestRunning "test:foo" (Just BuildProgress {compiled = 3, total = 10})]
+  where
+    startingRuns = [TestRunning "test:foo" Nothing]
+    progress42 = mkLoading 4 10
+    expected42 = BuildProgress {compiled = 4, total = 10}
+
+    runProgress aborted loading runs = do
+        abortedRef <- newTVarIO aborted
+        runStore do
+            BuildStore.setPhase (BuildId 1) (Testing (partialResultWith runs))
+            abortGatedProgress abortedRef "test:foo" loading
+            phaseTestRuns <$> getState
+
+    runStore =
+        runEff
+            . runConcurrent
+            . runDelay
+            . runClockConst epoch
+            . runReader (ProjectRoot "/")
+            . evalState (BuildId 1)
+            . runLogNoOp
+            . runInputConst emptyDaemonInfo
+            . BuildStore.runBuildStore
+
+    mkLoading i tot =
+        GhciLoading
+            { index = i
+            , total = tot
+            , moduleName = "Mod"
+            , sourceFile = "Mod.hs"
+            }
+
+    partialResultWith runs =
+        BuildResult
+            { completedAt = epoch
+            , duration = 0
+            , moduleCount = 0
+            , diagnostics = []
+            , testRuns = runs
+            }
+
+    phaseTestRuns :: BuildState -> [TestRun]
+    phaseTestRuns s = case s.phase of
+        Testing r -> r.testRuns
+        _ -> []
+
+    epoch :: UTCTime
+    epoch = UTCTime (fromGregorian 2024 1 1) 0
+
+    emptyDaemonInfo :: DaemonInfo
+    emptyDaemonInfo =
+        DaemonInfo
+            { targets = []
+            , watchDirs = []
+            , sockPath = ""
+            , logFile = ""
+            , metricsPort = Nothing
+            }
