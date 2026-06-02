@@ -2,7 +2,7 @@ module Tricorder.Effects.BuildStore
     ( -- * Effect
       BuildStore (..)
     , getState
-    , putState
+    , modifyPhase
     , waitUntilDone
     , waitForNext
     , waitForAnyChange
@@ -21,7 +21,7 @@ import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (TChan, TVar, atomically, dupTChan, modifyTVar, newBroadcastTChan, newTVar, readTChan, readTVar, retry, writeTChan, writeTVar)
 import Effectful.Dispatch.Dynamic (interpretWith_, reinterpret)
 import Effectful.Exception (bracket_)
-import Effectful.State.Static.Shared (State, evalState, get, modify, put)
+import Effectful.State.Static.Shared (State, evalState, get, put)
 import Effectful.TH (makeEffect)
 
 import Atelier.Effects.Input (Input, input)
@@ -38,8 +38,10 @@ import Tricorder.BuildState
 data BuildStore :: Effect where
     -- | Read the current build state without blocking.
     GetState :: BuildStore m BuildState
-    -- | Overwrite the current build state.
-    PutState :: BuildState -> BuildStore m ()
+    -- | Atomically update the phase of the current build, keeping its
+    -- 'BuildId'. The function sees the live state, so a progress update can
+    -- inspect the current phase and leave it untouched if it has moved on.
+    ModifyPhase :: (BuildState -> BuildPhase) -> BuildStore m ()
     -- | Block until the current build cycle completes (phase transitions to Done).
     WaitUntilDone :: BuildStore m BuildState
     -- | Block until a completed build with a different 'BuildId' is available.
@@ -68,7 +70,7 @@ data BuildStateRef = BuildStateRef
     , waitersRef :: TVar Int
     , transitions :: TChan BuildState
     -- ^ Broadcast channel of every phase transition. Writers (setPhase /
-    -- putState) atomically update 'stateRef' AND broadcast on this chan in
+    -- modifyPhase) atomically update 'stateRef' AND broadcast on this chan in
     -- the same STM transaction; waiters 'dupTChan' it on entry and consume
     -- every transition. A transient 'Done' followed immediately by
     -- 'Building (N+1)' is therefore observable as two messages on the
@@ -96,14 +98,6 @@ isBuilding s = case s.phase of
     Restarting -> True
     Testing _ -> True
     Done _ -> False
-
-
--- | Atomically replace the build state and broadcast it. Used by
--- 'PutState' so direct overrides also surface on the transitions channel.
-setState :: (Concurrent :> es) => TVar BuildState -> TChan BuildState -> BuildState -> Eff es ()
-setState ref transitions s = atomically do
-    writeTVar ref s
-    writeTChan transitions s
 
 
 -- | Block until the build state satisfies @predicate@, then return it.
@@ -147,7 +141,7 @@ takeDirty dirtyRef = atomically do
 -- needing a real 'TVar' or concurrency.
 --
 -- * 'getState' peeks at the head of the list without consuming it.
--- * 'putState' prepends a state, making it the new head.
+-- * 'modifyPhase' rewrites the head's phase in place.
 -- * 'waitUntilDone' pops states until it finds one where @phase /= Building@.
 -- * 'waitForNext' pops states until it finds a Done state with a different 'BuildId'.
 runBuildStoreScripted :: [BuildState] -> Eff (BuildStore : es) a -> Eff es a
@@ -156,7 +150,10 @@ runBuildStoreScripted states = reinterpret (evalState states) $ \_ -> \case
         get >>= \case
             [] -> error "BuildStoreScripted: getState called on empty state list"
             s : _ -> pure s
-    PutState s -> modify (s :)
+    ModifyPhase f ->
+        get >>= \case
+            [] -> pure ()
+            s : rest -> put (s {phase = f s} : rest)
     WaitUntilDone -> advance (not . isBuilding)
     WaitForNext bid -> advance \s -> not (isBuilding s) && s.buildId /= bid
     WaitForAnyChange prev -> advance (/= prev)
@@ -195,7 +192,11 @@ runBuildStore eff = do
     refs <- newBuildStateRef di
     interpretWith_ eff \case
         GetState -> atomically (readTVar refs.stateRef)
-        PutState s -> setState refs.stateRef refs.transitions s
+        ModifyPhase f -> do
+            daemonInfo <- input
+            atomically do
+                modifyTVar refs.stateRef \bs -> bs {phase = f bs, daemonInfo}
+                readTVar refs.stateRef >>= writeTChan refs.transitions
         WaitUntilDone ->
             bracket_
                 (atomically (modifyTVar refs.waitersRef (+ 1)))

@@ -37,8 +37,8 @@ import Effectful.TH (makeEffect)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.File (File)
 import Atelier.Effects.Timeout (Timeout)
-import Tricorder.BuildState (BuildPhase (..), BuildProgress (..), BuildState (..))
-import Tricorder.Effects.BuildStore (BuildStore, getState, setPhase)
+import Tricorder.BuildState (BuildPhase (..), BuildProgress (..))
+import Tricorder.Effects.BuildStore (BuildStore, modifyPhase)
 import Tricorder.Effects.GhciSession.GhciParser
     ( GhciLoading (..)
     , LoadResult (..)
@@ -111,12 +111,11 @@ runGhciSession
     => Eff (GhciSession : es) a -> Eff es a
 runGhciSession = interpret $ \env -> \case
     WithGhci cmd (ProjectRoot dir) handler -> do
-        let onProgress loading = do
-                buildState <- getState
-                setPhase buildState.buildId
-                    $ Building
-                    $ Just
-                    $ BuildProgress {compiled = loading.index, total = loading.total}
+        let onProgress loading =
+                modifyPhase \_ ->
+                    Building
+                        $ Just
+                        $ BuildProgress {compiled = loading.index, total = loading.total}
         withGhciProcess def cmd dir onProgress (\_ -> pure ()) \process startupLines ->
             localLift env (ConcUnlift Persistent Unlimited) \liftEff ->
                 localUnlift env (ConcUnlift Persistent Unlimited) \unlift -> do

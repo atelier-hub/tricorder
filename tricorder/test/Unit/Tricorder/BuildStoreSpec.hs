@@ -13,9 +13,9 @@ import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), Bu
 import Tricorder.Effects.BuildStore
     ( BuildStore
     , getState
-    , putState
     , runBuildStore
     , runBuildStoreScripted
+    , setPhase
     , waitForNext
     , waitUntilDone
     )
@@ -43,13 +43,6 @@ testScripted = do
         it "does not consume the state" do
             let result = runScripted [doneAt 1] do
                     _ <- getState
-                    getState
-            result.buildId `shouldBe` BuildId 1
-
-    describe "putState" do
-        it "makes the new state the current head" do
-            let result = runScripted [] do
-                    putState (doneAt 1)
                     getState
             result.buildId `shouldBe` BuildId 1
 
@@ -94,35 +87,35 @@ testSTM = do
             result <- runStm getState
             result `shouldBe` buildingAt 0
 
-    describe "putState / getState" do
+    describe "setPhase / getState" do
         it "reflects a written state" do
             result <- runStm do
-                putState (doneAt 1)
+                setPhase (BuildId 1) donePhase
                 getState
             result `shouldBe` doneAt 1
 
     describe "waitUntilDone" do
         it "returns immediately when state is already Done" do
             result <- runStm do
-                putState (doneAt 1)
+                setPhase (BuildId 1) donePhase
                 waitUntilDone
             result.buildId `shouldBe` BuildId 1
 
-        it "blocks until putState Done is called from another thread" do
+        it "blocks until a Done phase is set from another thread" do
             result <- runStmConc do
                 void $ Conc.fork do
                     liftIO (threadDelay 10_000)
-                    putState (doneAt 1)
+                    setPhase (BuildId 1) donePhase
                 waitUntilDone
             result.buildId `shouldBe` BuildId 1
 
     describe "waitForNext" do
         it "blocks until a Done state with a different buildId appears" do
             result <- runStmConc do
-                putState (doneAt 1)
+                setPhase (BuildId 1) donePhase
                 void $ Conc.fork do
                     liftIO (threadDelay 10_000)
-                    putState (doneAt 2)
+                    setPhase (BuildId 2) donePhase
                 waitForNext (BuildId 1)
             result.buildId `shouldBe` BuildId 2
 
@@ -133,19 +126,19 @@ testSTM = do
     -- version still races against the scheduler's wake-up latency. The
     -- broadcast 'TChan' of transitions makes every phase change a
     -- discrete message that can't be overwritten — so even if
-    -- 'putState Done >> putState Building' happens back-to-back, the
+    -- 'setPhase Done >> setPhase Building' happens back-to-back, the
     -- waiter observes the Done.
     describe "atomic transition capture" do
         it "observes a transient Done even if Building immediately follows" do
             result <- runStmConc do
-                putState (buildingAt 1)
+                setPhase (BuildId 1) (Building Nothing)
                 -- The publisher thread fires Done and then immediately
                 -- overwrites it with Building (N+1), the exact pattern the
                 -- coalescing worker produces between two queued cycles.
                 void $ Conc.fork do
                     liftIO (threadDelay 5_000)
-                    putState (doneAt 1)
-                    putState (buildingAt 2)
+                    setPhase (BuildId 1) donePhase
+                    setPhase (BuildId 2) (Building Nothing)
                 waitUntilDone
             -- The waiter must report Done(1), NOT skip past it and report
             -- the later Done(2) (or block forever).
@@ -167,8 +160,12 @@ buildingAt :: Int -> BuildState
 buildingAt n = BuildState (BuildId n) (Building Nothing) emptyDaemonInfo
 
 
+donePhase :: BuildPhase
+donePhase = Done (BuildResult {completedAt = epoch, duration = 0, moduleCount = 0, diagnostics = [], testRuns = []})
+
+
 doneAt :: Int -> BuildState
-doneAt n = BuildState (BuildId n) (Done (BuildResult {completedAt = epoch, duration = 0, moduleCount = 0, diagnostics = [], testRuns = []})) emptyDaemonInfo
+doneAt n = BuildState (BuildId n) donePhase emptyDaemonInfo
 
 
 epoch :: UTCTime

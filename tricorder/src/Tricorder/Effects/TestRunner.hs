@@ -47,7 +47,7 @@ import Tricorder.BuildState
     , TestRunCompletion (..)
     , TestRunError (..)
     )
-import Tricorder.Effects.BuildStore (BuildStore, getState, setPhase)
+import Tricorder.Effects.BuildStore (BuildStore, modifyPhase)
 import Tricorder.Effects.GhciSession.GhciParser (GhciLoading (..))
 import Tricorder.Effects.GhciSession.GhciProcess (GhciProcess, execGhci, terminateGhciProcess, withGhciProcess)
 import Tricorder.Effects.SessionStore (SessionStore)
@@ -225,16 +225,15 @@ abortGatedProgress abortedRef target loading = do
 -- than reverting the phase.
 reportTestProgress
     :: (BuildStore :> es) => Text -> GhciLoading -> Eff es ()
-reportTestProgress target loading = do
-    state <- getState
-    case state.phase of
+reportTestProgress target loading =
+    modifyPhase \state -> case state.phase of
         Testing partialResult ->
             let progress = BuildProgress {compiled = loading.index, total = loading.total}
                 updateRun (TestRunning t _) | t == target = TestRunning t (Just progress)
                 updateRun r = r
                 newRuns = map updateRun partialResult.testRuns
-            in  setPhase state.buildId (Testing partialResult {testRuns = newRuns})
-        _ -> pure ()
+            in  Testing partialResult {testRuns = newRuns}
+        other -> other
 
 
 data GhciOutcome

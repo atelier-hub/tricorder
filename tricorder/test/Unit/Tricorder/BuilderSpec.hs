@@ -1051,7 +1051,7 @@ testInterruptCurrent = do
         BuildStore.SetPhase _ _ -> error "interruptCurrent must not setPhase"
         BuildStore.MarkDirty _ -> error "interruptCurrent must not markDirty"
         BuildStore.GetState -> error "interruptCurrent must not getState"
-        BuildStore.PutState _ -> error "interruptCurrent must not putState"
+        BuildStore.ModifyPhase _ -> error "interruptCurrent must not modifyPhase"
         BuildStore.WaitUntilDone -> error "interruptCurrent must not waitUntilDone"
         BuildStore.WaitForNext _ -> error "interruptCurrent must not waitForNext"
         BuildStore.WaitForAnyChange _ -> error "interruptCurrent must not waitForAnyChange"
@@ -1106,7 +1106,7 @@ runBuildStoreCapture = interpret_ \case
     BuildStore.HasWaiters -> pure False
     BuildStore.MarkDirty _ -> pure ()
     BuildStore.GetState -> error "runBuildStoreCapture: GetState unsupported"
-    BuildStore.PutState _ -> error "runBuildStoreCapture: PutState unsupported"
+    BuildStore.ModifyPhase _ -> error "runBuildStoreCapture: ModifyPhase unsupported"
     BuildStore.WaitUntilDone -> error "runBuildStoreCapture: WaitUntilDone unsupported"
     BuildStore.WaitForNext _ -> error "runBuildStoreCapture: WaitForNext unsupported"
     BuildStore.WaitForAnyChange _ -> error "runBuildStoreCapture: WaitForAnyChange unsupported"
