@@ -49,7 +49,126 @@ spec_GhciProcess :: Spec
 spec_GhciProcess = do
     describe "decideInterrupt" testDecideInterrupt
     describe "execGhci" testExecGhciScope
+    describe "execGhci (stale marker desync)" testExecGhciStaleMarker
+    describe "execGhci (sync marker scope independence)" testSyncMarkerScopeIndependent
     describe "waitForBannerOrFail" testWaitForBannerOrFail
+
+
+-- | Regression for the touch-during-reload desync. Interrupting a *Busy* GHCi
+-- (a reload in flight) leaves a stale sync marker in the stdout/stderr buffers
+-- ahead of the next command's real output. Because 'drainUntil' used to stop on
+-- ANY marker-prefix line, the next 'execGhci' matched that stale marker and
+-- returned *before its command ran* — surfacing as @All good. (0 modules)@ (or,
+-- on the other timing, a hang). 'execGhci' must skip markers that aren't its
+-- own and stop only on the marker it is waiting for.
+testExecGhciStaleMarker :: Spec
+testExecGhciStaleMarker =
+    it "skips a stale leftover marker and returns the command's real output" do
+        (stdinR, stdinW) <- Process.createPipe
+        (stdoutR, stdoutW) <- Process.createPipe
+        (stderrR, stderrW) <- Process.createPipe
+        -- A dummy process handle to fill the record; 'execGhci' never uses it.
+        p <-
+            startProcess
+                $ setStdin createPipe
+                $ setStdout createPipe
+                $ setStderr createPipe
+                $ shell "true"
+        _ <- waitExitCode p
+        stateVar <- newTVarIO (Idle 9)
+        let gp =
+                GhciProcess
+                    { stdin = stdinW
+                    , stdout = stdoutR
+                    , stderr = stderrR
+                    , handle = p
+                    , stateVar
+                    }
+            -- Mirrors 'markerFor': "#~TRI-FINISH-<n>~#".
+            marker n = "#~TRI-FINISH-" <> show (n :: Int) <> "~#" :: Text
+        result <-
+            runEff
+                . runConcurrent
+                . runTimeout
+                . runDelay
+                . runFile
+                . runConc
+                $ do
+                    -- A stale 'marker 5' (left by a prior interrupted reload)
+                    -- precedes the fresh command's real output + its 'marker 9'
+                    -- (state is 'Idle 9', so 'execGhci' waits for marker 9).
+                    for_ [marker 5, "out-line", marker 9] (File.hPutBsLn stdoutW . encodeUtf8)
+                    for_ [marker 5, "err-line", marker 9] (File.hPutBsLn stderrW . encodeUtf8)
+                    File.hClose stdoutW
+                    File.hClose stderrW
+                    -- Keep the stdin read-end alive across the write inside
+                    -- 'execGhci' (otherwise it is GC-finalised → broken pipe).
+                    r <- execGhci gp "reload" (\_ -> pure ())
+                    File.hClose stdinR
+                    pure r
+        _ <- (Right <$> stopProcess p) `catch` \(_ :: SomeException) -> pure (Left ())
+        result `shouldBe` ["out-line", "err-line"]
+
+
+-- | Root-cause regression for the "stuck Building…" stall. A SIGINT-interrupted
+-- ':reload' empties GHCi's interactive scope — it drops the implicit
+-- @import Prelude@ (verified against ghci 9.10). A sync marker built from bare
+-- Prelude names then fails to run instead of printing: @putStrLn@ is no longer
+-- in scope, and neither is the @>>@ operator. The marker never appears, so
+-- 'drainUntil' blocks until the watchdog fires. The marker must therefore use
+-- only fully-qualified 'System.IO.hPutStrLn' statements (which survive the
+-- emptied scope), one per stream, with no bare names or operators.
+--
+-- We assert on exactly what 'execGhci' writes to GHCi's stdin.
+testSyncMarkerScopeIndependent :: Spec
+testSyncMarkerScopeIndependent =
+    it "writes the finish marker using only fully-qualified names (no bare putStrLn / >>)" do
+        (stdinR, stdinW) <- Process.createPipe
+        (stdoutR, stdoutW) <- Process.createPipe
+        (stderrR, stderrW) <- Process.createPipe
+        p <-
+            startProcess
+                $ setStdin createPipe
+                $ setStdout createPipe
+                $ setStderr createPipe
+                $ shell "true"
+        _ <- waitExitCode p
+        stateVar <- newTVarIO (Idle 9)
+        let gp =
+                GhciProcess
+                    { stdin = stdinW
+                    , stdout = stdoutR
+                    , stderr = stderrR
+                    , handle = p
+                    , stateVar
+                    }
+            marker = "#~TRI-FINISH-9~#" :: Text
+        written <-
+            runEff
+                . runConcurrent
+                . runTimeout
+                . runDelay
+                . runFile
+                . runConc
+                $ do
+                    -- Pre-seed the marker on both streams so the drain returns
+                    -- immediately; we only care about what was written to stdin.
+                    File.hPutBsLn stdoutW (encodeUtf8 marker)
+                    File.hPutBsLn stderrW (encodeUtf8 marker)
+                    File.hClose stdoutW
+                    File.hClose stderrW
+                    _ <- execGhci gp ":reload" (\_ -> pure ())
+                    File.hClose stdinW
+                    let readAll acc =
+                            trySync (File.hGetLine stdinR) >>= \case
+                                Left (_ :: SomeException) -> pure (reverse acc)
+                                Right l -> readAll (l : acc)
+                    readAll []
+        _ <- (Right <$> stopProcess p) `catch` \(_ :: SomeException) -> pure (Left ())
+        let blob = T.intercalate "\n" written
+        (" >> " `T.isInfixOf` blob) `shouldBe` False
+        ("System.IO.hPutStrLn System.IO.stdout" `T.isInfixOf` blob) `shouldBe` True
+        ("System.IO.hPutStrLn System.IO.stderr" `T.isInfixOf` blob) `shouldBe` True
 
 
 -- | Regression: when the build command exits before printing a GHCi banner,
