@@ -1,11 +1,5 @@
 module Tricorder.Daemon.Main (main) where
 
-import Data.Default (def)
-import Effectful (runEff)
-import Effectful.Concurrent (runConcurrent)
-import Effectful.Reader.Static (runReader)
-import Effectful.State.Static.Shared (evalState)
-
 import Atelier.Component (runSystem)
 import Atelier.Config (runConfig)
 import Atelier.Effects.Cache (runCacheTtl)
@@ -21,6 +15,15 @@ import Atelier.Effects.FileWatcher (runFileWatcherIO)
 import Atelier.Effects.Monitoring.Tracing (TracingConfig, runTracingFromConfig)
 import Atelier.Effects.Publishing (runPubSub)
 import Atelier.Effects.Timeout (runTimeout)
+import Data.Default (def)
+import Effectful (runEff)
+import Effectful.Concurrent (runConcurrent)
+import Effectful.Reader.Static (runReader)
+import Effectful.State.Static.Shared (evalState)
+
+import Atelier.Effects.Cache.Config qualified as CacheConfig
+import Atelier.Effects.Log qualified as Log
+
 import Tricorder.BuildState (BuildId (..), runDaemonInfo)
 import Tricorder.Config (restartOnConfigChange, runLoadedConfig)
 import Tricorder.Effects.BuildStore (runBuildStore)
@@ -32,8 +35,6 @@ import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
 import Tricorder.Runtime (runLogPath, runProjectRoot, runRuntimeDir, runSocketPath)
 
-import Atelier.Effects.Cache.Config qualified as CacheConfig
-import Atelier.Effects.Log qualified as Log
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
 import Tricorder.Builder.Dispatch qualified as Dispatch
@@ -67,6 +68,7 @@ main =
         . runRuntimeDir
         . runSocketPath
         . runLogPath
+        . runLogging
         . runLoadedConfig
         . runConfig @"observability" @Observability.Config
         . runConfig @"observability.tracing" @TracingConfig
@@ -79,7 +81,6 @@ main =
         . runPubSub @BuildState.CabalChangeDetected
         . runPubSub @BuildState.SourceChangeDetected
         . runDaemonInfo
-        . runLogging
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.SourceQuery) @(Text, [SourceLookup.ReExport])
         . runBuildStore

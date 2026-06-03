@@ -13,6 +13,9 @@ module Tricorder.Effects.GhciSession
     , runGhciSessionScripted
     ) where
 
+import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.File (File)
+import Atelier.Effects.Timeout (Timeout)
 import Data.Default (def)
 import Effectful
     ( Effect
@@ -34,9 +37,6 @@ import Effectful.Exception (throwIO)
 import Effectful.State.Static.Shared (State, evalState, state)
 import Effectful.TH (makeEffect)
 
-import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.File (File)
-import Atelier.Effects.Timeout (Timeout)
 import Tricorder.BuildState (BuildPhase (..), BuildProgress (..))
 import Tricorder.Effects.BuildStore (BuildStore, modifyPhase)
 import Tricorder.Effects.GhciSession.GhciParser

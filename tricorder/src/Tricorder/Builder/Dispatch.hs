@@ -10,13 +10,13 @@ module Tricorder.Builder.Dispatch
     , mergeDiagnostics
     ) where
 
+import Atelier.Effects.FileWatcher (FileEvent (..))
 import Data.Default (Default (..))
 import System.FilePath (isAbsolute, (</>))
 
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
-import Atelier.Effects.FileWatcher (FileEvent (..))
 import Tricorder.BuildState (Diagnostic (..))
 import Tricorder.Effects.GhciSession (LoadResult (..), LoadedModule (..))
 import Tricorder.Effects.GhciSession.GhciParser (pathSuffixesAsModuleName)

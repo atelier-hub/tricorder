@@ -24,6 +24,7 @@ import Effectful.Dispatch.Dynamic (interpretWith)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.TH (makeEffect)
 import StmContainers.Map (Map)
+import Prelude hiding (Map)
 
 import Effectful.Concurrent.STM qualified as STM
 import ListT qualified
@@ -35,7 +36,6 @@ import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Log (Log)
 import Atelier.Time (Microsecond, nominalDiffTime)
-import Prelude hiding (Map)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Delay qualified as Delay

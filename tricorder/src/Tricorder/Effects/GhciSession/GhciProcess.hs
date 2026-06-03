@@ -16,6 +16,9 @@ module Tricorder.Effects.GhciSession.GhciProcess
     , unaddGhci
     ) where
 
+import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.File (File)
+import Atelier.Effects.Timeout (Timeout, timeout)
 import Control.Concurrent.STM (TVar, modifyTVar', readTVar, retry, writeTVar)
 import Data.Default (Default (..))
 import Data.Time.Units (Second)
@@ -42,13 +45,12 @@ import System.Process.Typed
     , waitExitCode
     )
 
+import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.File qualified as File
 import Control.Exception qualified as E
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 
-import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.File (File)
-import Atelier.Effects.Timeout (Timeout, timeout)
 import Tricorder.Effects.GhciSession.GhciParser
     ( GhciLoading (..)
     , LoadResult (..)
@@ -59,9 +61,6 @@ import Tricorder.Effects.GhciSession.GhciParser
     , parseShowTargets
     , stripAnsi
     )
-
-import Atelier.Effects.Conc qualified as Conc
-import Atelier.Effects.File qualified as File
 
 
 -- | Configuration for GHCi process management.

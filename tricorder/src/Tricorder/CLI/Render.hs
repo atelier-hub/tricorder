@@ -7,18 +7,18 @@ module Tricorder.CLI.Render
     , renderSourceResults
     ) where
 
-import Data.Text qualified as T
-
 import Atelier.Effects.Console (Console)
 import Atelier.Time (Millisecond, toMicroseconds)
+
+import Atelier.Effects.Console qualified as Console
+import Data.Text qualified as T
+
 import Tricorder.BuildState
     ( Diagnostic (..)
     , Severity (..)
     )
 import Tricorder.GhcPkg.Types (ModuleName (..), PackageId (..))
 import Tricorder.SourceLookup (ModuleSourceResult (..), ReExport (..), SourceQuery (..))
-
-import Atelier.Effects.Console qualified as Console
 
 
 formatDuration :: Millisecond -> Text

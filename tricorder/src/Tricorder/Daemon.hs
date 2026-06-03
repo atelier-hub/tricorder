@@ -4,22 +4,23 @@ module Tricorder.Daemon
     , waitForDaemon
     ) where
 
+import Atelier.Effects.Delay (Delay)
+import Atelier.Effects.File (File)
+import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Time (Millisecond)
 import Effectful (IOE)
 import Effectful.NonDet (OnEmptyPolicy (..), emptyEff, runNonDet)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.Timeout (Timeout, timeout)
 import Effectful.Writer.Static.Local (runWriter, tell)
 
-import Atelier.Effects.Delay (Delay)
-import Atelier.Effects.File (File)
-import Atelier.Effects.Posix.Daemons (Daemons)
-import Atelier.Time (Millisecond)
+import Atelier.Effects.Delay qualified as Delay
+import Atelier.Effects.Posix.Daemons qualified as Daemons
+
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.Runtime (PidFile, SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning, requestShutdown)
 
-import Atelier.Effects.Delay qualified as Delay
-import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.Daemon.Main qualified as Daemon.Main
 
 

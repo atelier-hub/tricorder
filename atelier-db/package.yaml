@@ -1,0 +1,69 @@
+name:                atelier-db
+version:             0.1.0.0
+synopsis:            Relational database effect for atelier (Hasql/Rel8)
+description:         Relational database access via Hasql and Rel8, exposed as an Effectful effect — part of the atelier toolkit.
+author:              Christian Georgii
+maintainer:          cgeorgii@gmail.com
+license:             MIT
+
+language: GHC2021
+
+ghc-options:
+- -Weverything
+- -Wno-unsafe
+- -Wno-missing-safe-haskell-mode
+- -Wno-monomorphism-restriction
+- -Wno-missing-kind-signatures
+- -Wno-missing-poly-kind-signatures
+- -Wno-missing-role-annotations
+- -Wno-missing-local-signatures
+- -Wno-missing-import-lists
+- -Wno-implicit-prelude
+- -Wno-unticked-promoted-constructors
+- -Wno-unused-packages
+- -O0
+- -fplugin=Effectful.Plugin
+- -threaded
+
+dependencies:
+- effectful-core
+- effectful-plugin
+
+default-extensions:
+- BlockArguments
+- DataKinds
+- DeriveAnyClass
+- DerivingStrategies
+- DerivingVia
+- DuplicateRecordFields
+- FlexibleContexts
+- GADTs
+- LambdaCase
+- MultiWayIf
+- OverloadedLabels
+- OverloadedRecordDot
+- OverloadedStrings
+- StrictData
+- TemplateHaskell
+- TypeFamilies
+
+library:
+  source-dirs: src
+  dependencies:
+  - name: base
+    mixin:
+      - hiding (Prelude)
+  - atelier-prelude
+  - atelier-core
+  - aeson
+  - bytestring
+  - containers
+  - data-default
+  - effectful
+  - effectful-th
+  - hasql
+  - hasql-pool
+  - hasql-transaction
+  - rel8
+  - text
+  - time

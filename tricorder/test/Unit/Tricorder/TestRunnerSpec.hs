@@ -1,5 +1,9 @@
 module Unit.Tricorder.TestRunnerSpec (spec_TestRunner) where
 
+import Atelier.Effects.Clock (runClockConst)
+import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.Input (runInputConst)
+import Atelier.Effects.Log (runLogNoOp)
 import Control.Concurrent.STM (newTVarIO, writeTVar)
 import Control.Exception (ErrorCall (..))
 import Data.Time (UTCTime (..), fromGregorian)
@@ -11,10 +15,6 @@ import Effectful.Reader.Static (runReader)
 import Effectful.State.Static.Shared (evalState)
 import Test.Hspec
 
-import Atelier.Effects.Clock (runClockConst)
-import Atelier.Effects.Delay (runDelay)
-import Atelier.Effects.Input (runInputConst)
-import Atelier.Effects.Log (runLogNoOp)
 import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)

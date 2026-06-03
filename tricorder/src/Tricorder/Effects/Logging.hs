@@ -1,13 +1,13 @@
 module Tricorder.Effects.Logging (runLogging) where
 
+import Atelier.Effects.File (File)
+import Atelier.Effects.Log (Log, Severity (..), runLogToHandle)
 import Effectful (IOE)
 import Effectful.Reader.Static (Reader, asks)
 
-import Atelier.Effects.File (File)
-import Atelier.Effects.Log (Log, Severity (..), runLogToHandle)
-import Tricorder.Runtime (LogPath (..))
-
 import Atelier.Effects.File qualified as File
+
+import Tricorder.Runtime (LogPath (..))
 
 
 runLogging :: (File :> es, IOE :> es, Reader LogPath :> es) => Eff (Log : es) a -> Eff es a

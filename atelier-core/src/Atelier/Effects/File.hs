@@ -23,11 +23,10 @@ import Effectful.Dispatch.Static
     , unsafeEff_
     , unsafeSeqUnliftIO
     )
+import Prelude hiding (hFlush, hIsEOF, hSetBuffering, withFile)
 
 import Data.ByteString.Lazy.Char8 qualified as LB8
 import System.IO qualified as IO
-
-import Prelude hiding (hFlush, hIsEOF, hSetBuffering, withFile)
 
 
 -- | Operations concerning file handles.

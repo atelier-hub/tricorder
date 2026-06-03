@@ -1,5 +1,10 @@
 module Unit.Tricorder.Effects.GhciSession.GhciProcessSpec (spec_GhciProcess) where
 
+import Atelier.Effects.Conc (runConc)
+import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.File (runFile)
+import Atelier.Effects.Timeout (runTimeout)
+import Atelier.Time (Millisecond)
 import Control.Concurrent.STM (newTVarIO)
 import Control.Exception (catch)
 import Data.IORef (newIORef, readIORef, writeIORef)
@@ -22,14 +27,12 @@ import System.Process.Typed
     )
 import Test.Hspec
 
+import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.Delay qualified as Delay
+import Atelier.Effects.File qualified as File
 import Data.Text qualified as T
 import System.Process qualified as Process
 
-import Atelier.Effects.Conc (runConc)
-import Atelier.Effects.Delay (runDelay)
-import Atelier.Effects.File (runFile)
-import Atelier.Effects.Timeout (runTimeout)
-import Atelier.Time (Millisecond)
 import Tricorder.Effects.GhciSession.GhciProcess
     ( GhciProcess (..)
     , GhciProcessError (..)
@@ -39,10 +42,6 @@ import Tricorder.Effects.GhciSession.GhciProcess
     , execGhci
     , waitForBannerOrFail
     )
-
-import Atelier.Effects.Conc qualified as Conc
-import Atelier.Effects.Delay qualified as Delay
-import Atelier.Effects.File qualified as File
 
 
 spec_GhciProcess :: Spec

@@ -16,10 +16,9 @@ import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (interpret_, reinterpret_)
 import Effectful.State.Static.Shared (modify, runState)
 import Effectful.TH (makeEffect)
+import Prelude hiding (putStr, putStrLn, putText, putTextLn)
 
 import Data.ByteString.Char8 qualified as B8
-
-import Prelude hiding (putStr, putStrLn, putText, putTextLn)
 
 
 data Console :: Effect where

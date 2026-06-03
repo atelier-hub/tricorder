@@ -1,14 +1,16 @@
 module Unit.Tricorder.BuildStoreSpec (spec_BuildStore) where
 
+import Atelier.Effects.Conc (Conc, runConc)
+import Atelier.Effects.Delay (Delay, runDelay)
+import Atelier.Effects.Input (Input, runInputConst)
 import Control.Concurrent (threadDelay)
 import Data.Time (UTCTime (..), fromGregorian)
 import Effectful (IOE, runEff, runPureEff)
 import Effectful.Concurrent (Concurrent, runConcurrent)
 import Test.Hspec
 
-import Atelier.Effects.Conc (Conc, runConc)
-import Atelier.Effects.Delay (Delay, runDelay)
-import Atelier.Effects.Input (Input, runInputConst)
+import Atelier.Effects.Conc qualified as Conc
+
 import Tricorder.BuildState (BuildId (..), BuildPhase (..), BuildResult (..), BuildState (..), DaemonInfo (..))
 import Tricorder.Effects.BuildStore
     ( BuildStore
@@ -19,8 +21,6 @@ import Tricorder.Effects.BuildStore
     , waitForNext
     , waitUntilDone
     )
-
-import Atelier.Effects.Conc qualified as Conc
 
 
 spec_BuildStore :: Spec

@@ -4,12 +4,6 @@ module Tricorder.Observability
     , component
     ) where
 
-import Data.Aeson (FromJSON, ToJSON)
-import Data.Default (Default (..))
-import Effectful (IOE)
-import Effectful.Exception (IOException, try)
-import Effectful.Reader.Static (Reader, ask)
-
 import Atelier.Component (Component (..), Trigger, defaultComponent)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Log (Log)
@@ -17,6 +11,11 @@ import Atelier.Effects.Monitoring.Tracing (TracingConfig)
 import Atelier.Time (Millisecond)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 import Atelier.Types.WithDefaults (WithDefaults (..))
+import Data.Aeson (FromJSON, ToJSON)
+import Data.Default (Default (..))
+import Effectful (IOE)
+import Effectful.Exception (IOException, try)
+import Effectful.Reader.Static (Reader, ask)
 
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.Log qualified as Log

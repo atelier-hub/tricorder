@@ -16,6 +16,7 @@ module Tricorder.Effects.BuildStore
     , runBuildStore
     ) where
 
+import Atelier.Effects.Input (Input, input)
 import Effectful (Effect)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (TChan, TVar, atomically, dupTChan, modifyTVar, newBroadcastTChan, newTVar, readTChan, readTVar, retry, writeTChan, writeTVar)
@@ -24,7 +25,6 @@ import Effectful.Exception (bracket_)
 import Effectful.State.Static.Shared (State, evalState, get, put)
 import Effectful.TH (makeEffect)
 
-import Atelier.Effects.Input (Input, input)
 import Tricorder.BuildState
     ( BuildId
     , BuildPhase (..)

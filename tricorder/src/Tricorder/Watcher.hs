@@ -5,9 +5,6 @@ module Tricorder.Watcher
     , markWatchedFiles
     ) where
 
-import Effectful.Reader.Static (Reader, ask)
-import System.FilePath (takeExtension, takeFileName)
-
 import Atelier.Component (Component (..), defaultComponent)
 import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Conc (Conc)
@@ -23,6 +20,11 @@ import Atelier.Effects.FileWatcher
     , watchFilePathsDebounced
     )
 import Atelier.Effects.Publishing (Pub, Sub, publish)
+import Effectful.Reader.Static (Reader, ask)
+import System.FilePath (takeExtension, takeFileName)
+
+import Atelier.Effects.Publishing qualified as Sub
+
 import Tricorder.BuildState
     ( CabalChangeDetected (..)
     , ChangeKind (..)
@@ -33,7 +35,6 @@ import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
-import Atelier.Effects.Publishing qualified as Sub
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.SessionStore qualified as SessionStore
 
@@ -74,7 +75,7 @@ markWatchedFiles
 markWatchedFiles f = do
     BuildStore.markDirty change
     case change of
-        CabalChange -> publish CabalChangeDetected
+        CabalChange -> publish (CabalChangeDetected f.path f.event)
         SourceChange -> publish (SourceChangeDetected f.path f.event)
   where
     change = changeKindFor f.path
@@ -129,7 +130,8 @@ sourceWatches = map (\d -> dirExt d ".hs" `excluding` containing "dist-newstyle"
 
 
 cabalWatches :: ProjectRoot -> [Watch]
-cabalWatches (ProjectRoot projectRoot) = [dirWhere projectRoot isCabalFile]
+cabalWatches (ProjectRoot projectRoot) =
+    [dirWhere projectRoot isCabalFile `excluding` containing "dist-newstyle"]
 
 
 isCabalFile :: FilePath -> Bool

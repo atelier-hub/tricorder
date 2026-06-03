@@ -11,25 +11,25 @@ module Tricorder.Effects.SessionStore
     , runSessionStoreConst
     ) where
 
+import Atelier.Config (LoadedConfig)
+import Atelier.Effects.Chan (Chan)
+import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.FileSystem (FileSystem)
+import Atelier.Effects.Log (Log)
+import Atelier.Effects.Publishing (Pub, Sub, publish)
 import Effectful (Effect)
 import Effectful.Dispatch.Dynamic (interpret_, reinterpretWith_)
 import Effectful.Reader.Static (Reader)
 import Effectful.TH (makeEffect)
 import Relude.Extra.Tuple (dup)
 
-import Effectful.State.Static.Shared qualified as State
-
-import Atelier.Config (LoadedConfig)
-import Atelier.Effects.Chan (Chan)
-import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.FileSystem (FileSystem)
-import Atelier.Effects.Publishing (Pub, Sub, publish)
-import Tricorder.Runtime (ProjectRoot)
-import Tricorder.Session (Session, loadSession)
-
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Iterator qualified as Iter
 import Atelier.Effects.Publishing qualified as Sub
+import Effectful.State.Static.Shared qualified as State
+
+import Tricorder.Runtime (ProjectRoot)
+import Tricorder.Session (Session, loadSession)
 
 
 data SessionStore :: Effect where
@@ -97,6 +97,7 @@ data SessionStoreReloaded = SessionStoreReloaded Session
 
 runSessionStore
     :: ( FileSystem :> es
+       , Log :> es
        , Pub SessionStoreReloaded :> es
        , Reader LoadedConfig :> es
        , Reader ProjectRoot :> es

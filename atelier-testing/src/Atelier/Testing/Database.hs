@@ -4,6 +4,8 @@ module Atelier.Testing.Database
     )
 where
 
+import Atelier.Effects.DB.Config (DBConfig (..), DBPools (..), PoolConfig (..), acquireDatabasePool, acquireDatabasePools)
+import Atelier.Exception (trySyncIO)
 import Control.Concurrent (MVar, forkIO, modifyMVar, newEmptyMVar, newMVar, putMVar, takeMVar, threadDelay, tryPutMVar, withMVar)
 import Data.String.Conversions (cs)
 import Database.PostgreSQL.Simple.Options (Options (..))
@@ -19,9 +21,6 @@ import Data.UUID.V4 qualified as UUIDv4
 import Database.Postgres.Temp qualified as TmpPostgres
 import Hasql.Decoders qualified as Decoders
 import Hasql.Pool qualified as Pool
-
-import Atelier.Effects.DB.Config (DBConfig (..), DBPools (..), PoolConfig (..), acquireDatabasePool, acquireDatabasePools)
-import Atelier.Exception (trySyncIO)
 
 
 -- | Project-specific configuration for the temporary test database.

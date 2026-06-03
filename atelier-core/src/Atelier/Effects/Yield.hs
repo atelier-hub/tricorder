@@ -25,6 +25,7 @@ module Atelier.Effects.Yield
 
 import Effectful.Dispatch.Dynamic (impose_, interpose_)
 import Effectful.State.Static.Shared (evalState, get)
+import Prelude hiding (catMaybes, filter, map, mapMaybe)
 
 import Atelier.Effects.Internal.Coroutine
     ( Yield (..)
@@ -43,7 +44,6 @@ import Atelier.Effects.Internal.Coroutine
     , yieldToList
     , yieldToReverseList
     )
-import Prelude hiding (catMaybes, filter, map, mapMaybe)
 
 
 filter :: (a -> Bool) -> Eff (Yield a : es) r -> Eff (Yield a : es) r

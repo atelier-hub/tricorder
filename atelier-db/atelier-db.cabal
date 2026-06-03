@@ -1,0 +1,65 @@
+cabal-version: 2.0
+
+-- This file has been generated from package.yaml by hpack version 0.38.2.
+--
+-- see: https://github.com/sol/hpack
+
+name:           atelier-db
+version:        0.1.0.0
+synopsis:       Relational database effect for atelier (Hasql/Rel8)
+description:    Relational database access via Hasql and Rel8, exposed as an Effectful effect — part of the atelier toolkit.
+author:         Christian Georgii
+maintainer:     cgeorgii@gmail.com
+license:        MIT
+build-type:     Simple
+
+library
+  exposed-modules:
+      Atelier.Effects.DB
+      Atelier.Effects.DB.Config
+      Atelier.Effects.DB.Rel8
+  other-modules:
+      Paths_atelier_db
+  autogen-modules:
+      Paths_atelier_db
+  hs-source-dirs:
+      src
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded
+  build-depends:
+      aeson
+    , atelier-core
+    , atelier-prelude
+    , base
+    , bytestring
+    , containers
+    , data-default
+    , effectful
+    , effectful-core
+    , effectful-plugin
+    , effectful-th
+    , hasql
+    , hasql-pool
+    , hasql-transaction
+    , rel8
+    , text
+    , time
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021

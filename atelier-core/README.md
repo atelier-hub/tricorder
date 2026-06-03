@@ -1,12 +1,14 @@
 # Atelier
 
-A Haskell library providing foundational infrastructure for effect-based applications.
+A family of Haskell packages providing foundational infrastructure for
+effect-based applications, built on
+[Effectful](https://github.com/haskell-effectful/effectful).
 
-## Libraries
+## Packages
 
-### `atelier`
+### `atelier-core`
 
-Core effects and utilities built on [Effectful](https://github.com/haskell-effectful/effectful):
+Core effects and utilities:
 
 | Module | Purpose |
 |---|---|
@@ -14,10 +16,14 @@ Core effects and utilities built on [Effectful](https://github.com/haskell-effec
 | `Atelier.Config` | Configuration with environment variable overrides |
 | `Atelier.Effects.Log` | Structured logging with hierarchical namespaces |
 | `Atelier.Effects.Conc` | Thread management via Ki (structured concurrency) |
-| `Atelier.Effects.DB` | Relational database access via Rel8/Hasql |
 | `Atelier.Effects.Cache` | Caching with singleflight deduplication |
 | `Atelier.Effects.Publishing` | Event publishing |
 | `Atelier.Effects.Monitoring.*` | OpenTelemetry tracing and Prometheus metrics |
+
+### `atelier-db`
+
+Relational database access via Rel8/Hasql, exposed as an Effectful effect
+(`Atelier.Effects.DB`).
 
 ### `atelier-prelude`
 

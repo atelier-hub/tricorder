@@ -1,0 +1,67 @@
+name:                atelier-testing
+version:             0.1.0.0
+synopsis:            Database-backed test utilities for atelier
+description:         Test utilities for database-backed tests using tmp-postgres — part of the atelier toolkit.
+author:              Christian Georgii
+maintainer:          cgeorgii@gmail.com
+license:             MIT
+
+language: GHC2021
+
+ghc-options:
+- -Weverything
+- -Wno-unsafe
+- -Wno-missing-safe-haskell-mode
+- -Wno-monomorphism-restriction
+- -Wno-missing-kind-signatures
+- -Wno-missing-poly-kind-signatures
+- -Wno-missing-role-annotations
+- -Wno-missing-local-signatures
+- -Wno-missing-import-lists
+- -Wno-implicit-prelude
+- -Wno-unticked-promoted-constructors
+- -Wno-unused-packages
+- -O0
+- -fplugin=Effectful.Plugin
+- -threaded
+
+dependencies:
+- effectful-core
+- effectful-plugin
+
+default-extensions:
+- BlockArguments
+- DataKinds
+- DeriveAnyClass
+- DerivingStrategies
+- DerivingVia
+- DuplicateRecordFields
+- FlexibleContexts
+- GADTs
+- LambdaCase
+- MultiWayIf
+- OverloadedLabels
+- OverloadedRecordDot
+- OverloadedStrings
+- StrictData
+- TemplateHaskell
+- TypeFamilies
+
+library:
+  source-dirs: src
+  dependencies:
+  - name: base
+    mixin:
+      - hiding (Prelude)
+  - atelier-prelude
+  - atelier-core
+  - atelier-db
+  - hasql
+  - hasql-pool
+  - hspec
+  - postgres-options
+  - string-conversions
+  - text
+  - tmp-postgres
+  - unix
+  - uuid

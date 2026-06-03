@@ -2,6 +2,11 @@ module Tricorder.UI
     ( viewUi
     ) where
 
+import Atelier.Effects.Clock (Clock)
+import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.Console (Console)
+import Atelier.Effects.Delay (Delay)
+import Atelier.Effects.File (File)
 import Brick
     ( App (..)
     , attrMap
@@ -11,14 +16,10 @@ import Brick
 import Brick.Keybindings (KeyConfig)
 import Effectful.Reader.Static (Reader, ask)
 
+import Atelier.Effects.Conc qualified as Conc
 import Graphics.Vty.Attributes qualified as Attr
 import Graphics.Vty.Attributes.Color qualified as Color
 
-import Atelier.Effects.Clock (Clock)
-import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.Console (Console)
-import Atelier.Effects.Delay (Delay)
-import Atelier.Effects.File (File)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.UnixSocket (UnixSocket)
@@ -29,7 +30,6 @@ import Tricorder.UI.Keys (KeyEvent, dispatcher)
 import Tricorder.UI.State (State (..), Viewports (..))
 import Tricorder.UI.View (view)
 
-import Atelier.Effects.Conc qualified as Conc
 import Tricorder.Effects.Brick qualified as Brick
 import Tricorder.Effects.BrickChan qualified as BrickChan
 import Tricorder.UI.Keys qualified as Keys

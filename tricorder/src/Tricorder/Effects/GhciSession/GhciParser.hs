@@ -23,6 +23,7 @@ import Data.Char (isAlpha, isDigit, isSpace, toLower)
 import System.FilePath (dropExtension, isAbsolute, makeRelative, normalise, splitDirectories, (</>))
 import Text.Megaparsec
 import Text.Megaparsec.Char (char, string)
+import Prelude hiding (many)
 
 import Data.List qualified as List
 import Data.Map.Strict qualified as Map
@@ -31,7 +32,6 @@ import Data.Text qualified as T
 import Text.Megaparsec.Char.Lexer qualified as L
 
 import Tricorder.BuildState (Diagnostic, Severity (..))
-import Prelude hiding (many)
 
 import Tricorder.BuildState qualified as BuildState
 

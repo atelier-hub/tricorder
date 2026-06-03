@@ -13,12 +13,12 @@ import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift)
 import Effectful.Exception (throwIO, trySync)
 import Effectful.TH (makeEffect)
 import StmContainers.Map (Map)
+import Prelude hiding (Map)
 
 import Effectful.Concurrent.STM qualified as STM
 import StmContainers.Map qualified as Map
 
 import Atelier.Effects.Monitoring.Tracing (Tracing, addAttribute, withSpan)
-import Prelude hiding (Map)
 
 
 -- | Singleflight cache effect for deduplicating concurrent computations

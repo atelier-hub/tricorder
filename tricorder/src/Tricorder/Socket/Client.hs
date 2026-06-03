@@ -9,6 +9,10 @@ module Tricorder.Socket.Client
     , isDaemonRunning
     ) where
 
+import Atelier.Effects.Delay (Delay)
+import Atelier.Effects.File (File)
+import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Time (Millisecond)
 import Data.Aeson (decode, eitherDecode, encode)
 import Effectful (inject)
 import Effectful.Exception (catchJust, trySync)
@@ -16,12 +20,11 @@ import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (evalState, get, modify, put)
 import System.IO.Error (isEOFError)
 
+import Atelier.Effects.Delay qualified as Delay
+import Atelier.Effects.File qualified as File
+import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Data.ByteString.Lazy qualified as BSL
 
-import Atelier.Effects.Delay (Delay)
-import Atelier.Effects.File (File)
-import Atelier.Effects.Posix.Daemons (Daemons)
-import Atelier.Time (Millisecond)
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.Effects.UnixSocket (UnixSocket, withConnection)
 import Tricorder.GhcPkg.Types (SourceQuery)
@@ -29,9 +32,6 @@ import Tricorder.Runtime (PidFile)
 import Tricorder.Socket.Protocol (ClientMessage (..), DiagnosticQuery (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleSourceResult)
 
-import Atelier.Effects.Delay qualified as Delay
-import Atelier.Effects.File qualified as File
-import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.Version qualified as Version
 
 

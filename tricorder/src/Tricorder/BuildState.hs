@@ -28,14 +28,14 @@ module Tricorder.BuildState
     , SourceChangeDetected (..)
     ) where
 
+import Atelier.Effects.FileWatcher (FileEvent)
+import Atelier.Effects.Input (Input, runInputEff)
+import Atelier.Time (Millisecond)
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Time (UTCTime)
 import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (makeRelative)
 
-import Atelier.Effects.FileWatcher (FileEvent)
-import Atelier.Effects.Input (Input, runInputEff)
-import Atelier.Time (Millisecond)
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (LogPath (..), ProjectRoot (..), SocketPath (..))
 import Tricorder.Session (Session (..))
@@ -223,7 +223,7 @@ stateLabel (BuildFailed _) = "error"
 data ChangeKind = SourceChange | CabalChange deriving stock (Eq, Ord, Show)
 
 
-data CabalChangeDetected = CabalChangeDetected
+data CabalChangeDetected = CabalChangeDetected FilePath FileEvent
     deriving stock (Eq, Show)
 data SourceChangeDetected = SourceChangeDetected FilePath FileEvent
     deriving stock (Eq, Show)

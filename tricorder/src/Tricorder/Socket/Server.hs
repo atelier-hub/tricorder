@@ -1,11 +1,5 @@
 module Tricorder.Socket.Server (component, SocketRemoved (..)) where
 
-import Data.Aeson (ToJSON, decode, encode)
-import Effectful.Exception (IOException, finally)
-import Effectful.Reader.Static (Reader, ask)
-
-import Data.ByteString.Lazy qualified as BSL
-
 import Atelier.Component (Component (..), Trigger, defaultComponent)
 import Atelier.Effects.Cache (Cache)
 import Atelier.Effects.Conc (Conc)
@@ -14,6 +8,14 @@ import Atelier.Effects.Exit (Exit, exitSuccess)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Log (Log)
 import Atelier.Time (Millisecond)
+import Data.Aeson (ToJSON, decode, encode)
+import Effectful.Exception (IOException, finally)
+import Effectful.Reader.Static (Reader, ask)
+
+import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.Log qualified as Log
+import Data.ByteString.Lazy qualified as BSL
+
 import Tricorder.BuildState (BuildPhase (..), BuildResult (..), BuildState (..), Diagnostic)
 import Tricorder.Effects.BuildStore (BuildStore, getState, waitForAnyChange, waitUntilDone)
 import Tricorder.Effects.GhcPkg (GhcPkg)
@@ -31,9 +33,6 @@ import Tricorder.Runtime (SocketPath (..))
 import Tricorder.Socket.Protocol (ClientMessage (..), DiagnosticQuery (..), ErrorResponse (..), Query (..), StatusQuery (..))
 import Tricorder.SourceLookup (ModuleName, PackageId, ReExport, lookupModuleSource)
 import Tricorder.Version (VersionMismatch (..), checkVersion)
-
-import Atelier.Effects.Conc qualified as Conc
-import Atelier.Effects.Log qualified as Log
 
 
 data SocketRemoved = SocketRemoved

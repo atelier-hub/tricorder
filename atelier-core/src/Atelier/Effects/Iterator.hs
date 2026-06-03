@@ -6,10 +6,11 @@ module Atelier.Effects.Iterator
     , changes
     ) where
 
+import Prelude hiding (filter)
+
 import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Publishing (Sub)
-import Prelude hiding (filter)
 
 import Atelier.Effects.Chan qualified as Chan
 import Atelier.Effects.Conc qualified as Conc

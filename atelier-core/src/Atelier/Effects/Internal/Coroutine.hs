@@ -42,11 +42,11 @@ import Effectful (Effect, UnliftStrategy (..), inject, raiseWith)
 import Effectful.Dispatch.Dynamic (interpretWith_, interpret_, reinterpretWith_, reinterpret_)
 import Effectful.State.Static.Shared (evalState, get, modify, runState, state)
 import Effectful.TH (makeEffect)
+import Prelude hiding (catMaybes, map, mapMaybe)
 
 import Atelier.Effects.Chan (Chan)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Publishing (Sub)
-import Prelude hiding (catMaybes, map, mapMaybe)
 
 import Atelier.Effects.Chan qualified as Chan
 import Atelier.Effects.Conc qualified as Conc

@@ -7,6 +7,7 @@ module Atelier.Effects.DB.Config
     )
 where
 
+import Atelier.Types.QuietSnake (QuietSnake (..))
 import Data.Aeson (FromJSON)
 
 import Hasql.Connection.Setting qualified as Setting
@@ -14,8 +15,6 @@ import Hasql.Connection.Setting.Connection qualified as Connection
 import Hasql.Connection.Setting.Connection.Param qualified as Param
 import Hasql.Pool qualified as Pool
 import Hasql.Pool.Config qualified as Pool
-
-import Atelier.Types.QuietSnake (QuietSnake (..))
 
 
 -- | Connection pool configuration
