@@ -1,5 +1,8 @@
 module Unit.Tricorder.WatcherSpec (spec_Watcher) where
 
+import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.FileWatcher (FileEvent (..))
+import Atelier.Effects.Publishing (runPubWriter)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
 import Effectful.Dispatch.Dynamic (reinterpret_)
@@ -8,9 +11,6 @@ import Effectful.State.Static.Shared (execState, put)
 import Effectful.Writer.Static.Shared (runWriter)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList)
 
-import Atelier.Effects.Delay (runDelay)
-import Atelier.Effects.FileWatcher (FileEvent (..))
-import Atelier.Effects.Publishing (runPubWriter)
 import Tricorder.BuildState
     ( CabalChangeDetected (..)
     , ChangeKind (..)
@@ -38,7 +38,7 @@ testMarkWatchedFiles = do
 
     describe "with cabal file change" $ it "should publish CabalChangeDetected" do
         ((_, cabalChanges), _) <- runTest "foo.cabal"
-        cabalChanges `shouldMatchList` [CabalChangeDetected]
+        cabalChanges `shouldMatchList` [CabalChangeDetected "foo.cabal" Modified]
   where
     runTest =
         runEff

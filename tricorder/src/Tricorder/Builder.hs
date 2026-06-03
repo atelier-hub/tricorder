@@ -15,6 +15,13 @@ module Tricorder.Builder
     , restartOnCabalChange
     ) where
 
+import Atelier.Component (Component (..), defaultComponent)
+import Atelier.Effects.Clock (Clock, UTCTime)
+import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.Debounce (Debounce, debounced)
+import Atelier.Effects.Log (Log)
+import Atelier.Effects.Publishing (Sub)
+import Atelier.Time (Millisecond, nominalDiffTime)
 import Control.Concurrent.STM (check, readTVar, retry, writeTVar)
 import Data.Default (Default (..))
 import Data.Time (diffUTCTime)
@@ -25,16 +32,13 @@ import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, get, modify, put, state)
 import System.FilePath (normalise)
 
+import Atelier.Effects.Clock qualified as Clock
+import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.Log qualified as Log
+import Atelier.Effects.Publishing qualified as Sub
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
-import Atelier.Component (Component (..), defaultComponent)
-import Atelier.Effects.Clock (Clock, UTCTime)
-import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.Debounce (Debounce, debounced)
-import Atelier.Effects.Log (Log)
-import Atelier.Effects.Publishing (Sub)
-import Atelier.Time (Millisecond, nominalDiffTime)
 import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)
@@ -63,10 +67,6 @@ import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
 import Tricorder.Session (Session (..))
 
-import Atelier.Effects.Clock qualified as Clock
-import Atelier.Effects.Conc qualified as Conc
-import Atelier.Effects.Log qualified as Log
-import Atelier.Effects.Publishing qualified as Sub
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.GhciSession qualified as GhciSession
 import Tricorder.Effects.SessionStore qualified as SessionStore
@@ -609,8 +609,8 @@ restartOnCabalChange preRestart setup action = do
     needsRestart <- atomically (newTVar False)
     Conc.scoped do
         Conc.fork_ $ Conc.restartableForkWith (signal needsRestart) setup action
-        Sub.listen_ @CabalChangeDetected $ \_ -> do
-            Log.info "Cabal file changed; queued restart"
+        Sub.listen_ @CabalChangeDetected $ \(CabalChangeDetected path event) -> do
+            Log.info $ "Cabal file changed (" <> show event <> " " <> toText path <> "); queued restart"
             atomically (writeTVar needsRestart True)
   where
     signal needsRestart = do

@@ -1,11 +1,5 @@
 module Tricorder (run) where
 
-import Effectful (IOE)
-import Effectful.Reader.Static (Reader, ask, asks)
-import Effectful.Timeout (Timeout)
-
-import Data.Text qualified as T
-
 import Atelier.Effects.Clock (Clock)
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Console (Console)
@@ -14,6 +8,13 @@ import Atelier.Effects.Exit (Exit)
 import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Effectful (IOE)
+import Effectful.Reader.Static (Reader, ask, asks)
+import Effectful.Timeout (Timeout)
+
+import Atelier.Effects.Console qualified as Console
+import Data.Text qualified as T
+
 import Tricorder.Arguments (Command (..))
 import Tricorder.BuildState (BuildState (..), DaemonInfo (..))
 import Tricorder.CLI (showLog, showSource, showStatus, showTests)
@@ -25,7 +26,6 @@ import Tricorder.Runtime (LogPath (..), PidFile (..), SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning, queryStatus)
 import Tricorder.UI (viewUi)
 
-import Atelier.Effects.Console qualified as Console
 import Tricorder.UI.Keys qualified as Keys
 
 

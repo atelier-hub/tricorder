@@ -7,6 +7,7 @@ module Tricorder.UI.Keys
     , mkKeyConfig
     ) where
 
+import Atelier.Effects.Console (Console)
 import Brick
     ( EventM
     , Widget
@@ -47,11 +48,11 @@ import Graphics.Vty (Key (..))
 import System.IO.Error (userError)
 import Text.Casing (quietSnake)
 
+import Atelier.Effects.Console qualified as Console
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
 
-import Atelier.Effects.Console (Console)
 import Tricorder.UI.Misc (warn)
 import Tricorder.UI.State
     ( ActiveView (..)
@@ -62,8 +63,6 @@ import Tricorder.UI.State
     , popView
     , pushView
     )
-
-import Atelier.Effects.Console qualified as Console
 
 
 -- When adding a new event here, also list it in the README under "Custom Key Bindings".

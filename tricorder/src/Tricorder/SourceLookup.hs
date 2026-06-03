@@ -18,20 +18,20 @@ module Tricorder.SourceLookup
     , unescapeEntities
     ) where
 
+import Atelier.Effects.Cache (Cache, cacheInsert, cacheLookup)
+import Atelier.Effects.FileSystem (FileSystem, doesFileExist, readFileLbs)
+import Atelier.Effects.Log (Log)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.List (findIndex)
 import System.FilePath ((</>))
 
+import Atelier.Effects.Log qualified as Log
 import Data.ByteString.Lazy qualified as BSL
 import Data.Text qualified as T
 
-import Atelier.Effects.Cache (Cache, cacheInsert, cacheLookup)
-import Atelier.Effects.FileSystem (FileSystem, doesFileExist, readFileLbs)
-import Atelier.Effects.Log (Log)
 import Tricorder.Effects.GhcPkg (GhcPkg)
 import Tricorder.GhcPkg.Types (ModuleName (..), PackageId (..), SourceQuery (..))
 
-import Atelier.Effects.Log qualified as Log
 import Tricorder.Effects.GhcPkg qualified as GhcPkg
 
 

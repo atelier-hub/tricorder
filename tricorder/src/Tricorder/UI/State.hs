@@ -12,10 +12,11 @@ module Tricorder.UI.State
     ) where
 
 import Atelier.Effects.Clock (Clock, TimeZone)
-import Tricorder.BuildState (BuildState (..))
 import Prelude hiding (init)
 
 import Atelier.Effects.Clock qualified as Clock
+
+import Tricorder.BuildState (BuildState (..))
 
 
 data Viewports

@@ -1,5 +1,10 @@
 module Unit.Tricorder.Effects.SessionStoreSpec (spec_SessionStore) where
 
+import Atelier.Effects.Chan (Chan, runChan)
+import Atelier.Effects.Clock (Clock, runClockConst)
+import Atelier.Effects.Conc (Conc, runConc)
+import Atelier.Effects.Monitoring.Tracing (Tracing, runTracingNoOp)
+import Atelier.Effects.Publishing (Pub, Sub, publish, runPubSub)
 import Control.Concurrent (threadDelay)
 import Data.Default (def)
 import Data.IORef (IORef)
@@ -12,11 +17,6 @@ import Test.Hspec (Spec, describe, it, shouldBe)
 
 import Data.IORef qualified as IORef
 
-import Atelier.Effects.Chan (Chan, runChan)
-import Atelier.Effects.Clock (Clock, runClockConst)
-import Atelier.Effects.Conc (Conc, runConc)
-import Atelier.Effects.Monitoring.Tracing (Tracing, runTracingNoOp)
-import Atelier.Effects.Publishing (Pub, Sub, publish, runPubSub)
 import Tricorder.Effects.SessionStore
     ( ActiveSession (..)
     , SessionStore (..)

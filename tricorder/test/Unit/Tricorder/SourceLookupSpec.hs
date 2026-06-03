@@ -1,5 +1,8 @@
 module Unit.Tricorder.SourceLookupSpec (spec_SourceLookup) where
 
+import Atelier.Effects.Cache (Cache, runCacheForever)
+import Atelier.Effects.FileSystem (FileSystem (..))
+import Atelier.Effects.Log (Log, runLogNoOp)
 import Effectful (IOE, runEff)
 import Effectful.Concurrent (Concurrent, runConcurrent)
 import Effectful.Dispatch.Dynamic (interpret_)
@@ -7,9 +10,6 @@ import Test.Hspec
 
 import Data.Map.Strict qualified as Map
 
-import Atelier.Effects.Cache (Cache, runCacheForever)
-import Atelier.Effects.FileSystem (FileSystem (..))
-import Atelier.Effects.Log (Log, runLogNoOp)
 import Tricorder.Effects.GhcPkg (GhcPkg, GhcPkgScript (..), runGhcPkgScripted)
 import Tricorder.GhcPkg.Types (ModuleName, PackageId, SourceQuery (..))
 import Tricorder.SourceLookup (ModuleSourceResult (..), ReExport, lookupModuleSource)

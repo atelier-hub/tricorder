@@ -1,10 +1,10 @@
 module Tricorder.TestOutput (parseHspecOutput, parseHspecDuration, stripGhciNoise) where
 
+import Atelier.Time (Millisecond, fromMicroseconds)
 import Data.Char (isDigit)
 
 import Data.Text qualified as T
 
-import Atelier.Time (Millisecond, fromMicroseconds)
 import Tricorder.BuildState (TestCase (..), TestCaseOutcome (..))
 
 

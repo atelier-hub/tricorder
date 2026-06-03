@@ -1,0 +1,262 @@
+cabal-version: 2.0
+
+-- This file has been generated from package.yaml by hpack version 0.38.2.
+--
+-- see: https://github.com/sol/hpack
+
+name:           tricorder
+version:        0.1.0.0
+synopsis:       TODO write a short description
+description:    TODO write a long description
+author:         Christian Georgii
+maintainer:     cgeorgii@gmail.com
+license:        MIT
+build-type:     Simple
+
+library tricorder-internal
+  exposed-modules:
+      Tricorder
+      Tricorder.Arguments
+      Tricorder.Builder
+      Tricorder.Builder.Dispatch
+      Tricorder.BuildState
+      Tricorder.CLI
+      Tricorder.CLI.Main
+      Tricorder.CLI.Render
+      Tricorder.Config
+      Tricorder.Daemon
+      Tricorder.Daemon.Main
+      Tricorder.Effects.Brick
+      Tricorder.Effects.BrickChan
+      Tricorder.Effects.BuildStore
+      Tricorder.Effects.GhciSession
+      Tricorder.Effects.GhciSession.GhciParser
+      Tricorder.Effects.GhciSession.GhciProcess
+      Tricorder.Effects.GhcPkg
+      Tricorder.Effects.Logging
+      Tricorder.Effects.SessionStore
+      Tricorder.Effects.TestRunner
+      Tricorder.Effects.UnixSocket
+      Tricorder.Events.FileChanged
+      Tricorder.GhcPkg.Types
+      Tricorder.Observability
+      Tricorder.Runtime
+      Tricorder.Session
+      Tricorder.Socket.Client
+      Tricorder.Socket.Protocol
+      Tricorder.Socket.Server
+      Tricorder.SourceLookup
+      Tricorder.TestOutput
+      Tricorder.UI
+      Tricorder.UI.Event
+      Tricorder.UI.Keys
+      Tricorder.UI.Misc
+      Tricorder.UI.State
+      Tricorder.UI.View
+      Tricorder.Version
+      Tricorder.Watcher
+  other-modules:
+      Paths_tricorder
+  autogen-modules:
+      Paths_tricorder
+  hs-source-dirs:
+      src
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded
+  build-depends:
+      Cabal-syntax
+    , aeson
+    , ansi-terminal
+    , atelier-core
+    , atelier-prelude
+    , base
+    , brick
+    , bytestring
+    , casing
+    , containers
+    , data-default
+    , directory
+    , effectful
+    , effectful-core
+    , effectful-plugin
+    , effectful-th
+    , filepath
+    , hashable
+    , megaparsec
+    , mtl
+    , network
+    , optparse-applicative
+    , process
+    , relude
+    , stm
+    , template-haskell
+    , text
+    , time
+    , time-units
+    , typed-process
+    , vty
+    , vty-crossplatform
+    , yaml
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021
+
+executable tricorder-daemon
+  main-is: Main.hs
+  other-modules:
+      Paths_tricorder
+  autogen-modules:
+      Paths_tricorder
+  hs-source-dirs:
+      daemon
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
+  build-depends:
+      atelier-prelude
+    , base
+    , effectful-core
+    , effectful-plugin
+    , tricorder-internal
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021
+
+executable tricorder-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_tricorder
+  autogen-modules:
+      Paths_tricorder
+  hs-source-dirs:
+      app
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
+  build-depends:
+      atelier-prelude
+    , base
+    , effectful-core
+    , effectful-plugin
+    , tricorder-internal
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021
+
+test-suite tricorder-test
+  type: exitcode-stdio-1.0
+  main-is: Driver.hs
+  other-modules:
+      Unit.Tricorder.BuilderSpec
+      Unit.Tricorder.BuildStateSpec
+      Unit.Tricorder.BuildStoreSpec
+      Unit.Tricorder.CLI.RenderSpec
+      Unit.Tricorder.Effects.GhciSession.GhciParserSpec
+      Unit.Tricorder.Effects.GhciSession.GhciProcessSpec
+      Unit.Tricorder.Effects.GhciSessionSpec
+      Unit.Tricorder.Effects.SessionStoreSpec
+      Unit.Tricorder.GhcPkgSpec
+      Unit.Tricorder.SessionSpec
+      Unit.Tricorder.SocketSpec
+      Unit.Tricorder.SourceLookupSpec
+      Unit.Tricorder.SourceSpec
+      Unit.Tricorder.TestOutputSpec
+      Unit.Tricorder.TestRunnerSpec
+      Unit.Tricorder.WatcherSpec
+      Paths_tricorder
+  autogen-modules:
+      Paths_tricorder
+  hs-source-dirs:
+      test
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -O0 -fplugin=Effectful.Plugin -threaded -Wno-prepositive-qualified-module
+  build-tool-depends:
+      tasty-discover:tasty-discover
+  build-depends:
+      Cabal-syntax
+    , aeson
+    , atelier-core
+    , atelier-prelude
+    , base
+    , containers
+    , data-default
+    , effectful
+    , effectful-core
+    , effectful-plugin
+    , hspec
+    , process
+    , stm
+    , tasty
+    , tasty-discover
+    , tasty-hspec
+    , text
+    , time
+    , time-units
+    , tricorder-internal
+    , typed-process
+    , unagi-chan
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021

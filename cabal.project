@@ -1,2 +1,8 @@
-packages: .
+packages:
+  atelier-prelude
+  atelier-core
+  atelier-db
+  atelier-testing
+  tricorder
+
 tests: True

@@ -5,20 +5,21 @@ module Tricorder.CLI
     , showTests
     ) where
 
-import Data.Aeson (encode)
-import Data.Time.Format (defaultTimeLocale, formatTime)
-import Data.Time.LocalTime (utcToLocalTime)
-import Effectful.Reader.Static (Reader, ask)
-
-import Data.ByteString.Lazy qualified as BSL
-import Data.Text qualified as T
-
 import Atelier.Effects.Clock (Clock, currentTimeZone)
 import Atelier.Effects.Console (Console)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Exit (Exit, exitFailure)
 import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem, doesFileExist, followFile, readFileLbs)
+import Data.Aeson (encode)
+import Data.Time.Format (defaultTimeLocale, formatTime)
+import Data.Time.LocalTime (utcToLocalTime)
+import Effectful.Reader.Static (Reader, ask)
+
+import Atelier.Effects.Console qualified as Console
+import Data.ByteString.Lazy qualified as BSL
+import Data.Text qualified as T
+
 import Tricorder.Arguments
     ( FollowMode (..)
     , OutputFormat (..)
@@ -54,8 +55,6 @@ import Tricorder.Socket.Client
     , queryStatusWait
     )
 import Tricorder.TestOutput (stripGhciNoise)
-
-import Atelier.Effects.Console qualified as Console
 
 
 -- | Print a build-command failure message and exit non-zero.

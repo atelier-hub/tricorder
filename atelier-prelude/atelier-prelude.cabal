@@ -1,0 +1,45 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.38.2.
+--
+-- see: https://github.com/sol/hpack
+
+name:           atelier-prelude
+version:        0.1.0.0
+synopsis:       Custom relude-based prelude with Effectful conventions
+description:    A custom prelude based on relude, adapted for Effectful — part of the atelier toolkit.
+author:         Christian Georgii
+maintainer:     cgeorgii@gmail.com
+license:        MIT
+build-type:     Simple
+
+library
+  exposed-modules:
+      Prelude
+  other-modules:
+      Paths_atelier_prelude
+  hs-source-dirs:
+      src
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages
+  build-depends:
+      base
+    , effectful-core
+    , relude
+  default-language: GHC2021

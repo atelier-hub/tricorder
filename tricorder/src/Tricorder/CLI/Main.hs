@@ -1,9 +1,5 @@
 module Tricorder.CLI.Main (main) where
 
-import Effectful (runEff)
-import Effectful.Concurrent (runConcurrent)
-import Effectful.Timeout (runTimeout)
-
 import Atelier.Config (runConfig)
 import Atelier.Effects.Clock (runClock)
 import Atelier.Effects.Conc (runConc)
@@ -13,6 +9,10 @@ import Atelier.Effects.Exit (runExit)
 import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.Posix.Daemons (runDaemons)
+import Effectful (runEff)
+import Effectful.Concurrent (runConcurrent)
+import Effectful.Timeout (runTimeout)
+
 import Tricorder.Arguments (runArguments)
 import Tricorder.Config (runLoadedConfig)
 import Tricorder.Effects.Brick (runBrick)

@@ -12,10 +12,6 @@ module Tricorder.Runtime
     , runLogPath
     ) where
 
-import Effectful.Reader.Static (Reader, ask, runReader)
-import Numeric (showHex)
-import System.FilePath ((</>))
-
 import Atelier.Effects.FileSystem
     ( FileSystem
     , canonicalizePath
@@ -24,6 +20,9 @@ import Atelier.Effects.FileSystem
     , getXdgRuntimeDir
     )
 import Atelier.Effects.Posix.Daemons (PidFile (..))
+import Effectful.Reader.Static (Reader, ask, runReader)
+import Numeric (showHex)
+import System.FilePath ((</>))
 
 
 newtype SocketPath = SocketPath {getSocketPath :: FilePath}

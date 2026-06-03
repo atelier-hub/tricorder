@@ -1,5 +1,16 @@
 module Unit.Tricorder.BuilderSpec (spec_Builder) where
 
+import Atelier.Effects.Chan (runChan)
+import Atelier.Effects.Clock (runClockConst)
+import Atelier.Effects.Conc (runConc)
+import Atelier.Effects.Debounce (debounced, runDebounce, runDebounceNoOp)
+import Atelier.Effects.Delay (runDelay)
+import Atelier.Effects.FileWatcher (FileEvent (..))
+import Atelier.Effects.Input (runInputConst)
+import Atelier.Effects.Log (runLogNoOp)
+import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
+import Atelier.Effects.Publishing (listen_, publish, runPubSub)
+import Atelier.Time (Millisecond)
 import Control.Concurrent.STM (modifyTVar', newTVarIO, readTVar, retry, writeTVar)
 import Control.Exception (ErrorCall (..))
 import Data.Default (def)
@@ -15,21 +26,12 @@ import Effectful.State.Static.Shared (evalState, runState)
 import Effectful.Writer.Static.Shared (Writer, execWriter, tell)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList, shouldSatisfy)
 
+import Atelier.Effects.Conc qualified as Conc
+import Atelier.Effects.Delay qualified as Delay
 import Control.Concurrent.STM qualified as STM
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
-import Atelier.Effects.Chan (runChan)
-import Atelier.Effects.Clock (runClockConst)
-import Atelier.Effects.Conc (runConc)
-import Atelier.Effects.Debounce (debounced, runDebounce, runDebounceNoOp)
-import Atelier.Effects.Delay (runDelay)
-import Atelier.Effects.FileWatcher (FileEvent (..))
-import Atelier.Effects.Input (runInputConst)
-import Atelier.Effects.Log (runLogNoOp)
-import Atelier.Effects.Monitoring.Tracing (runTracingNoOp)
-import Atelier.Effects.Publishing (listen_, publish, runPubSub)
-import Atelier.Time (Millisecond)
 import Tricorder.BuildState
     ( BuildId (..)
     , BuildPhase (..)
@@ -66,8 +68,6 @@ import Tricorder.Effects.GhciSession.GhciParser (extractTitle, resolveKnownTarge
 import Tricorder.Effects.TestRunner (TestRunner (..), runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
 
-import Atelier.Effects.Conc qualified as Conc
-import Atelier.Effects.Delay qualified as Delay
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
 import Tricorder.Effects.BuildStore qualified as BuildStore
@@ -133,7 +133,7 @@ testRestartOnCabalChange = do
                                 forever (Delay.wait (10 :: Millisecond))
                             )
                 Delay.wait (20 :: Millisecond) -- let the first iteration land
-                publish CabalChangeDetected
+                publish (CabalChangeDetected "foo.cabal" Modified)
                 Delay.wait (50 :: Millisecond) -- let the restart land
         finalCount <- STM.atomically (readTVar countVar)
         finalCount `shouldBe` 2

@@ -16,6 +16,7 @@ module Tricorder.Effects.UnixSocket
     , SocketScript (..)
     ) where
 
+import Atelier.Exception (trySyncIO)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift, reinterpret)
 import Effectful.Exception (finally)
@@ -37,8 +38,6 @@ import System.Directory (doesPathExist, removeFile)
 import System.IO (hClose, hGetLine, hPutStrLn, hSetEncoding, utf8)
 
 import Network.Socket qualified as Net
-
-import Atelier.Exception (trySyncIO)
 
 
 data UnixSocket :: Effect where

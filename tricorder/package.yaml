@@ -1,0 +1,145 @@
+name:                tricorder
+version:             0.1.0.0
+synopsis:            TODO write a short description
+description:         TODO write a long description
+author:              Christian Georgii
+maintainer:          cgeorgii@gmail.com
+license:             MIT
+
+language: GHC2021
+
+ghc-options:
+- -Weverything
+- -Wno-unsafe
+- -Wno-missing-safe-haskell-mode
+- -Wno-monomorphism-restriction
+- -Wno-missing-kind-signatures
+- -Wno-missing-poly-kind-signatures
+- -Wno-missing-role-annotations
+- -Wno-missing-local-signatures
+- -Wno-missing-import-lists
+- -Wno-implicit-prelude
+- -Wno-unticked-promoted-constructors
+- -Wno-unused-packages
+- -O0
+- -fplugin=Effectful.Plugin
+- -threaded
+
+dependencies:
+- effectful-core
+- effectful-plugin
+
+default-extensions:
+- BlockArguments
+- DataKinds
+- DeriveAnyClass
+- DerivingStrategies
+- DerivingVia
+- DuplicateRecordFields
+- FlexibleContexts
+- GADTs
+- LambdaCase
+- MultiWayIf
+- OverloadedLabels
+- OverloadedRecordDot
+- OverloadedStrings
+- StrictData
+- TemplateHaskell
+- TypeFamilies
+
+# tricorder ships as executables only. Shared code lives in a private internal
+# library that the executables and the test-suite consume; it is not exposed on
+# Hackage.
+internal-libraries:
+  tricorder-internal:
+    source-dirs: src
+    dependencies:
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - atelier-prelude
+    - atelier-core
+    - Cabal-syntax
+    - aeson
+    - ansi-terminal
+    - brick
+    - bytestring
+    - casing
+    - containers
+    - data-default
+    - directory
+    - effectful
+    - effectful-th
+    - filepath
+    - hashable
+    - process
+    - template-haskell
+    - megaparsec
+    - mtl
+    - network
+    - optparse-applicative
+    - relude
+    - stm
+    - text
+    - time
+    - time-units
+    - typed-process
+    - vty
+    - vty-crossplatform
+    - yaml
+
+executables:
+  tricorder-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - '"-with-rtsopts=-N -T"'
+    dependencies:
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - atelier-prelude
+    - tricorder-internal
+  tricorder-daemon:
+    main:                Main.hs
+    source-dirs:         daemon
+    ghc-options:
+      - '"-with-rtsopts=-N -T"'
+    dependencies:
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - atelier-prelude
+    - tricorder-internal
+
+tests:
+  tricorder-test:
+    main:                Driver.hs
+    source-dirs:         test
+    ghc-options:
+    - -Wno-prepositive-qualified-module
+    build-tools:
+    - tasty-discover:tasty-discover
+    dependencies:
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - atelier-prelude
+    - tricorder-internal
+    - atelier-core
+    - Cabal-syntax
+    - aeson
+    - containers
+    - data-default
+    - effectful
+    - hspec
+    - process
+    - stm
+    - tasty
+    - tasty-discover
+    - tasty-hspec
+    - text
+    - time
+    - time-units
+    - typed-process
+    - unagi-chan

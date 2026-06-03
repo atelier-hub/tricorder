@@ -1,5 +1,7 @@
 module Tricorder.UI.View (view) where
 
+import Atelier.Effects.Clock (TimeZone)
+import Atelier.Time (Millisecond, toMicroseconds)
 import Brick
     ( AttrName
     , VScrollBarOrientation (..)
@@ -28,8 +30,6 @@ import System.FilePath (isAbsolute)
 
 import Data.Text qualified as T
 
-import Atelier.Effects.Clock (TimeZone)
-import Atelier.Time (Millisecond, toMicroseconds)
 import Tricorder.BuildState
     ( BuildPhase (..)
     , BuildProgress (..)

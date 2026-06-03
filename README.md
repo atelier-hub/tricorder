@@ -11,6 +11,7 @@ Like similar tools (`ghcid`, `ghciwatch`), it builds the code continuously on ev
   - Daemon restarts automatically when cabal files change
   - If customization is needed it can be provided at different levels via a `.tricorder.yaml` or CLI args.
     - Optional config includes which cabal packages to watch, which exact command to use to enter a GHCi session, [customizable key bindings](#custom-key-bindings), etc.
+- **Multi-package projects** - In a `cabal.project` workspace, `tricorder` discovers every package's components automatically, building and running tests across all of them — no manual target configuration needed.
 - **Project context** - Tools like `tricorder source Some.Module` will attempt to find and provide the source code for a given dependency from disk, which allows exploring library APIs more easily.
 - **Machine-readable output** - Using `tricorder status --json` we can get build information in a format appropriate for programmatic usage.
 
@@ -201,4 +202,4 @@ tricorder ui
 
 ## Libraries
 
-This repository also contains [Atelier](atelier/README.md), a Haskell library providing foundational infrastructure for effect-based applications (to be extracted into its own repository).
+This repository also contains [Atelier](atelier-core/README.md), a set of Haskell libraries providing foundational infrastructure for effect-based applications (to be extracted into their own repository).

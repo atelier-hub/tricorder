@@ -19,6 +19,10 @@ module Tricorder.Effects.TestRunner
     , reportTestProgress
     ) where
 
+import Atelier.Effects.Conc (Conc)
+import Atelier.Effects.File (File)
+import Atelier.Effects.Log (Log)
+import Atelier.Effects.Timeout (Timeout, timeout)
 import Control.Concurrent.STM (TVar, readTVar, writeTVar)
 import Control.Exception (throwIO)
 import Data.Default (def)
@@ -32,12 +36,10 @@ import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (State, evalState, get, put)
 import Effectful.TH (makeEffect)
 
+import Atelier.Effects.Log qualified as Log
 import Data.List qualified as List
 import Data.Text qualified as T
 
-import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.File (File)
-import Atelier.Effects.Timeout (Timeout, timeout)
 import Tricorder.BuildState
     ( BuildPhase (..)
     , BuildProgress (..)
@@ -84,6 +86,7 @@ runTestRunnerIO
        , Concurrent :> es
        , File :> es
        , IOE :> es
+       , Log :> es
        , Reader ProjectRoot :> es
        , SessionStore :> es
        , Timeout :> es
@@ -145,25 +148,27 @@ runTestRunnerIO act = do
                                     timeout (fromIntegral secs :: Second) (execGhci ghci ":main" noProgress) >>= \case
                                         Nothing -> pure (Left secs)
                                         Just ls -> pure (Right ls)
-                pure $ case result of
+                case result of
                     Left ex ->
-                        TestRunErrored $ TestRunError {target, message = show ex}
-                    Right (Left secs) ->
-                        TestRunErrored $ TestRunError {target, message = "Test suite timed out after " <> show secs <> "s"}
+                        pure $ TestRunErrored $ TestRunError {target, message = show ex}
+                    Right (Left secs) -> do
+                        Log.warn $ "Test suite " <> target <> " timed out after " <> show secs <> "s"
+                        pure $ TestRunErrored $ TestRunError {target, message = "Test suite timed out after " <> show secs <> "s"}
                     Right (Right mainLines) ->
-                        let output = T.unlines mainLines
-                        in  case detectOutcome output of
-                                GhciCrashed msg ->
-                                    TestRunErrored $ TestRunError {target, message = msg}
-                                outcome ->
-                                    TestRunCompleted
-                                        $ TestRunCompletion
-                                            { target
-                                            , passed = outcome == GhciPassed
-                                            , output
-                                            , testCases = parseHspecOutput output
-                                            , duration = parseHspecDuration output
-                                            }
+                        pure
+                            $ let output = T.unlines mainLines
+                              in  case detectOutcome output of
+                                    GhciCrashed msg ->
+                                        TestRunErrored $ TestRunError {target, message = msg}
+                                    outcome ->
+                                        TestRunCompleted
+                                            $ TestRunCompletion
+                                                { target
+                                                , passed = outcome == GhciPassed
+                                                , output
+                                                , testCases = parseHspecOutput output
+                                                , duration = parseHspecDuration output
+                                                }
 
 
 -- | Scripted interpreter for testing.
