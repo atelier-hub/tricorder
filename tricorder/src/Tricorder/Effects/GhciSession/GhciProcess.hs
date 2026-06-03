@@ -94,8 +94,8 @@ data SessionState = Idle Int | Busy Int
 -- 'NoOpIdle' means the GHCi session is at the prompt — sending SIGINT and a
 -- sync marker would dirty the buffers and desync the next 'execGhci'.
 -- 'SendInterruptFor n' means a command was in flight (state 'Busy n') and
--- the caller should SIGINT the process group and write @markerFor (n + 1)@
--- to unblock the in-progress 'drainUntil'.
+-- the caller should SIGINT the process group and re-write @markerFor n@ (that
+-- command's own marker) to unblock the in-progress 'drainUntil'.
 data InterruptDecision
     = NoOpIdle
     | SendInterruptFor Int
@@ -154,10 +154,10 @@ startGhciProcess
     -- initial-build drain, so the UI can update the progress bar live
     -- instead of replaying everything once compilation finishes.
     -> (GhciProcess -> Eff es ())
-    -- ^ @onReady@. Called once the 'GhciProcess' is constructed but before
-    -- the initial-build drain runs — so callers can register the process
-    -- for interruption while the slow @cabal repl@ recompilation is still
-    -- in progress.
+    -- ^ @onReady@. Called once the 'GhciProcess' is constructed but before the
+    -- banner wait and initial-build drain — so callers can register the process
+    -- for interruption while the slow @cabal repl@ startup (dependency build
+    -- and recompilation) is still in progress.
     -> Eff es (GhciProcess, [Text])
 startGhciProcess config cmd dir onProgress onReady = do
     p <-
@@ -176,6 +176,22 @@ startGhciProcess config cmd dir onProgress onReady = do
     File.hSetBuffering out LineBuffering
     File.hSetBuffering err LineBuffering
 
+    -- Create the state var and the process handle up front, then register the
+    -- process for interruption *before* the (possibly slow) banner wait. For
+    -- @cabal repl@, dependency building happens before GHCi prints its banner,
+    -- so registering here lets an interrupt terminate the process during that
+    -- window rather than having to wait for the whole startup to complete.
+    stateVar <- newTVarIO (Idle 0)
+    let ghciProcess =
+            GhciProcess
+                { stdin = inp
+                , stdout = out
+                , stderr = err
+                , handle = p
+                , stateVar = stateVar
+                }
+    onReady ghciProcess
+
     -- Send a blank line to kick GHCi into producing output
     liftIO $ TIO.hPutStrLn inp ""
     File.hFlush inp
@@ -193,20 +209,6 @@ startGhciProcess config cmd dir onProgress onReady = do
     for_ config.extraSetupCommands \c ->
         liftIO $ TIO.hPutStrLn inp c
     File.hFlush inp
-
-    -- Create state var
-    stateVar <- newTVarIO (Idle 0)
-
-    let ghciProcess =
-            GhciProcess
-                { stdin = inp
-                , stdout = out
-                , stderr = err
-                , handle = p
-                , stateVar = stateVar
-                }
-
-    onReady ghciProcess
 
     -- Sync: drain until marker 1 seen, then set counter to 2.
     -- Capture lines from both streams — the stderr output contains the initial
@@ -235,8 +237,9 @@ startGhciProcess config cmd dir onProgress onReady = do
 -- fires for each @[N of M] Compiling …@ line as GHCi emits it during the
 -- initial build, so the UI can update its progress bar in real time. The
 -- @onReady@ callback (see 'startGhciProcess') fires once the underlying
--- process exists but before the initial-load drain — useful for registering
--- the process for early termination while initial compilation is in flight.
+-- process exists but before the banner wait and initial-load drain — useful
+-- for registering the process for early termination while @cabal repl@ startup
+-- (dependency build and initial compilation) is still in flight.
 withGhciProcess
     :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es, Timeout :> es)
     => Config
@@ -293,11 +296,15 @@ execGhci ghciProcess command onProgress = do
 
 -- | Interrupt the currently running GHCi command (if any).
 --
--- If a command is in progress (state 'Busy'), sends SIGINT to the GHCi
--- process group and writes a new sync marker so that the in-progress
--- 'drainUntil' unblocks. When GHCi is 'Idle' this is a true no-op: sending
--- SIGINT and a stale sync marker to an idle GHCi leaves leftover marker
--- output in the buffers that would desync the next 'execGhci'.
+-- If a command is in progress (state 'Busy n'), sends SIGINT to the GHCi
+-- process group and re-writes /that command's own/ sync marker (@markerFor n@)
+-- so the in-progress 'drainUntil', which is waiting for exactly that marker,
+-- unblocks. The next command runs as @n + 1@ and waits for @markerFor (n + 1)@,
+-- so any duplicate @markerFor n@ left in the buffers is skipped by 'drainUntil'
+-- rather than mistaken for the next command's marker.
+--
+-- When GHCi is 'Idle' this is a true no-op: sending SIGINT and a sync marker to
+-- an idle GHCi leaves leftover marker output in the buffers.
 interruptGhci :: (Concurrent :> es, File :> es, IOE :> es) => GhciProcess -> Eff es ()
 interruptGhci ghciProcess = do
     decision <- atomically do
@@ -309,7 +316,7 @@ interruptGhci ghciProcess = do
         NoOpIdle -> pure ()
         SendInterruptFor n -> do
             liftIO $ interruptProcessGroupOf (unsafeProcessHandle ghciProcess.handle)
-            sendSyncCommand ghciProcess.stdin (markerFor (n + 1))
+            sendSyncCommand ghciProcess.stdin (markerFor n)
 
 
 -- | Forcefully terminate the GHCi process, closing its handles.
@@ -360,43 +367,52 @@ markerPrefix :: Text
 markerPrefix = "#~TRI-FINISH-"
 
 
--- | Write the synchronisation Haskell expression to GHCi stdin.
+-- | Write the synchronisation Haskell statements to GHCi stdin.
 --
--- After each user command, this expression causes GHCi to emit the finish
--- marker on both stdout and stderr, so 'drainUntil' knows when to stop.
+-- After each user command, these cause GHCi to emit the finish marker on both
+-- stdout and stderr, so 'drainUntil' knows when to stop.
+--
+-- The marker is emitted as two standalone, fully-qualified statements — one per
+-- stream — using only 'System.IO.hPutStrLn'. This is deliberate: a
+-- SIGINT-interrupted ':reload' empties GHCi's interactive scope, dropping the
+-- implicit @import Prelude@, so bare names like @putStrLn@ (and even the @>>@
+-- operator) fall out of scope. A marker built from those would /error/ instead
+-- of printing — its marker would never appear and 'drainUntil' would block
+-- forever waiting for it (the "stuck Building…" stall). Fully-qualified
+-- 'System.IO.hPutStrLn' resolves via GHCi's implicit qualified imports even
+-- with an emptied scope, so the marker survives an interrupt.
 sendSyncCommand :: (File :> es, IOE :> es) => Handle -> Text -> Eff es ()
 sendSyncCommand h marker = do
     -- Use show to produce a valid Haskell string literal for the marker text.
     let markerLit = toText (show @String (toString marker)) -- e.g. "\"#~TRI-FINISH-3~#\""
-        cmd =
-            "putStrLn "
-                <> markerLit
-                <> " >> System.IO.hPutStrLn System.IO.stderr "
-                <> markerLit
-    liftIO $ TIO.hPutStrLn h cmd
+    liftIO $ TIO.hPutStrLn h ("System.IO.hPutStrLn System.IO.stdout " <> markerLit)
+    liftIO $ TIO.hPutStrLn h ("System.IO.hPutStrLn System.IO.stderr " <> markerLit)
     File.hFlush h
 
 
--- | Read lines from a handle until any finish marker is seen (or EOF).
+-- | Read lines from a handle until /this command's/ finish marker is seen (or
+-- EOF).
 --
--- Stops on any line containing the marker prefix, so an interrupt that writes
--- a later marker will unblock a drain waiting for an earlier one. Each
--- non-marker line is passed to @onLine@ as it arrives, so callers can stream
--- progress without waiting for the full drain to complete.
--- Returns accumulated non-marker lines in order. Throws 'UnexpectedExit' on
--- EOF before a marker is seen.
+-- Stops only on a line containing the exact @marker@ it was given. A line
+-- carrying a /different/ finish marker — a stale leftover from a prior command
+-- that was interrupted mid-flight — is skipped rather than matched, so it can
+-- never make a later drain return prematurely (the "0 modules"/hang desync).
+-- Each ordinary line is passed to @onLine@ as it arrives, so callers can stream
+-- progress without waiting for the full drain to complete. Returns accumulated
+-- non-marker lines in order. Throws 'UnexpectedExit' on EOF before the marker.
 drainUntil :: (File :> es) => Handle -> Text -> (Text -> Eff es ()) -> Eff es [Text]
-drainUntil h command onLine = go []
+drainUntil h marker onLine = go []
   where
     go acc = do
         result <- try @E.IOException $ File.hGetLine h
         case result of
             Left _ ->
-                throwIO $ UnexpectedExit command (listToMaybe (reverse acc))
-            Right line ->
-                if markerPrefix `T.isInfixOf` line then
-                    pure (reverse acc)
-                else do
+                throwIO $ UnexpectedExit marker (listToMaybe (reverse acc))
+            Right line
+                | marker `T.isInfixOf` line -> pure (reverse acc)
+                -- A stale marker from an interrupted command: drop it, keep going.
+                | markerPrefix `T.isInfixOf` line -> go acc
+                | otherwise -> do
                     onLine line
                     go (line : acc)
 

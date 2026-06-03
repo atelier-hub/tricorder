@@ -1,7 +1,7 @@
 module Unit.Tricorder.BuilderSpec (spec_Builder) where
 
 import Control.Concurrent.STM (modifyTVar', newTVarIO, readTVar, retry, writeTVar)
-import Control.Exception (ErrorCall (..), throwIO)
+import Control.Exception (ErrorCall (..))
 import Data.Default (def)
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian)
 import Effectful (runEff, runPureEff)
@@ -9,11 +9,11 @@ import Effectful.Concurrent (Concurrent, runConcurrent)
 import Effectful.Concurrent.STM (atomically)
 import Effectful.Dispatch.Dynamic (interpret_)
 import Effectful.Error.Static (runErrorNoCallStack, throwError)
-import Effectful.Exception (trySync)
+import Effectful.Exception (throwIO)
 import Effectful.Reader.Static (runReader)
 import Effectful.State.Static.Shared (evalState, runState)
 import Effectful.Writer.Static.Shared (Writer, execWriter, tell)
-import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe, shouldMatchList, shouldSatisfy)
+import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList, shouldSatisfy)
 
 import Control.Concurrent.STM qualified as STM
 import Data.Map.Strict qualified as Map
@@ -44,7 +44,7 @@ import Tricorder.BuildState
     , TestRunCompletion (..)
     )
 import Tricorder.Builder
-    ( BuilderSession (..)
+    ( BuildConfig (..)
     , EnteringNewPhase (..)
     , NewLoadResult (..)
     , compileLoadResultsIntoBuildResults
@@ -81,18 +81,18 @@ spec_Builder = do
     describe "compileLoadResultsIntoBuildResults" testCompileLoadResultsIntoBuildResults
     describe "requestTestRunsForNewBuildResults" testRequestTestRunsForNewBuildResults
     describe "setNewPhase" testSetNewPhase
+    describe "onRestart" testOnRestart
     describe "restartOnCabalChange" testRestartOnCabalChange
-    describe "withCabalChangeRestarts" testWithCabalChangeRestarts
     describe "buildWithGhciOnChange (startup-failure recovery)" testBuildWithGhciRecovery
     describe "reloadOnSourceChange" testReloadOnSourceChange
-    describe "handleSourceChanges (cycle serialization)" testCycleSerialization
+    describe "watchSourceChanges (event coalescing)" testEventCoalescing
     describe "interruptCurrent" testInterruptCurrent
     describe "resolveKnownTargets" testResolveKnownTargets
     describe "fileMatchesAnyTarget" testFileMatchesAnyTarget
 
 
-testRestartOnCabalChange :: Spec
-testRestartOnCabalChange = do
+testOnRestart :: Spec
+testOnRestart = do
     it "transitions BuildStore to the Building phase" do
         (st, _) <- runTest
         st.phase `shouldBe` Building Nothing
@@ -114,8 +114,8 @@ testRestartOnCabalChange = do
                 BuildStore.getState
 
 
-testWithCabalChangeRestarts :: Spec
-testWithCabalChangeRestarts = do
+testRestartOnCabalChange :: Spec
+testRestartOnCabalChange = do
     it "restarts the supervised action when CabalChangeDetected is published" do
         countVar <- newTVarIO @Int 0
 
@@ -123,7 +123,7 @@ testWithCabalChangeRestarts = do
             Conc.scoped do
                 _ <-
                     Conc.fork
-                        $ Builder.withCabalChangeRestarts
+                        $ Builder.restartOnCabalChange
                             (pure ())
                             (pure ())
                             ( \_ -> do
@@ -154,7 +154,7 @@ testWithCabalChangeRestarts = do
 -- fails to start, 'buildWithGhciOnChange' must surface 'BuildFailed' and then
 -- stay able to retry once a source file changes. The original code parked on
 -- 'atomically retry' after 'BuildFailed', so it could only ever recover via a
--- *cabal* change (the coordinator cancelling its scope) — a source edit that
+-- *cabal* change (runBuilder cancelling its scope) — a source edit that
 -- fixed the underlying problem was ignored and the daemon stayed stuck.
 testBuildWithGhciRecovery :: Spec
 testBuildWithGhciRecovery = do
@@ -167,7 +167,7 @@ testBuildWithGhciRecovery = do
                 ]
                 do
                     Conc.scoped do
-                        Conc.fork_ (Builder.buildWithGhciOnChange (def @BuilderSession))
+                        Conc.fork_ (Builder.buildWithGhciOnChange (def @BuildConfig))
                         Delay.wait (40 :: Millisecond) -- let the first launch fail + subscribe
                         publish (SourceChangeDetected "/abs/path/Foo.hs" Modified)
                         Delay.wait (60 :: Millisecond) -- let the retry land
@@ -263,6 +263,17 @@ testReloadOnSourceChange = do
         describe "when the file is not loaded" $ it "is a no-op" do
             phases <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Unknown.hs" Removed)
             phases `shouldBe` []
+
+    describe "when the reload throws (e.g. interrupted mid-flight)" do
+        it "resolves to BuildFailed instead of stranding the UI in Building" do
+            phases <- runTest knownFoo noTargets throwingCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
+            -- Regression: a reload that errors must resolve the build, not
+            -- leave 'Building' as the terminal phase (the daemon would be
+            -- stuck until the next change happened to succeed).
+            viaNonEmpty last [p | EnteringNewPhase _ p <- phases]
+                `shouldSatisfy` \case
+                    Just (BuildFailed _) -> True
+                    _ -> False
   where
     runTest initialModuleMap initialTargets ctrls event =
         runEff
@@ -279,7 +290,7 @@ testReloadOnSourceChange = do
             . execWriter @[EnteringNewPhase]
             . runBuildStoreCapture
             . runTestRunnerScripted []
-            $ reloadOnSourceChange (def @BuilderSession) ctrls event
+            $ reloadOnSourceChange (def @BuildConfig) ctrls event
 
     flow lr =
         [ EnteringNewPhase (BuildId 1) (Building Nothing)
@@ -306,6 +317,9 @@ testReloadOnSourceChange = do
             , add = \_ -> pure addLr
             , unadd = \_ -> pure unaddLr
             }
+
+    -- A reload that throws, as if SIGINT'd by a second rapid source change.
+    throwingCtrls = distinctCtrls {reload = throwIO (ErrorCall "reload interrupted")}
 
     knownFoo =
         Map.fromList
@@ -481,7 +495,7 @@ testRequestTestRunsForNewBuildResults = do
                 . runBuildStoreCapture
                 . runTestRunnerAbortAfterFirst (mkTestRun "test:foo")
                 $ requestTestRunsForNewBuildResults
-                    BuilderSession
+                    BuildConfig
                         { command = ""
                         , targets = []
                         , testTargets = ["test:foo", "test:bar"]
@@ -507,7 +521,7 @@ testRequestTestRunsForNewBuildResults = do
             . runBuildStoreCapture
             . runTestRunnerScripted script
             $ requestTestRunsForNewBuildResults
-                BuilderSession {command = "", targets = [], testTargets, watchDirs = []}
+                BuildConfig {command = "", targets = [], testTargets, watchDirs = []}
                 partial
 
     mkPhase = EnteringNewPhase (BuildId 1)
@@ -874,61 +888,23 @@ emptyDaemonInfo =
 
 
 --------------------------------------------------------------------------------
--- Cycle serialization (withCycleLock)
+-- Event coalescing (watchSourceChanges)
 --
--- Regression for the parallel-cycles bug. When two source-change events
--- arrive more than 200ms apart, debounce fires both callbacks, and if the
--- first 'reloadOnSourceChange' is still in flight when the second fires,
--- the two cycles (including their test loops) would run concurrently
--- without the lock. The user-visible symptom was the previous build's
--- test suite still running alongside the new build's.
---
--- 'handleSourceChanges' wraps each 'reloadOnSourceChange' invocation in
--- 'withCycleLock'. Here we exercise the lock primitive itself with
--- multiple concurrent acquisitions, asserting that at no point are two
--- holders in the critical section simultaneously.
+-- Regression for the parallel-cycles bug. When source-change events arrive
+-- more than 200ms apart, debounce fires each callback separately. While one
+-- cycle is in flight, the rest must collapse into AT MOST ONE trailing cycle
+-- rather than queueing N back-to-back cycles — otherwise a 'status --wait'
+-- caller wouldn't see "Done" until the last queued cycle finished. This
+-- mirrors the single-slot register + single-worker pattern that
+-- 'watchSourceChanges' uses to coalesce a burst into one trailing reload.
 --------------------------------------------------------------------------------
 
-testCycleSerialization :: Spec
-testCycleSerialization = do
-    it "serialises concurrent acquisitions (max one holder at a time)" do
-        inProgressRef <- newTVarIO (0 :: Int)
-        maxConcurrentRef <- newTVarIO (0 :: Int)
-        let worker lock = Builder.withCycleLock lock do
-                atomically do
-                    modifyTVar' inProgressRef (+ 1)
-                    cur <- readTVar inProgressRef
-                    modifyTVar' maxConcurrentRef (max cur)
-                Delay.wait (10 :: Millisecond)
-                atomically (modifyTVar' inProgressRef (subtract 1))
-        runEff . runConcurrent . runDelay . runConc $ do
-            lock <- Builder.newCycleLock
-            Conc.scoped do
-                threads <- replicateM 5 (Conc.fork (worker lock))
-                traverse_ Conc.await threads
-        finalMax <- STM.atomically (readTVar maxConcurrentRef)
-        finalMax `shouldBe` 1
-
-    it "releases the lock even if the action throws" do
-        result <- runEff . runConcurrent . runDelay $ do
-            lock <- Builder.newCycleLock
-            firstAttempt <-
-                trySync
-                    $ Builder.withCycleLock lock
-                    $ liftIO
-                    $ throwIO (ErrorCall "boom")
-            -- A second acquisition must succeed — if 'withCycleLock' had
-            -- failed to release on exception, this would deadlock.
-            Builder.withCycleLock lock (pure ())
-            pure firstAttempt
-        case result of
-            Left _ -> pure ()
-            Right () -> expectationFailure "expected the exception to propagate"
-
+testEventCoalescing :: Spec
+testEventCoalescing = do
     -- Whenever 'interruptCurrent' cannot drop the in-flight cycle promptly
     -- (e.g. a 'status --wait' caller has registered as a waiter, gating
     -- 'interruptCurrent' to a no-op), additional source-change events would
-    -- previously each queue their own follow-up cycle behind 'withCycleLock'.
+    -- previously each queue their own follow-up cycle.
     -- N touches spaced wider than the 200ms debounce window therefore
     -- produced N back-to-back cycles after the in-flight one finished — and
     -- a 'status --wait' caller wouldn't see "Done" until the last queued
@@ -937,7 +913,7 @@ testCycleSerialization = do
     -- Desired behaviour: while a cycle is in flight, additional source
     -- changes coalesce into AT MOST ONE trailing cycle, regardless of how
     -- many events arrived. This mirrors the single-slot register +
-    -- single-worker pattern that 'handleSourceChanges' uses.
+    -- single-worker pattern that 'watchSourceChanges' uses.
     it "coalesces source-change events into one follow-up cycle while busy" do
         cycleRunsRef <- newTVarIO (0 :: Int)
         releaseFirst <- STM.newEmptyTMVarIO @()
