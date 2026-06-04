@@ -14,7 +14,7 @@
       identifier = { name = "atelier-testing"; version = "0.1.0.0"; };
       license = "MIT";
       copyright = "";
-      maintainer = "cgeorgii@gmail.com";
+      maintainer = "christian.georgii@tweag.io";
       author = "Christian Georgii";
       homepage = "https://github.com/atelier-hub/tricorder#readme";
       url = "";
@@ -28,7 +28,7 @@
       dataFiles = [];
       extraSrcFiles = [];
       extraTmpFiles = [];
-      extraDocFiles = [ "CHANGELOG.md" ];
+      extraDocFiles = [ "CHANGELOG.md" "README.md" ];
     };
     components = {
       "library" = {
