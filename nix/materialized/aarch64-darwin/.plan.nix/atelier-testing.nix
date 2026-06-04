@@ -16,19 +16,19 @@
       copyright = "";
       maintainer = "cgeorgii@gmail.com";
       author = "Christian Georgii";
-      homepage = "";
+      homepage = "https://github.com/atelier-hub/tricorder#readme";
       url = "";
       synopsis = "Database-backed test utilities for atelier";
       description = "Test utilities for database-backed tests using tmp-postgres — part of the atelier toolkit.";
       buildType = "Simple";
       isLocal = true;
       detailLevel = "FullDetails";
-      licenseFiles = [];
+      licenseFiles = [ "LICENSE" ];
       dataDir = ".";
       dataFiles = [];
       extraSrcFiles = [];
       extraTmpFiles = [];
-      extraDocFiles = [];
+      extraDocFiles = [ "CHANGELOG.md" ];
     };
     components = {
       "library" = {
