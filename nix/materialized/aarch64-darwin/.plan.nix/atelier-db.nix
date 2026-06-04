@@ -16,19 +16,19 @@
       copyright = "";
       maintainer = "cgeorgii@gmail.com";
       author = "Christian Georgii";
-      homepage = "";
+      homepage = "https://github.com/atelier-hub/tricorder#readme";
       url = "";
       synopsis = "Relational database effect for atelier (Hasql/Rel8)";
       description = "Relational database access via Hasql and Rel8, exposed as an Effectful effect — part of the atelier toolkit.";
       buildType = "Simple";
       isLocal = true;
       detailLevel = "FullDetails";
-      licenseFiles = [];
+      licenseFiles = [ "LICENSE" ];
       dataDir = ".";
       dataFiles = [];
       extraSrcFiles = [];
       extraTmpFiles = [];
-      extraDocFiles = [];
+      extraDocFiles = [ "CHANGELOG.md" ];
     };
     components = {
       "library" = {

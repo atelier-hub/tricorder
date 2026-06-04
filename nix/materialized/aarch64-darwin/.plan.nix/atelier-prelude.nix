@@ -10,25 +10,25 @@
   ({
     flags = {};
     package = {
-      specVersion = "1.12";
+      specVersion = "1.18";
       identifier = { name = "atelier-prelude"; version = "0.1.0.0"; };
       license = "MIT";
       copyright = "";
       maintainer = "cgeorgii@gmail.com";
       author = "Christian Georgii";
-      homepage = "";
+      homepage = "https://github.com/atelier-hub/tricorder#readme";
       url = "";
       synopsis = "Custom relude-based prelude with Effectful conventions";
       description = "A custom prelude based on relude, adapted for Effectful — part of the atelier toolkit.";
       buildType = "Simple";
       isLocal = true;
       detailLevel = "FullDetails";
-      licenseFiles = [];
+      licenseFiles = [ "LICENSE" ];
       dataDir = ".";
       dataFiles = [];
       extraSrcFiles = [];
       extraTmpFiles = [];
-      extraDocFiles = [];
+      extraDocFiles = [ "CHANGELOG.md" ];
     };
     components = {
       "library" = {
