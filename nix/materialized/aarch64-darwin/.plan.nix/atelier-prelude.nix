@@ -14,9 +14,9 @@
       identifier = { name = "atelier-prelude"; version = "0.1.0.0"; };
       license = "MIT";
       copyright = "";
-      maintainer = "cgeorgii@gmail.com";
+      maintainer = "christian.georgii@tweag.io";
       author = "Christian Georgii";
-      homepage = "https://github.com/atelier-hub/tricorder#readme";
+      homepage = "https://github.com/atelier-hub/tricorder/tree/main/atelier-prelude";
       url = "";
       synopsis = "Custom relude-based prelude with Effectful conventions";
       description = "A custom prelude based on relude, adapted for Effectful — part of the atelier toolkit.";
@@ -28,7 +28,7 @@
       dataFiles = [];
       extraSrcFiles = [];
       extraTmpFiles = [];
-      extraDocFiles = [ "CHANGELOG.md" ];
+      extraDocFiles = [ "CHANGELOG.md" "README.md" ];
     };
     components = {
       "library" = {

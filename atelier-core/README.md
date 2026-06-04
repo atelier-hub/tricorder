@@ -1,34 +1,33 @@
-# Atelier
+# atelier-core
 
-A family of Haskell packages providing foundational infrastructure for
-effect-based applications, built on
-[Effectful](https://github.com/haskell-effectful/effectful).
+Foundational effects and utilities for effect-based applications, built on [Effectful](https://github.com/haskell-effectful/effectful). Part of the **atelier** toolkit.
 
-## Packages
+## Overview
 
-### `atelier-core`
-
-Core effects and utilities:
+`atelier-core` provides a set of composable Effectful effects and supporting types for building structured, observable applications.
 
 | Module | Purpose |
 |---|---|
 | `Atelier.Component` | Structured component lifecycle (`setup → listeners → start`) |
 | `Atelier.Config` | Configuration with environment variable overrides |
 | `Atelier.Effects.Log` | Structured logging with hierarchical namespaces |
-| `Atelier.Effects.Conc` | Thread management via Ki (structured concurrency) |
+| `Atelier.Effects.Conc` | Thread management via [Ki](https://github.com/awkward-squad/ki) (structured concurrency) |
 | `Atelier.Effects.Cache` | Caching with singleflight deduplication |
-| `Atelier.Effects.Publishing` | Event publishing |
-| `Atelier.Effects.Monitoring.*` | OpenTelemetry tracing and Prometheus metrics |
+| `Atelier.Effects.Publishing` | Event publishing with context propagation |
+| `Atelier.Effects.Monitoring.Tracing` | OpenTelemetry tracing |
+| `Atelier.Effects.Monitoring.Metrics` | Prometheus metrics |
+| `Atelier.Effects.FileWatcher` | Filesystem change notifications |
+| `Atelier.Effects.Process` | External process management |
 
-### `atelier-db`
+It also wraps a number of `IO`-based primitives (environment, clock, file system, console, POSIX) as effects so they can be interpreted and tested explicitly: `Atelier.Effects.Env`, `Atelier.Effects.Clock`, `Atelier.Effects.FileSystem`, `Atelier.Effects.Console`, `Atelier.Effects.Posix.*`, and more.
 
-Relational database access via Rel8/Hasql, exposed as an Effectful effect
-(`Atelier.Effects.DB`).
+## Part of atelier
 
-### `atelier-prelude`
+- [`atelier-prelude`](https://github.com/atelier-hub/tricorder/tree/main/atelier-prelude) — relude-based prelude with Effectful conventions
+- [`atelier-core`](https://github.com/atelier-hub/tricorder/tree/main/atelier-core) — this package
+- [`atelier-db`](https://github.com/atelier-hub/tricorder/tree/main/atelier-db) — relational database effect (Hasql/Rel8)
+- [`atelier-testing`](https://github.com/atelier-hub/tricorder/tree/main/atelier-testing) — database-backed test utilities
 
-Custom prelude based on [relude](https://github.com/kowainik/relude), enforcing Effectful conventions.
+## License
 
-### `atelier-testing`
-
-Test utilities for database-backed tests using [tmp-postgres](https://github.com/jfischoff/tmp-postgres).
+MIT — see [LICENSE](LICENSE).
