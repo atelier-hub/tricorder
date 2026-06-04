@@ -5,6 +5,12 @@ description:         Relational database access via Hasql and Rel8, exposed as a
 author:              Christian Georgii
 maintainer:          cgeorgii@gmail.com
 license:             MIT
+license-file:        LICENSE
+github:              atelier-hub/tricorder
+category:            Database
+
+extra-doc-files:
+- CHANGELOG.md
 
 language: GHC2021
 

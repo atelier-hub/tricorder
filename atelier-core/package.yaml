@@ -5,6 +5,13 @@ description:         Core effects and utilities for effect-based applications, b
 author:              Christian Georgii
 maintainer:          cgeorgii@gmail.com
 license:             MIT
+license-file:        LICENSE
+github:              atelier-hub/tricorder
+category:            Control
+
+extra-doc-files:
+- CHANGELOG.md
+- README.md
 
 language: GHC2021
 

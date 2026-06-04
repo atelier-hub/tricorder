@@ -8,10 +8,21 @@ name:           atelier-core
 version:        0.1.0.0
 synopsis:       Foundational Effectful-based effects and utilities
 description:    Core effects and utilities for effect-based applications, built on Effectful — part of the atelier toolkit.
+category:       Control
+homepage:       https://github.com/atelier-hub/tricorder#readme
+bug-reports:    https://github.com/atelier-hub/tricorder/issues
 author:         Christian Georgii
 maintainer:     cgeorgii@gmail.com
 license:        MIT
+license-file:   LICENSE
 build-type:     Simple
+extra-doc-files:
+    CHANGELOG.md
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/atelier-hub/tricorder
 
 library
   exposed-modules:

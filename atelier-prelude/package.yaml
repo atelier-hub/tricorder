@@ -5,6 +5,12 @@ description:         A custom prelude based on relude, adapted for Effectful —
 author:              Christian Georgii
 maintainer:          cgeorgii@gmail.com
 license:             MIT
+license-file:        LICENSE
+github:              atelier-hub/tricorder
+category:            Prelude
+
+extra-doc-files:
+- CHANGELOG.md
 
 language: GHC2021
 

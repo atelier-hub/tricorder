@@ -8,10 +8,20 @@ name:           atelier-db
 version:        0.1.0.0
 synopsis:       Relational database effect for atelier (Hasql/Rel8)
 description:    Relational database access via Hasql and Rel8, exposed as an Effectful effect — part of the atelier toolkit.
+category:       Database
+homepage:       https://github.com/atelier-hub/tricorder#readme
+bug-reports:    https://github.com/atelier-hub/tricorder/issues
 author:         Christian Georgii
 maintainer:     cgeorgii@gmail.com
 license:        MIT
+license-file:   LICENSE
 build-type:     Simple
+extra-doc-files:
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/atelier-hub/tricorder
 
 library
   exposed-modules:

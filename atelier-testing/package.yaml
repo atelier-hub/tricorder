@@ -5,6 +5,12 @@ description:         Test utilities for database-backed tests using tmp-postgres
 author:              Christian Georgii
 maintainer:          cgeorgii@gmail.com
 license:             MIT
+license-file:        LICENSE
+github:              atelier-hub/tricorder
+category:            Testing
+
+extra-doc-files:
+- CHANGELOG.md
 
 language: GHC2021
 

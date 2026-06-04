@@ -1,0 +1,13 @@
+# Changelog
+
+All notable changes to `atelier-testing` will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to the [PVP](https://pvp.haskell.org/).
+
+## [Unreleased]
+
+### Added
+
+- Initial release: database-backed test utilities (tmp-postgres) for the
+  atelier toolkit.
