@@ -14,7 +14,7 @@
       identifier = { name = "tricorder"; version = "0.1.0.0"; };
       license = "MIT";
       copyright = "";
-      maintainer = "cgeorgii@gmail.com";
+      maintainer = "christian.georgii@tweag.io";
       author = "Christian Georgii";
       homepage = "";
       url = "";
@@ -23,12 +23,12 @@
       buildType = "Simple";
       isLocal = true;
       detailLevel = "FullDetails";
-      licenseFiles = [];
+      licenseFiles = [ "LICENSE" ];
       dataDir = ".";
       dataFiles = [];
       extraSrcFiles = [];
       extraTmpFiles = [];
-      extraDocFiles = [];
+      extraDocFiles = [ "README.md" ];
     };
     components = {
       sublibs = {
