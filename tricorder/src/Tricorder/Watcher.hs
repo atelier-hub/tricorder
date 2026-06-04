@@ -20,6 +20,7 @@ import Atelier.Effects.FileWatcher
     , watchFilePathsDebounced
     )
 import Atelier.Effects.Publishing (Pub, Sub, publish)
+import Effectful.Concurrent (Concurrent)
 import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (takeExtension, takeFileName)
 
@@ -47,6 +48,7 @@ component
     :: ( BuildStore :> es
        , Chan :> es
        , Conc :> es
+       , Concurrent :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
        , Pub CabalChangeDetected :> es
@@ -96,6 +98,7 @@ data WatcherSession = WatcherSession
 withWatcherSession
     :: ( Chan :> es
        , Conc :> es
+       , Concurrent :> es
        , SessionStore :> es
        , Sub SessionStoreReloaded :> es
        )
@@ -109,6 +112,7 @@ withWatcherSession =
 watchFiles
     :: ( Chan :> es
        , Conc :> es
+       , Concurrent :> es
        , Debounce FilePath :> es
        , FileWatcher :> es
        , Pub WatchedFile :> es

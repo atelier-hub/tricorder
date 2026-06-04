@@ -5,6 +5,12 @@ description:         Test utilities for database-backed tests using tmp-postgres
 author:              Christian Georgii
 maintainer:          cgeorgii@gmail.com
 license:             MIT
+license-file:        LICENSE
+github:              atelier-hub/tricorder
+category:            Testing
+
+extra-doc-files:
+- CHANGELOG.md
 
 language: GHC2021
 
@@ -21,13 +27,17 @@ ghc-options:
 - -Wno-implicit-prelude
 - -Wno-unticked-promoted-constructors
 - -Wno-unused-packages
-- -O0
+# Missed-specialisation warnings fire on imported overloaded functions that we
+# can't annotate with INLINABLE. They only appear under optimization and aren't
+# actionable.
+- -Wno-all-missed-specialisations
+- -Wno-missed-specialisations
 - -fplugin=Effectful.Plugin
 - -threaded
 
 dependencies:
-- effectful-core
-- effectful-plugin
+- effectful-core >=2.6 && <2.7
+- effectful-plugin >=2.0 && <2.1
 
 default-extensions:
 - BlockArguments
@@ -51,17 +61,18 @@ library:
   source-dirs: src
   dependencies:
   - name: base
+    version: ">=4.20 && <4.21"
     mixin:
       - hiding (Prelude)
-  - atelier-prelude
-  - atelier-core
-  - atelier-db
-  - hasql
-  - hasql-pool
-  - hspec
-  - postgres-options
-  - string-conversions
-  - text
-  - tmp-postgres
-  - unix
-  - uuid
+  - atelier-prelude >=0.1 && <0.2
+  - atelier-core >=0.1 && <0.2
+  - atelier-db >=0.1 && <0.2
+  - hasql >=1.9 && <1.10
+  - hasql-pool >=1.3 && <1.4
+  - hspec >=2.11 && <2.12
+  - postgres-options >=0.2 && <0.3
+  - string-conversions >=0.4 && <0.5
+  - text >=2.1 && <2.2
+  - tmp-postgres >=1.35 && <1.36
+  - unix >=2.8 && <2.9
+  - uuid >=1.3 && <1.4

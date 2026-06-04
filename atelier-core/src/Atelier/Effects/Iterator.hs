@@ -6,6 +6,7 @@ module Atelier.Effects.Iterator
     , changes
     ) where
 
+import Effectful.Concurrent (Concurrent)
 import Prelude hiding (filter)
 
 import Atelier.Effects.Chan (Chan)
@@ -23,17 +24,20 @@ newtype Iterator es a = Iterator {next :: Eff es a}
 
 
 -- | Run a continuation with a buffered iterator of 'Sub' events. The iterator
--- subscribes before the continuation runs, so no events are missed. The
--- internal listener thread is scoped to the continuation, and is killed when
--- the continuation returns.
+-- subscribes before the continuation runs, so no events are missed: we use
+-- 'Sub.forkListener_', which forks the listener and blocks until it has
+-- actually subscribed before returning. Without that barrier the subscription
+-- races a publisher started inside @use@, which under scheduler pressure can
+-- drop early events and wedge 'next' forever. The listener thread is scoped to
+-- the continuation and is killed when it returns.
 fromEvents
     :: forall event es a
-     . (Chan :> es, Conc :> es, Sub event :> es)
+     . (Chan :> es, Conc :> es, Concurrent :> es, Sub event :> es)
     => (Iterator es event -> Eff es a)
     -> Eff es a
 fromEvents use = Conc.scoped do
     (inChan, outChan) <- Chan.newChan
-    Conc.fork_ $ Sub.listen_ (Chan.writeChan inChan)
+    Sub.forkListener_ (Chan.writeChan inChan)
     use $ Iterator (Chan.readChan outChan)
 
 

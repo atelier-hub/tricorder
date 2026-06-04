@@ -5,6 +5,12 @@ description:         Relational database access via Hasql and Rel8, exposed as a
 author:              Christian Georgii
 maintainer:          cgeorgii@gmail.com
 license:             MIT
+license-file:        LICENSE
+github:              atelier-hub/tricorder
+category:            Database
+
+extra-doc-files:
+- CHANGELOG.md
 
 language: GHC2021
 
@@ -21,13 +27,17 @@ ghc-options:
 - -Wno-implicit-prelude
 - -Wno-unticked-promoted-constructors
 - -Wno-unused-packages
-- -O0
+# Missed-specialisation warnings fire on imported overloaded functions that we
+# can't annotate with INLINABLE. They only appear under optimization and aren't
+# actionable.
+- -Wno-all-missed-specialisations
+- -Wno-missed-specialisations
 - -fplugin=Effectful.Plugin
 - -threaded
 
 dependencies:
-- effectful-core
-- effectful-plugin
+- effectful-core >=2.6 && <2.7
+- effectful-plugin >=2.0 && <2.1
 
 default-extensions:
 - BlockArguments
@@ -51,19 +61,20 @@ library:
   source-dirs: src
   dependencies:
   - name: base
+    version: ">=4.20 && <4.21"
     mixin:
       - hiding (Prelude)
-  - atelier-prelude
-  - atelier-core
-  - aeson
-  - bytestring
-  - containers
-  - data-default
-  - effectful
-  - effectful-th
-  - hasql
-  - hasql-pool
-  - hasql-transaction
-  - rel8
-  - text
-  - time
+  - atelier-prelude >=0.1 && <0.2
+  - atelier-core >=0.1 && <0.2
+  - aeson >=2.2 && <2.3
+  - bytestring >=0.12 && <0.13
+  - containers >=0.7 && <0.8
+  - data-default >=0.8 && <0.9
+  - effectful >=2.6 && <2.7
+  - effectful-th >=1.0 && <1.1
+  - hasql >=1.9 && <1.10
+  - hasql-pool >=1.3 && <1.4
+  - hasql-transaction >=1.2 && <1.3
+  - rel8 >=1.7 && <1.8
+  - text >=2.1 && <2.2
+  - time >=1.12 && <1.13

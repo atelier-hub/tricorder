@@ -6,12 +6,13 @@ import Effectful.State.Static.Shared (evalState, state)
 import Effectful.Writer.Static.Shared (runWriter, tell)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
+import Effectful.Concurrent.STM qualified as STM
+
 import Atelier.Effects.Chan (runChan)
 import Atelier.Effects.Conc (runConc)
 
 import Atelier.Effects.Await qualified as Await
 import Atelier.Effects.Yield qualified as Yield
-import Atelier.Types.Semaphore qualified as Sem
 
 
 spec_Await :: Spec
@@ -57,15 +58,18 @@ testAwaitYield = do
     it "pipes yielded values into the await stream" do
         (_, result) <-
             runTest
-                $ Await.awaitYield (Yield.inFoldable @Int [1, 2, 3] >> (Sem.wait =<< Sem.new))
+                $ Await.awaitYield (Yield.inFoldable @Int [1, 2, 3] >> blockForever)
                 $ replicateM 3 Await.await >>= tell
 
         result `shouldBe` [1, 2, 3]
 
     it "returns the result of the awaiting computation" do
+        -- The yielder blocks after yielding so the awaiter reliably wins the
+        -- termination race and its 'tell' is observed; otherwise the yielder can
+        -- finish first and cancel the awaiter before it writes (flaky under load).
         (_, result) <-
             runTest
-                $ Await.awaitYield @Int (Yield.yield 99)
+                $ Await.awaitYield @Int (Yield.yield 99 >> blockForever)
                 $ fmap (* 2) Await.await >>= tell . one
         result `shouldBe` [198]
 
@@ -74,7 +78,7 @@ testAwaitYield = do
             (result, _) <-
                 runTest . runConcurrent $ do
                     Await.awaitYield @Int
-                        (Yield.inFoldable [1 .. 100] >> (Sem.wait =<< Sem.new) >> pure 2)
+                        (Yield.inFoldable [1 .. 100] >> blockForever)
                         Await.await
             result `shouldBe` 1
 
@@ -87,3 +91,8 @@ testAwaitYield = do
             result `shouldBe` 2
   where
     runTest = runEff . runConcurrent . runConc . runChan . runWriter
+    -- Block the current (forked) computation indefinitely; used to keep a yielder
+    -- alive so the awaiter wins the awaitYield termination race. The explicit
+    -- signature keeps it polymorphic across the differing effect stacks below.
+    blockForever :: (STM.Concurrent :> es) => Eff es a
+    blockForever = STM.atomically STM.retry

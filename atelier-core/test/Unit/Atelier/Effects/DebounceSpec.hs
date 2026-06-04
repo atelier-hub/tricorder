@@ -1,6 +1,5 @@
 module Unit.Atelier.Effects.DebounceSpec (spec_Debounce) where
 
-import Control.Concurrent.MVar (modifyMVar_, newMVar, readMVar)
 import Data.Dynamic (fromDynamic, toDyn)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
@@ -130,95 +129,100 @@ testEnsureCallback = do
             }
 
 
+-- These specs exercise real-timer debouncing across forked threads. Rather than
+-- sleeping a fixed duration and hoping the settle fired (which races scheduling
+-- under load), each callback signals a 'TMVar' and the test blocks until it
+-- fires. Multi-burst tests sequence by waiting for each burst's fire, so bursts
+-- cannot merge regardless of timing. A short grace after the fire guards against
+-- a spurious second fire.
 testRunDebounce :: Spec
 testRunDebounce = do
     describe "debounced" do
         describe "when invoked once" $ it "fires once" do
-            counter <- newMVar @Int 0
-            let inc = liftIO $ modifyMVar_ counter (pure . (+ 1))
-            runTest do
-                debounced 50 () inc
-                Delay.wait @Millisecond 100
-            readMVar counter >>= (`shouldBe` 1)
+            n <- runTest do
+                (count, fired) <- newCounter
+                debounced 50 () (bump count fired)
+                awaitFire fired
+                Delay.wait @Millisecond 80
+                readCount count
+            n `shouldBe` 1
 
         describe "when invoked multiple times" $ it "fires once" do
-            counter <- newMVar @Int 0
-            let inc = liftIO $ modifyMVar_ counter (pure . (+ 1))
-            runTest do
-                debounced 50 () inc
-                debounced 50 () inc
-                debounced 50 () inc
-                Delay.wait @Millisecond 200
-            readMVar counter >>= (`shouldBe` 1)
+            n <- runTest do
+                (count, fired) <- newCounter
+                debounced 50 () (bump count fired)
+                debounced 50 () (bump count fired)
+                debounced 50 () (bump count fired)
+                awaitFire fired
+                Delay.wait @Millisecond 80
+                readCount count
+            n `shouldBe` 1
 
         describe "when invoked multiple times with a delay between" $ it "fires once per burst" do
-            counter <- newMVar @Int 0
-            let inc = liftIO $ modifyMVar_ counter (pure . (+ 1))
-            runTest do
-                debounced 50 () inc
-                debounced 50 () inc
-                Delay.wait @Millisecond 150
-                debounced 50 () inc
-                debounced 50 () inc
-                Delay.wait @Millisecond 150
-            readMVar counter >>= (`shouldBe` 2)
+            n <- runTest do
+                (count, fired) <- newCounter
+                debounced 50 () (bump count fired)
+                debounced 50 () (bump count fired)
+                awaitFire fired -- burst 1 settled and cleared the entry
+                debounced 50 () (bump count fired)
+                debounced 50 () (bump count fired)
+                awaitFire fired -- burst 2 is therefore independent
+                readCount count
+            n `shouldBe` 2
 
         describe "when invoked many times" $ it "should not crash" do
-            counter <- newMVar @Int 0
-            let inc = liftIO $ modifyMVar_ counter (pure . (+ 1))
-            runTest do
-                replicateM_ 10_000 $ debounced 50 () inc
-                Delay.wait @Millisecond 500
-            readMVar counter >>= (`shouldBe` 1)
+            n <- runTest do
+                (count, fired) <- newCounter
+                replicateM_ 10_000 $ debounced 50 () (bump count fired)
+                awaitFire fired
+                Delay.wait @Millisecond 80
+                readCount count
+            n `shouldBe` 1
 
     describe "debouncedWith" do
         describe "when invoked once" $ it "fires callback with the provided arg" do
-            result <- newMVar @(Maybe Int) Nothing
-            runTest do
-                debouncedWith 50 (+) () (42 :: Int) $ \v ->
-                    liftIO $ modifyMVar_ result (\_ -> pure (Just v))
-                Delay.wait @Millisecond 100
-            readMVar result >>= (`shouldBe` Just 42)
+            got <- runTest do
+                result <- STM.atomically STM.newEmptyTMVar
+                debouncedWith 50 (+) () (42 :: Int) (signal result)
+                awaitValue result
+            got `shouldBe` Just 42
 
         describe "when invoked multiple times rapidly" do
             it "fires once" do
-                counter <- newMVar @Int 0
-                runTest do
-                    debouncedWith 50 (+) () (1 :: Int) $ \_ ->
-                        liftIO $ modifyMVar_ counter (pure . (+ 1))
-                    debouncedWith 50 (+) () (2 :: Int) $ \_ ->
-                        liftIO $ modifyMVar_ counter (pure . (+ 1))
-                    debouncedWith 50 (+) () (3 :: Int) $ \_ ->
-                        liftIO $ modifyMVar_ counter (pure . (+ 1))
-                    Delay.wait @Millisecond 200
-                readMVar counter >>= (`shouldBe` 1)
+                n <- runTest do
+                    (count, fired) <- newCounter
+                    let cb _ = bump count fired
+                    debouncedWith 50 (+) () (1 :: Int) cb
+                    debouncedWith 50 (+) () (2 :: Int) cb
+                    debouncedWith 50 (+) () (3 :: Int) cb
+                    awaitFire fired
+                    Delay.wait @Millisecond 80
+                    readCount count
+                n `shouldBe` 1
 
             it "fires callback with merged arg" do
-                result <- newMVar @Int 0
-                runTest do
-                    debouncedWith 50 (+) () (1 :: Int) $ \v ->
-                        liftIO $ modifyMVar_ result (\_ -> pure v)
-                    debouncedWith 50 (+) () (2 :: Int) $ \v ->
-                        liftIO $ modifyMVar_ result (\_ -> pure v)
-                    debouncedWith 50 (+) () (3 :: Int) $ \v ->
-                        liftIO $ modifyMVar_ result (\_ -> pure v)
-                    Delay.wait @Millisecond 200
-                readMVar result >>= (`shouldBe` 6)
+                got <- runTest do
+                    result <- STM.atomically STM.newEmptyTMVar
+                    let cb = signal result
+                    debouncedWith 50 (+) () (1 :: Int) cb
+                    debouncedWith 50 (+) () (2 :: Int) cb
+                    debouncedWith 50 (+) () (3 :: Int) cb
+                    awaitValue result
+                got `shouldBe` Just 6
 
         describe "when invoked multiple times with a delay between" $ it "fires once per burst with merged arg" do
-            ref <- IORef.newIORef @[Int] []
-            runTest do
-                debouncedWith 50 (+) () (1 :: Int) $ \v ->
-                    liftIO $ IORef.modifyIORef ref (++ [v])
-                debouncedWith 50 (+) () (2 :: Int) $ \v ->
-                    liftIO $ IORef.modifyIORef ref (++ [v])
-                Delay.wait @Millisecond 150
-                debouncedWith 50 (+) () (10 :: Int) $ \v ->
-                    liftIO $ IORef.modifyIORef ref (++ [v])
-                debouncedWith 50 (+) () (20 :: Int) $ \v ->
-                    liftIO $ IORef.modifyIORef ref (++ [v])
-                Delay.wait @Millisecond 150
-            IORef.readIORef ref >>= (`shouldBe` [3, 30])
+            xs <- runTest do
+                fired <- STM.atomically STM.newEmptyTMVar
+                ref <- STM.atomically (STM.newTVar @[Int] [])
+                let cb v = STM.atomically (STM.modifyTVar' ref (<> [v]) >> void (STM.tryPutTMVar fired ()))
+                debouncedWith 50 (+) () (1 :: Int) cb
+                debouncedWith 50 (+) () (2 :: Int) cb
+                awaitFire fired -- burst 1 fired (1+2=3); entry cleared
+                debouncedWith 50 (+) () (10 :: Int) cb
+                debouncedWith 50 (+) () (20 :: Int) cb
+                awaitFire fired -- burst 2 fired (10+20=30)
+                STM.atomically (STM.readTVar ref)
+            xs `shouldBe` [3, 30]
   where
     runTest =
         runEff
@@ -226,3 +230,24 @@ testRunDebounce = do
             . runConc
             . runDelay
             . runDebounce
+
+    -- A fire counter paired with a TMVar signalling that a fire happened.
+    newCounter = do
+        count <- STM.atomically (STM.newTVar @Int 0)
+        fired <- STM.atomically STM.newEmptyTMVar
+        pure (count, fired)
+    bump count fired = STM.atomically do
+        STM.modifyTVar' count (+ 1)
+        void $ STM.tryPutTMVar fired ()
+    readCount count = STM.atomically (STM.readTVar count)
+    signal result v = STM.atomically (STM.putTMVar result v)
+
+    -- Block until a callback signals, bounded by a generous timeout so a real
+    -- regression fails loudly instead of hanging forever.
+    awaitFire fired =
+        awaitValue fired >>= \case
+            Just () -> pure ()
+            Nothing -> liftIO $ expectationFailure "debounce callback did not fire within 5s"
+    awaitValue tmv =
+        either (const Nothing) Just
+            <$> Conc.race (Delay.wait @Millisecond 5000) (STM.atomically (STM.takeTMVar tmv))

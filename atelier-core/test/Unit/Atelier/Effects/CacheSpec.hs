@@ -10,6 +10,7 @@ import Hedgehog (forAll, (===))
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Test.Hspec.Hedgehog (hedgehog)
 
+import Effectful.Concurrent.STM qualified as STM
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 
@@ -18,10 +19,6 @@ import Atelier.Effects.Clock (runClockState)
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.Log (runLogNoOp)
-import Atelier.Time (Millisecond)
-
-import Atelier.Effects.Delay qualified as Delay
-import Atelier.Types.Semaphore qualified as Sem
 
 
 spec_Cache :: Spec
@@ -76,57 +73,55 @@ spec_Cache = do
 
     describe "TTL Eviction" do
         it "entry is present before TTL expires" do
-            result <- runBase . runCacheTestWithWait (Sem.wait =<< Sem.new) $ do
+            result <- runBase . runCacheTestWithWait (STM.atomically STM.retry) $ do
                 cacheInsert 1 42
                 cacheLookup 1
             result `shouldBe` Just 42
 
         it "entry is evicted after cleanup thread fires past TTL" do
             result <- runBase do
-                sem <- Sem.new
-                runCacheTestWithWait (Sem.wait sem) $ do
+                trigger <- STM.atomically STM.newEmptyTMVar
+                done <- STM.atomically STM.newEmptyTMVar
+                runCacheTestWithWait (cleanupBarrier done trigger) do
+                    awaitReady done
                     cacheInsert 1 42
                     v1 <- cacheLookup 1
                     modify (addUTCTime (ttl + 1))
-                    Sem.signal sem
-                    -- Allow cleanup thread time to wake up
-                    Delay.wait @Millisecond 10
+                    stepCleanup trigger done -- run one cleanup, block until it finishes
                     v2 <- cacheLookup 1
                     pure (v1, v2)
             result `shouldBe` (Just 42, Nothing)
 
         it "entry within TTL survives cleanup" do
             result <- runBase do
-                sem <- Sem.new
-                runCacheTestWithWait (Sem.wait sem) do
+                trigger <- STM.atomically STM.newEmptyTMVar
+                done <- STM.atomically STM.newEmptyTMVar
+                runCacheTestWithWait (cleanupBarrier done trigger) do
+                    awaitReady done
                     cacheInsert 1 42
                     modify (addUTCTime (ttl - 1))
-                    Sem.signal sem
-                    -- Allow cleanup thread time to wake up
-                    Delay.wait @Millisecond 1
+                    stepCleanup trigger done
                     cacheLookup 1
             result `shouldBe` Just 42
 
         it "re-inserted entry retains original TTL window" do
             result <- runBase do
-                sem <- Sem.new
-                runCacheTestWithWait (Sem.wait sem) $ do
+                trigger <- STM.atomically STM.newEmptyTMVar
+                done <- STM.atomically STM.newEmptyTMVar
+                runCacheTestWithWait (cleanupBarrier done trigger) do
+                    awaitReady done
                     cacheInsert 1 42
                     v1 <- cacheLookup 1
 
                     -- re-insert before TTL expires: updates value but preserves createdAt = t0
                     modify (addUTCTime (ttl - 1))
-                    Sem.signal sem
-                    Delay.wait @Millisecond 1
-
+                    stepCleanup trigger done
                     cacheInsert 1 99
                     v2 <- cacheLookup 1
 
                     -- advance clock past original TTL
                     modify (addUTCTime 2)
-                    Sem.signal sem
-                    Delay.wait @Millisecond 1
-
+                    stepCleanup trigger done
                     v3 <- cacheLookup 1
 
                     pure (v1, v2, v3)
@@ -180,7 +175,7 @@ spec_Cache = do
             finalVal === Just n
   where
     runBase = runEff . runConcurrent
-    runCacheTest = runBase . runCacheTestWithWait (Sem.wait =<< Sem.new)
+    runCacheTest = runBase . runCacheTestWithWait (STM.atomically STM.retry)
     runCacheTestWithWait wait =
         runLogNoOp
             . runConc
@@ -191,3 +186,15 @@ spec_Cache = do
             . runCacheTtlWithWait @Int @Int wait
     epoch = UTCTime (fromGregorian 1970 1 1) 0
     ttl = 3600 :: NominalDiffTime
+
+    -- Deterministic control over the background cleanup thread, replacing
+    -- real-time 'Delay.wait' guesses with a handshake. The thread runs its
+    -- injected wait ('cleanupBarrier') once per loop: it acknowledges that the
+    -- previous cycle finished (via 'done'), then blocks for the next trigger.
+    -- 'stepCleanup' triggers one cycle and blocks until that cycle's eviction has
+    -- completed, so look-ups afterwards observe a settled state.
+    cleanupBarrier done trigger =
+        STM.atomically (STM.putTMVar done ()) >> STM.atomically (STM.takeTMVar trigger)
+    awaitReady done = STM.atomically (STM.takeTMVar done)
+    stepCleanup trigger done =
+        STM.atomically (STM.putTMVar trigger ()) >> STM.atomically (STM.takeTMVar done)

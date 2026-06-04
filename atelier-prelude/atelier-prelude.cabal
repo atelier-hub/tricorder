@@ -1,4 +1,4 @@
-cabal-version: 1.12
+cabal-version: 1.18
 
 -- This file has been generated from package.yaml by hpack version 0.38.2.
 --
@@ -8,10 +8,20 @@ name:           atelier-prelude
 version:        0.1.0.0
 synopsis:       Custom relude-based prelude with Effectful conventions
 description:    A custom prelude based on relude, adapted for Effectful — part of the atelier toolkit.
+category:       Prelude
+homepage:       https://github.com/atelier-hub/tricorder#readme
+bug-reports:    https://github.com/atelier-hub/tricorder/issues
 author:         Christian Georgii
 maintainer:     cgeorgii@gmail.com
 license:        MIT
+license-file:   LICENSE
 build-type:     Simple
+extra-doc-files:
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/atelier-hub/tricorder
 
 library
   exposed-modules:
@@ -37,9 +47,9 @@ library
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations
   build-depends:
-      base
-    , effectful-core
-    , relude
+      base ==4.20.*
+    , effectful-core ==2.6.*
+    , relude ==1.2.*
   default-language: GHC2021

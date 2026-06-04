@@ -16,19 +16,19 @@
       copyright = "";
       maintainer = "cgeorgii@gmail.com";
       author = "Christian Georgii";
-      homepage = "";
+      homepage = "https://github.com/atelier-hub/tricorder#readme";
       url = "";
       synopsis = "Foundational Effectful-based effects and utilities";
       description = "Core effects and utilities for effect-based applications, built on Effectful — part of the atelier toolkit.";
       buildType = "Simple";
       isLocal = true;
       detailLevel = "FullDetails";
-      licenseFiles = [];
+      licenseFiles = [ "LICENSE" ];
       dataDir = ".";
       dataFiles = [];
       extraSrcFiles = [];
       extraTmpFiles = [];
-      extraDocFiles = [];
+      extraDocFiles = [ "CHANGELOG.md" "README.md" ];
     };
     components = {
       "library" = {
