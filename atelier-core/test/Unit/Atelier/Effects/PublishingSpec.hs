@@ -1,6 +1,5 @@
 module Unit.Atelier.Effects.PublishingSpec (spec_Pub) where
 
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Data.Time (UTCTime, getCurrentTime)
 import Effectful (IOE, runEff, runPureEff)
@@ -10,9 +9,9 @@ import Test.Hspec (Spec, context, describe, expectationFailure, it, shouldBe)
 
 import Atelier.Effects.Chan (Chan, runChan)
 import Atelier.Effects.Clock (Clock, runClock, runClockConst)
-import Atelier.Effects.Conc (Conc, fork_, runConc)
+import Atelier.Effects.Conc (Conc, runConc)
 import Atelier.Effects.Monitoring.Tracing (Tracing, runTracingNoOp)
-import Atelier.Effects.Publishing (Pub, Sub, listen, listen_, publish, runPubSub, runPubWriter)
+import Atelier.Effects.Publishing (Pub, Sub, forkListener, forkListener_, publish, runPubSub, runPubWriter)
 
 
 data TestEvent = TestEvent Text
@@ -46,9 +45,8 @@ spec_Pub = do
         it "listener receives a published event" do
             result <- runPubSubTest $ do
                 received <- liftIO newEmptyMVar
-                fork_ $ listen_ @TestEvent \event ->
+                forkListener_ @TestEvent \event ->
                     liftIO $ putMVar received event
-                liftIO $ threadDelay 1000
                 publish (TestEvent "hello")
                 liftIO $ takeMVar received
             result `shouldBe` TestEvent "hello"
@@ -57,9 +55,8 @@ spec_Pub = do
             t0 <- getCurrentTime
             result <- runPubSubTestWithClock t0 $ do
                 received <- liftIO newEmptyMVar
-                fork_ $ listen @TestEvent \ts _event ->
+                forkListener @TestEvent \ts _event ->
                     liftIO $ putMVar received ts
-                liftIO $ threadDelay 1000
                 publish (TestEvent "hello")
                 liftIO $ takeMVar received
             result `shouldBe` t0
@@ -68,9 +65,8 @@ spec_Pub = do
             result <- runPubSubTest $ do
                 recv1 <- liftIO newEmptyMVar
                 recv2 <- liftIO newEmptyMVar
-                fork_ $ listen_ @TestEvent \event -> liftIO $ putMVar recv1 event
-                fork_ $ listen_ @TestEvent \event -> liftIO $ putMVar recv2 event
-                liftIO $ threadDelay 1000
+                forkListener_ @TestEvent \event -> liftIO $ putMVar recv1 event
+                forkListener_ @TestEvent \event -> liftIO $ putMVar recv2 event
                 publish (TestEvent "hello")
                 e1 <- liftIO $ takeMVar recv1
                 e2 <- liftIO $ takeMVar recv2

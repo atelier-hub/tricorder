@@ -49,7 +49,7 @@ library
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -fplugin=Effectful.Plugin -threaded
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded
   build-depends:
       atelier-core ==0.1.*
     , atelier-db ==0.1.*

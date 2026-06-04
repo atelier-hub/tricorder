@@ -18,6 +18,7 @@ import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Log (Log)
 import Atelier.Effects.Publishing (Pub, Sub, publish)
 import Effectful (Effect)
+import Effectful.Concurrent (Concurrent)
 import Effectful.Dispatch.Dynamic (interpret_, reinterpretWith_)
 import Effectful.Reader.Static (Reader)
 import Effectful.TH (makeEffect)
@@ -71,6 +72,7 @@ withSubSession
     :: forall subSession es a
      . ( Chan :> es
        , Conc :> es
+       , Concurrent :> es
        , Eq subSession
        , SessionStore :> es
        , Sub SessionStoreReloaded :> es

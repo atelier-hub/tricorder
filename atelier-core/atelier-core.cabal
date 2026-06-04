@@ -92,7 +92,7 @@ library
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -fplugin=Effectful.Plugin -threaded
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded
   build-depends:
       aeson ==2.2.*
     , atelier-prelude ==0.1.*
@@ -144,6 +144,7 @@ test-suite atelier-test
       Unit.Atelier.Effects.Cache.SingleflightSpec
       Unit.Atelier.Effects.CacheSpec
       Unit.Atelier.Effects.ChanSpec
+      Unit.Atelier.Effects.Conc.TeardownStressSpec
       Unit.Atelier.Effects.Conc.TracedSpec
       Unit.Atelier.Effects.ConcSpec
       Unit.Atelier.Effects.ConsoleSpec
@@ -180,7 +181,7 @@ test-suite atelier-test
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -fplugin=Effectful.Plugin -threaded -Wno-prepositive-qualified-module
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded -Wno-prepositive-qualified-module
   build-tool-depends:
       tasty-discover:tasty-discover
   build-depends:

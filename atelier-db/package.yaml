@@ -27,6 +27,11 @@ ghc-options:
 - -Wno-implicit-prelude
 - -Wno-unticked-promoted-constructors
 - -Wno-unused-packages
+# Missed-specialisation warnings fire on imported overloaded functions that we
+# can't annotate with INLINABLE. They only appear under optimization and aren't
+# actionable.
+- -Wno-all-missed-specialisations
+- -Wno-missed-specialisations
 - -fplugin=Effectful.Plugin
 - -threaded
 
