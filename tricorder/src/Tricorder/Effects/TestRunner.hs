@@ -22,6 +22,7 @@ module Tricorder.Effects.TestRunner
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.File (File)
 import Atelier.Effects.Log (Log)
+import Atelier.Effects.Process (Process)
 import Atelier.Effects.Timeout (Timeout, timeout)
 import Control.Concurrent.STM (TVar, readTVar, writeTVar)
 import Control.Exception (throwIO)
@@ -85,8 +86,8 @@ runTestRunnerIO
        , Conc :> es
        , Concurrent :> es
        , File :> es
-       , IOE :> es
        , Log :> es
+       , Process :> es
        , Reader ProjectRoot :> es
        , SessionStore :> es
        , Timeout :> es

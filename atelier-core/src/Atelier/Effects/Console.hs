@@ -16,7 +16,8 @@ import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (interpret_, reinterpret_)
 import Effectful.State.Static.Shared (modify, runState)
 import Effectful.TH (makeEffect)
-import Prelude hiding (putStr, putStrLn, putText, putTextLn)
+import System.IO (Handle, stdout)
+import Prelude
 
 import Data.ByteString.Char8 qualified as B8
 

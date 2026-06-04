@@ -83,7 +83,6 @@ internal-libraries:
     - text
     - time
     - time-units
-    - typed-process
     - vty
     - vty-crossplatform
     - yaml

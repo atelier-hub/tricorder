@@ -11,3 +11,8 @@ and this project adheres to the [PVP](https://pvp.haskell.org/).
 
 - Initial release: a relude-based custom prelude adapted for Effectful
   conventions, extracted from the atelier toolkit.
+- Lifted system, environment, handle, terminal and file operations
+  (`Relude.Lifted.*` and `Relude.File`) and console output (`Relude.Print`)
+  are intentionally not re-exported; the corresponding `atelier-core` effects
+  (e.g. `Atelier.Effects.Env`, `Atelier.Effects.File`, `Atelier.Effects.Console`)
+  should be used instead.

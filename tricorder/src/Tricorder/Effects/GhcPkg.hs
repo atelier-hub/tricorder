@@ -7,14 +7,12 @@ module Tricorder.Effects.GhcPkg
     , GhcPkgScript (..)
     ) where
 
-import Effectful (Effect, IOE)
+import Atelier.Effects.Process (Process, readProcessSafe)
+import Effectful (Effect)
 import Effectful.Dispatch.Dynamic (interpret, reinterpret)
-import Effectful.Exception (trySync)
 import Effectful.State.Static.Shared (evalState, get, put)
 import Effectful.TH (makeEffect)
-import System.Process.Typed (proc, readProcessStdout_)
 
-import Data.ByteString.Lazy qualified as BSL
 import Data.Text qualified as T
 
 import Tricorder.GhcPkg.Types (ModuleName (..), PackageId (..))
@@ -28,7 +26,7 @@ data GhcPkg :: Effect where
 makeEffect ''GhcPkg
 
 
-runGhcPkgIO :: (IOE :> es) => Eff (GhcPkg : es) a -> Eff es a
+runGhcPkgIO :: (Process :> es) => Eff (GhcPkg : es) a -> Eff es a
 runGhcPkgIO = interpret \_ -> \case
     FindModule modName -> do
         out <- readProcessSafe "ghc-pkg" ["find-module", "--simple-output", toString (unModuleName modName)]
@@ -57,12 +55,3 @@ runGhcPkgScripted script = reinterpret (evalState script) \_ -> \case
         get >>= \case
             NextGetHaddockHtml result : rest -> put rest >> pure result
             _ -> error "GhcPkgScripted: expected NextGetHaddockHtml but queue was empty or mismatched"
-
-
--- | Run a process and return its stdout as 'Text', or 'Nothing' on any error.
-readProcessSafe :: (IOE :> es) => FilePath -> [String] -> Eff es (Maybe Text)
-readProcessSafe cmd args = do
-    result <- trySync $ liftIO $ readProcessStdout_ (proc cmd args)
-    pure $ case result of
-        Left _ -> Nothing
-        Right bs -> Just (decodeUtf8 (BSL.toStrict bs))

@@ -109,7 +109,6 @@ library tricorder-internal
     , text
     , time
     , time-units
-    , typed-process
     , vty
     , vty-crossplatform
     , yaml

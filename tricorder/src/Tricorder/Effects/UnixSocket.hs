@@ -16,6 +16,7 @@ module Tricorder.Effects.UnixSocket
     , SocketScript (..)
     ) where
 
+import Atelier.Effects.File (BufferMode (..), File, Handle)
 import Atelier.Exception (trySyncIO)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (interpretWith, localSeqUnlift, reinterpret)
@@ -35,8 +36,9 @@ import Network.Socket
     , socketToHandle
     )
 import System.Directory (doesPathExist, removeFile)
-import System.IO (hClose, hGetLine, hPutStrLn, hSetEncoding, utf8)
+import System.IO (hSetEncoding, utf8)
 
+import Atelier.Effects.File qualified as File
 import Network.Socket qualified as Net
 
 
@@ -64,18 +66,24 @@ makeEffect ''UnixSocket
 
 
 -- | Production interpreter backed by real Unix sockets.
-runUnixSocketIO :: (IOE :> es) => Eff (UnixSocket : es) a -> Eff es a
+--
+-- Socket creation and encoding setup require raw IO (no @File@ equivalent),
+-- but the handle-level reads, writes, buffering and closing go through the
+-- 'File' effect.
+runUnixSocketIO :: (File :> es, IOE :> es) => Eff (UnixSocket : es) a -> Eff es a
 runUnixSocketIO eff = interpretWith eff \env -> \case
     BindSocket path -> liftIO do
         sock <- socket AF_UNIX Stream defaultProtocol
         bind sock (SockAddrUnix path)
         listen sock 5
         pure sock
-    AcceptHandle sock -> liftIO do
-        (conn, _) <- accept sock
-        h <- socketToHandle conn ReadWriteMode
-        hSetEncoding h utf8
-        hSetBuffering h LineBuffering
+    AcceptHandle sock -> do
+        h <- liftIO do
+            (conn, _) <- accept sock
+            h <- socketToHandle conn ReadWriteMode
+            hSetEncoding h utf8
+            pure h
+        File.hSetBuffering h LineBuffering
         pure h
     WithConnection sockPath callback ->
         localSeqUnlift env \unlift -> do
@@ -84,12 +92,12 @@ runUnixSocketIO eff = interpretWith eff \env -> \case
                 Net.connect sock (SockAddrUnix sockPath)
                 h <- socketToHandle sock ReadWriteMode
                 hSetEncoding h utf8
-                hSetBuffering h LineBuffering
                 pure h
-            unlift (callback h) `finally` liftIO (hClose h)
-    ReadLine h -> liftIO $ toText <$> hGetLine h
-    SendLine h line -> liftIO $ hPutStrLn h (toString line) >> hFlush h
-    CloseHandle h -> liftIO $ hClose h
+            File.hSetBuffering h LineBuffering
+            unlift (callback h) `finally` File.hClose h
+    ReadLine h -> File.hGetLine h
+    SendLine h line -> File.hPutTextLn h line >> File.hFlush h
+    CloseHandle h -> File.hClose h
     RemoveSocketFile path ->
         liftIO $ void $ trySyncIO $ removeFile path
     SocketFileExists path ->
@@ -116,7 +124,7 @@ data SocketScript
 -- line buffering on it. 'removeSocketFile' is always a no-op.
 -- 'socketFileExists' pops the next 'NextFileCheck' entry.
 -- 'withConnection' pops the next 'NextConnect' entry and passes it to the callback.
-runUnixSocketScripted :: (IOE :> es) => [SocketScript] -> Eff (UnixSocket : es) a -> Eff es a
+runUnixSocketScripted :: (File :> es, IOE :> es) => [SocketScript] -> Eff (UnixSocket : es) a -> Eff es a
 runUnixSocketScripted script = reinterpret (evalState script) \env -> \case
     BindSocket _ ->
         liftIO $ Net.socket AF_UNIX Stream defaultProtocol
@@ -124,7 +132,7 @@ runUnixSocketScripted script = reinterpret (evalState script) \env -> \case
         get >>= \case
             NextAccept h : rest -> do
                 put rest
-                liftIO $ hSetBuffering h LineBuffering
+                File.hSetBuffering h LineBuffering
                 pure h
             _ -> error "UnixSocketScripted: expected NextAccept but queue was empty or mismatched"
     WithConnection _ callback ->

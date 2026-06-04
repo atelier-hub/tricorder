@@ -17,18 +17,10 @@ module Tricorder.Effects.GhciSession.GhciProcess
     ) where
 
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.File (File)
-import Atelier.Effects.Timeout (Timeout, timeout)
-import Control.Concurrent.STM (TVar, modifyTVar', readTVar, retry, writeTVar)
-import Data.Default (Default (..))
-import Data.Time.Units (Second)
-import Effectful (IOE)
-import Effectful.Concurrent (Concurrent)
-import Effectful.Concurrent.STM (atomically, newTVarIO)
-import Effectful.Exception (bracket, finally, throwIO, try, trySync)
-import System.Process (interruptProcessGroupOf)
-import System.Process.Typed
+import Atelier.Effects.File (BufferMode (..), File, Handle)
+import Atelier.Effects.Process
     ( Process
+    , RunningProcess
     , createPipe
     , getStderr
     , getStdin
@@ -39,17 +31,19 @@ import System.Process.Typed
     , setStdout
     , setWorkingDir
     , shell
-    , startProcess
-    , stopProcess
-    , unsafeProcessHandle
-    , waitExitCode
     )
+import Atelier.Effects.Timeout (Timeout, timeout)
+import Control.Concurrent.STM (TVar, modifyTVar', readTVar, retry, writeTVar)
+import Data.Default (Default (..))
+import Data.Time.Units (Second)
+import Effectful.Concurrent (Concurrent)
+import Effectful.Concurrent.STM (atomically, newTVarIO)
+import Effectful.Exception (bracket, finally, throwIO, trySync)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.File qualified as File
-import Control.Exception qualified as E
+import Atelier.Effects.Process qualified as Process
 import Data.Text qualified as T
-import Data.Text.IO qualified as TIO
 
 import Tricorder.Effects.GhciSession.GhciParser
     ( GhciLoading (..)
@@ -113,7 +107,7 @@ data GhciProcess = GhciProcess
     { stdin :: Handle
     , stdout :: Handle
     , stderr :: Handle
-    , handle :: Process Handle Handle Handle
+    , handle :: RunningProcess Handle Handle Handle
     , stateVar :: TVar SessionState
     }
 
@@ -142,7 +136,7 @@ startGhciProcess
     :: ( Conc :> es
        , Concurrent :> es
        , File :> es
-       , IOE :> es
+       , Process :> es
        , Timeout :> es
        )
     => Config
@@ -160,8 +154,7 @@ startGhciProcess
     -> Eff es (GhciProcess, [Text])
 startGhciProcess config cmd dir onProgress onReady = do
     p <-
-        liftIO
-            $ startProcess
+        Process.startProcess
             $ setStdin createPipe
             $ setStdout createPipe
             $ setStderr createPipe
@@ -192,7 +185,7 @@ startGhciProcess config cmd dir onProgress onReady = do
     onReady ghciProcess
 
     -- Send a blank line to kick GHCi into producing output
-    liftIO $ TIO.hPutStrLn inp ""
+    File.hPutTextLn inp ""
     File.hFlush inp
 
     -- Wait for the version banner. We concurrently capture stderr so that if
@@ -201,12 +194,12 @@ startGhciProcess config cmd dir onProgress onReady = do
     waitForBannerOrFail config.startupTimeout out err p
 
     -- Send fixed setup commands (protocol requirements)
-    liftIO $ TIO.hPutStrLn inp ":set prompt \"\""
-    liftIO $ TIO.hPutStrLn inp ":set prompt-cont \"\""
-    liftIO $ TIO.hPutStrLn inp ":set +c"
+    File.hPutTextLn inp ":set prompt \"\""
+    File.hPutTextLn inp ":set prompt-cont \"\""
+    File.hPutTextLn inp ":set +c"
     -- Send any caller-supplied extra setup commands
     for_ config.extraSetupCommands \c ->
-        liftIO $ TIO.hPutStrLn inp c
+        File.hPutTextLn inp c
     File.hFlush inp
 
     -- Sync: drain until marker 1 seen, then set counter to 2.
@@ -240,7 +233,7 @@ startGhciProcess config cmd dir onProgress onReady = do
 -- for registering the process for early termination while @cabal repl@ startup
 -- (dependency build and initial compilation) is still in flight.
 withGhciProcess
-    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es, Timeout :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, Process :> es, Timeout :> es)
     => Config
     -> Text
     -> FilePath
@@ -263,7 +256,6 @@ execGhci
     :: ( Conc :> es
        , Concurrent :> es
        , File :> es
-       , IOE :> es
        )
     => GhciProcess -> Text -> (GhciLoading -> Eff es ()) -> Eff es [Text]
 execGhci ghciProcess command onProgress = do
@@ -276,7 +268,7 @@ execGhci ghciProcess command onProgress = do
     doExec n = do
         let marker = markerFor n
             hook = progressLineHook onProgress
-        liftIO $ TIO.hPutStrLn ghciProcess.stdin command
+        File.hPutTextLn ghciProcess.stdin command
         File.hFlush ghciProcess.stdin
         sendSyncCommand ghciProcess.stdin marker
         -- Scoped so that an exception from one drain (e.g. 'UnexpectedExit'
@@ -304,7 +296,7 @@ execGhci ghciProcess command onProgress = do
 --
 -- When GHCi is 'Idle' this is a true no-op: sending SIGINT and a sync marker to
 -- an idle GHCi leaves leftover marker output in the buffers.
-interruptGhci :: (Concurrent :> es, File :> es, IOE :> es) => GhciProcess -> Eff es ()
+interruptGhci :: (Concurrent :> es, File :> es, Process :> es) => GhciProcess -> Eff es ()
 interruptGhci ghciProcess = do
     decision <- atomically do
         s <- readTVar ghciProcess.stateVar
@@ -314,7 +306,7 @@ interruptGhci ghciProcess = do
     case decision of
         NoOpIdle -> pure ()
         SendInterruptFor n -> do
-            liftIO $ interruptProcessGroupOf (unsafeProcessHandle ghciProcess.handle)
+            Process.interruptProcessGroup ghciProcess.handle
             sendSyncCommand ghciProcess.stdin (markerFor n)
 
 
@@ -326,27 +318,26 @@ interruptGhci ghciProcess = do
 -- SIGINT handlers that finalise the current run rather than aborting it.
 -- After this, any 'execGhci' drain raises 'UnexpectedExit' on the now-closed
 -- handles.
-terminateGhciProcess :: (IOE :> es) => GhciProcess -> Eff es ()
-terminateGhciProcess ghciProcess = liftIO $ stopProcess ghciProcess.handle
+terminateGhciProcess :: (Process :> es) => GhciProcess -> Eff es ()
+terminateGhciProcess ghciProcess = Process.stopProcess ghciProcess.handle
 
 
 -- | Stop the GHCi process gracefully, falling back to forced termination.
 --
 -- Never throws — all errors are swallowed.
 stopGhciProcess
-    :: (File :> es, IOE :> es, Timeout :> es)
+    :: (File :> es, Process :> es, Timeout :> es)
     => Config -> GhciProcess -> Eff es ()
 stopGhciProcess config ghciProcess = do
     -- Try to write :quit
     void $ trySync $ do
-        liftIO $ TIO.hPutStrLn ghciProcess.stdin ":quit"
+        File.hPutTextLn ghciProcess.stdin ":quit"
         File.hFlush ghciProcess.stdin
 
     -- Wait up to shutdownTimeout seconds for the process to exit, then force-kill
-    result <- timeout config.shutdownTimeout (liftIO $ waitExitCode ghciProcess.handle)
+    result <- timeout config.shutdownTimeout (Process.waitExitCode ghciProcess.handle)
     when (not (isJust result))
-        $ liftIO
-        $ stopProcess ghciProcess.handle
+        $ Process.stopProcess ghciProcess.handle
 
     -- Close all handles, ignoring errors
     for_ [ghciProcess.stdin, ghciProcess.stdout, ghciProcess.stderr] \h ->
@@ -380,12 +371,12 @@ markerPrefix = "#~TRI-FINISH-"
 -- forever waiting for it (the "stuck Building…" stall). Fully-qualified
 -- 'System.IO.hPutStrLn' resolves via GHCi's implicit qualified imports even
 -- with an emptied scope, so the marker survives an interrupt.
-sendSyncCommand :: (File :> es, IOE :> es) => Handle -> Text -> Eff es ()
+sendSyncCommand :: (File :> es) => Handle -> Text -> Eff es ()
 sendSyncCommand h marker = do
     -- Use show to produce a valid Haskell string literal for the marker text.
     let markerLit = toText (show @String (toString marker)) -- e.g. "\"#~TRI-FINISH-3~#\""
-    liftIO $ TIO.hPutStrLn h ("System.IO.hPutStrLn System.IO.stdout " <> markerLit)
-    liftIO $ TIO.hPutStrLn h ("System.IO.hPutStrLn System.IO.stderr " <> markerLit)
+    File.hPutTextLn h ("System.IO.hPutStrLn System.IO.stdout " <> markerLit)
+    File.hPutTextLn h ("System.IO.hPutStrLn System.IO.stderr " <> markerLit)
     File.hFlush h
 
 
@@ -403,7 +394,7 @@ drainUntil :: (File :> es) => Handle -> Text -> (Text -> Eff es ()) -> Eff es [T
 drainUntil h marker onLine = go []
   where
     go acc = do
-        result <- try @E.IOException $ File.hGetLine h
+        result <- trySync $ File.hGetLine h
         case result of
             Left _ ->
                 throwIO $ UnexpectedExit marker (listToMaybe (reverse acc))
@@ -432,10 +423,10 @@ waitForBannerOrFail
     :: ( Conc :> es
        , Concurrent :> es
        , File :> es
-       , IOE :> es
+       , Process :> es
        , Timeout :> es
        )
-    => Second -> Handle -> Handle -> Process Handle Handle Handle -> Eff es ()
+    => Second -> Handle -> Handle -> RunningProcess Handle Handle Handle -> Eff es ()
 waitForBannerOrFail delay out err p = do
     capturedVar <- newTVarIO ([] :: [Text])
     let captureLine line = atomically $ modifyTVar' capturedVar (line :)
@@ -455,11 +446,11 @@ waitForBannerOrFail delay out err p = do
                 -- the drain happened to have read so far.
                 _ <- timeout (1 :: Second) (Conc.await stderrThread)
                 captured <- atomically $ readTVar capturedVar
-                liftIO $ stopProcess p
+                Process.stopProcess p
                 throwIO $ StartupFailed $ fromMaybe (startupExitedMessage ex) (renderCapturedLines captured)
             Nothing -> do
                 captured <- atomically $ readTVar capturedVar
-                liftIO $ stopProcess p
+                Process.stopProcess p
                 throwIO $ maybe StartupTimeout StartupFailed (renderCapturedLines captured)
 
 
@@ -474,7 +465,7 @@ waitForBannerStdout h captureLine = go
                 || "Clashi, version " `T.isInfixOf` stripped
 
     go = do
-        result <- try @E.IOException $ File.hGetLine h
+        result <- trySync $ File.hGetLine h
         case result of
             Left ex -> throwIO ex
             Right line ->
@@ -489,7 +480,7 @@ drainUntilEof :: (File :> es) => Handle -> (Text -> Eff es ()) -> Eff es ()
 drainUntilEof h onLine = go
   where
     go = do
-        result <- try @E.IOException $ File.hGetLine h
+        result <- trySync $ File.hGetLine h
         case result of
             Left _ -> pure ()
             Right line -> onLine line >> go
@@ -517,7 +508,7 @@ startupExitedMessage ex =
 -- Progress is emitted live by 'drainUntil' as lines arrive, so no replay
 -- callback is needed here — this function only assembles the final result.
 collectGhciResult
-    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es)
     => GhciProcess
     -> [Text]
     -> FilePath
@@ -538,7 +529,7 @@ collectGhciResult process lines' projectRoot = do
 -- | Execute @:reload@ and return the assembled 'LoadResult'. Progress events
 -- fire live via @onProgress@ as each @[N of M] Compiling …@ line is read.
 reloadGhci
-    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es)
     => GhciProcess
     -> FilePath
     -> (GhciLoading -> Eff es ())
@@ -551,7 +542,7 @@ reloadGhci process projectRoot onProgress = do
 -- | Execute @:add@ for the given file and return the assembled 'LoadResult'.
 -- Progress events fire live via @onProgress@ as compilation proceeds.
 addGhci
-    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es)
     => GhciProcess
     -> FilePath -- the file to :add
     -> FilePath -- projectRoot
@@ -566,7 +557,7 @@ addGhci process filePath projectRoot onProgress = do
 -- 'LoadResult'. Progress events fire live via @onProgress@ as compilation
 -- proceeds.
 unaddGhci
-    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es)
     => GhciProcess
     -> Text -- the module name to :unadd
     -> FilePath -- projectRoot

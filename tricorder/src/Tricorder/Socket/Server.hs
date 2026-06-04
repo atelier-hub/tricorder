@@ -11,6 +11,7 @@ import Atelier.Time (Millisecond)
 import Data.Aeson (ToJSON, decode, encode)
 import Effectful.Exception (IOException, finally)
 import Effectful.Reader.Static (Reader, ask)
+import System.IO (Handle)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Log qualified as Log

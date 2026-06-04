@@ -3,6 +3,7 @@ module Unit.Tricorder.Effects.GhciSession.GhciProcessSpec (spec_GhciProcess) whe
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.File (runFile)
+import Atelier.Effects.Process (runProcessIO)
 import Atelier.Effects.Timeout (runTimeout)
 import Atelier.Time (Millisecond)
 import Control.Concurrent.STM (newTVarIO)
@@ -96,8 +97,8 @@ testExecGhciStaleMarker =
                     -- A stale 'marker 5' (left by a prior interrupted reload)
                     -- precedes the fresh command's real output + its 'marker 9'
                     -- (state is 'Idle 9', so 'execGhci' waits for marker 9).
-                    for_ [marker 5, "out-line", marker 9] (File.hPutBsLn stdoutW . encodeUtf8)
-                    for_ [marker 5, "err-line", marker 9] (File.hPutBsLn stderrW . encodeUtf8)
+                    for_ [marker 5, "out-line", marker 9] (File.hPutTextLn stdoutW)
+                    for_ [marker 5, "err-line", marker 9] (File.hPutTextLn stderrW)
                     File.hClose stdoutW
                     File.hClose stderrW
                     -- Keep the stdin read-end alive across the write inside
@@ -152,8 +153,8 @@ testSyncMarkerScopeIndependent =
                 $ do
                     -- Pre-seed the marker on both streams so the drain returns
                     -- immediately; we only care about what was written to stdin.
-                    File.hPutBsLn stdoutW (encodeUtf8 marker)
-                    File.hPutBsLn stderrW (encodeUtf8 marker)
+                    File.hPutTextLn stdoutW marker
+                    File.hPutTextLn stderrW marker
                     File.hClose stdoutW
                     File.hClose stderrW
                     _ <- execGhci gp ":reload" (\_ -> pure ())
@@ -201,6 +202,7 @@ testWaitForBannerOrFail =
                 . runDelay
                 . runFile
                 . runConc
+                . runProcessIO
                 $ do
                     -- No banner will ever arrive: close the write end so the
                     -- wait sees EOF at once and takes the "command exited"
@@ -213,7 +215,7 @@ testWaitForBannerOrFail =
                     _ <- Conc.fork do
                         Delay.wait (30 :: Millisecond)
                         for_ [1 .. lineCount] \i ->
-                            File.hPutBsLn errW (encodeUtf8 ("err line " <> show i :: Text))
+                            File.hPutTextLn errW ("err line " <> show i :: Text)
                         File.hClose errW
                     trySync (waitForBannerOrFail (5 :: Second) bannerOut errR p)
         _ <- (Right <$> stopProcess p) `catch` \(_ :: SomeException) -> pure (Left ())

@@ -2,14 +2,16 @@
 
 module Atelier.Effects.File
     ( File
+    , Handle
+    , BufferMode (..)
     , withFile
     , hClose
     , hFlush
     , hGetLine
+    , hPutText
+    , hPutTextLn
     , hPutLBs
     , hPutLBsLn
-    , hPutBs
-    , hPutBsLn
     , hIsEOF
     , hSetBuffering
     , runFile
@@ -23,9 +25,11 @@ import Effectful.Dispatch.Static
     , unsafeEff_
     , unsafeSeqUnliftIO
     )
-import Prelude hiding (hFlush, hIsEOF, hSetBuffering, withFile)
+import System.IO (BufferMode (..), Handle)
+import Prelude
 
 import Data.ByteString.Lazy.Char8 qualified as LB8
+import Data.Text.IO qualified as TIO
 import System.IO qualified as IO
 
 
@@ -57,6 +61,17 @@ hGetLine :: (File :> es, HasCallStack) => Handle -> Eff es Text
 hGetLine = unsafeEff_ . fmap toText . IO.hGetLine
 
 
+-- | Lifted `Data.Text.IO.hPutStr`. Encodes via the handle's text encoding,
+-- symmetric with `hGetLine`.
+hPutText :: (File :> es, HasCallStack) => Handle -> Text -> Eff es ()
+hPutText h = unsafeEff_ . TIO.hPutStr h
+
+
+-- | `hPutText` with a `\n` at the end.
+hPutTextLn :: (File :> es, HasCallStack) => Handle -> Text -> Eff es ()
+hPutTextLn h = unsafeEff_ . TIO.hPutStrLn h
+
+
 -- | Lifted `System.IO.hIsEOF`.
 hIsEOF :: (File :> es, HasCallStack) => Handle -> Eff es Bool
 hIsEOF = unsafeEff_ . IO.hIsEOF
@@ -75,16 +90,6 @@ hSetBuffering h m = unsafeEff_ $ IO.hSetBuffering h m
 -- | `hPutLBs` with a `\n` at the end.
 hPutLBsLn :: (File :> es, HasCallStack) => Handle -> LByteString -> Eff es ()
 hPutLBsLn h = hPutLBs h . (<> "\n")
-
-
--- | Like `hPutLBs`, but for strict `ByteString`s.
-hPutBs :: (File :> es, HasCallStack) => Handle -> ByteString -> Eff es ()
-hPutBs h = hPutLBs h . toLazy
-
-
--- | `hPutBs` with a `\n` at the end.
-hPutBsLn :: (File :> es, HasCallStack) => Handle -> ByteString -> Eff es ()
-hPutBsLn h = hPutLBs h . toLazy . (<> "\n")
 
 
 -- | Run file operations.

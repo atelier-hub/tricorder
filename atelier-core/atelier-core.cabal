@@ -28,6 +28,7 @@ library
   exposed-modules:
       Atelier.Component
       Atelier.Config
+      Atelier.Effects.Arguments
       Atelier.Effects.Await
       Atelier.Effects.Cache
       Atelier.Effects.Cache.Config
@@ -55,6 +56,7 @@ library
       Atelier.Effects.Monitoring.Tracing.Provider
       Atelier.Effects.Posix.Daemons
       Atelier.Effects.Posix.IO
+      Atelier.Effects.Process
       Atelier.Effects.Publishing
       Atelier.Effects.Tally
       Atelier.Effects.Timeout
@@ -118,6 +120,8 @@ library
     , http-types ==0.12.*
     , ki ==1.0.*
     , list-t ==1.0.*
+    , optparse-applicative ==0.19.*
+    , process ==1.6.*
     , prometheus-client ==1.1.*
     , prometheus-metrics-ghc ==1.0.*
     , stm ==2.5.*
@@ -125,6 +129,7 @@ library
     , text ==2.1.*
     , time ==1.12.*
     , time-units ==1.0.*
+    , typed-process ==0.2.*
     , unagi-chan ==0.4.*
     , unix ==2.8.*
     , unordered-containers ==0.2.*

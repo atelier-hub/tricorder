@@ -12,7 +12,9 @@ import Atelier.Effects.Exit (runExit)
 import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.FileWatcher (runFileWatcherIO)
+import Atelier.Effects.Monitoring.Metrics.Server (runMetricsServerIO)
 import Atelier.Effects.Monitoring.Tracing (TracingConfig, runTracingFromConfig)
+import Atelier.Effects.Process (runProcessIO)
 import Atelier.Effects.Publishing (runPubSub)
 import Atelier.Effects.Timeout (runTimeout)
 import Data.Default (def)
@@ -84,6 +86,8 @@ main =
         . runCacheTtl @GhcPkg.ModuleName @GhcPkg.PackageId
         . runCacheTtl @(GhcPkg.PackageId, GhcPkg.SourceQuery) @(Text, [SourceLookup.ReExport])
         . runBuildStore
+        . runProcessIO
+        . runMetricsServerIO
         . runTestRunnerIO
         . runGhcPkgIO
         . runUnixSocketIO

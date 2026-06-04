@@ -1,7 +1,8 @@
 module Unit.Tricorder.SocketSpec (spec_Socket) where
 
+import Atelier.Effects.File (File, runFile)
 import Effectful (IOE, runEff)
-import System.IO (hClose, hGetLine, openFile)
+import System.IO (hClose, hGetLine, openFile, writeFile)
 import Test.Hspec
 
 import Tricorder.Effects.UnixSocket
@@ -58,5 +59,5 @@ testScripted = do
 --------------------------------------------------------------------------------
 
 -- | Run scripted socket operations (no Delay needed).
-runScripted :: [SocketScript] -> Eff '[UnixSocket, IOE] a -> IO a
-runScripted script = runEff . runUnixSocketScripted script
+runScripted :: [SocketScript] -> Eff '[UnixSocket, File, IOE] a -> IO a
+runScripted script = runEff . runFile . runUnixSocketScripted script
