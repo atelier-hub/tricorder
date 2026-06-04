@@ -63,7 +63,6 @@
             (hsPkgs."text" or (errorHandler.buildDepError "text"))
             (hsPkgs."time" or (errorHandler.buildDepError "time"))
             (hsPkgs."time-units" or (errorHandler.buildDepError "time-units"))
-            (hsPkgs."typed-process" or (errorHandler.buildDepError "typed-process"))
             (hsPkgs."vty" or (errorHandler.buildDepError "vty"))
             (hsPkgs."vty-crossplatform" or (errorHandler.buildDepError "vty-crossplatform"))
             (hsPkgs."yaml" or (errorHandler.buildDepError "yaml"))
