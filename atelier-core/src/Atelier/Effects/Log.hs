@@ -51,6 +51,7 @@ import Effectful.Dispatch.Dynamic (localSeqUnlift, reinterpret, reinterpretWith)
 import Effectful.Reader.Static (Reader, ask, local, runReader)
 import Effectful.TH (makeEffect)
 import Effectful.Writer.Static.Shared (Writer, tell)
+import System.IO (Handle, hFlush, stdout)
 
 import Data.ByteString.Char8 qualified as B8
 

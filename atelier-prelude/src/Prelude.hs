@@ -3,6 +3,11 @@
 --
 -- - No MTL classes or monads.
 -- - No functions for manipulating IORefs, MVars and STM-based vars.
+-- - No lifted system, environment, handle, terminal or file operations
+--   (@Relude.Lifted.*@ and @Relude.File@), and no console output
+--   (@Relude.Print@). These overlap with the effects provided by
+--   @atelier-core@ (e.g. @Atelier.Effects.Env@, @Atelier.Effects.File@,
+--   @Atelier.Effects.Console@); use those instead.
 module Prelude
     ( -- * Reexports from Effectful
       module Effectful
@@ -16,12 +21,6 @@ module Prelude
     , module Relude.Monad.Either
     , module Relude.Monad.Maybe
 
-      -- * Reexports from Relude.Lifted
-    , module Relude.Lifted.Env
-    , module Relude.Lifted.File
-    , module Relude.Lifted.Handle
-    , module Relude.Lifted.Terminal
-
       -- * Reexports from Relude
     , module Relude.Applicative
     , module Relude.Base
@@ -31,7 +30,6 @@ module Prelude
     , module Relude.DeepSeq
     , module Relude.Enum
     , module Relude.Exception
-    , module Relude.File
     , module Relude.Foldable
     , module Relude.Function
     , module Relude.Functor
@@ -39,7 +37,6 @@ module Prelude
     , module Relude.Monoid
     , module Relude.Nub
     , module Relude.Numeric
-    , module Relude.Print
     , module Relude.String
     ) where
 
@@ -48,7 +45,8 @@ import Effectful.Error.Static
 
 
 {- FOURMOLU_DISABLE -}
--- Get all export from Relude except the Relude.Lifted and Relude.Monad modules.
+-- Get all exports from Relude except the Relude.Lifted, Relude.Monad and
+-- Relude.Print modules.
 import Relude.Applicative
 import Relude.Base
 import Relude.Bool
@@ -57,7 +55,6 @@ import Relude.Debug
 import Relude.DeepSeq
 import Relude.Enum
 import Relude.Exception
-import Relude.File
 import Relude.Foldable
 import Relude.Function
 import Relude.Functor
@@ -65,14 +62,7 @@ import Relude.List
 import Relude.Monoid
 import Relude.Nub
 import Relude.Numeric
-import Relude.Print
 import Relude.String
-
--- From Relude.Lifted, we don't want Relude.Lifted.Concurrent.
-import Relude.Lifted.Env hiding (lookupEnv)
-import Relude.Lifted.File
-import Relude.Lifted.Terminal
-import Relude.Lifted.Handle
 
 -- From Relude.Monad, we don't want Relude.Monad.Reexport and Relude.Monad.Trans.
 import Relude.Monad.Either

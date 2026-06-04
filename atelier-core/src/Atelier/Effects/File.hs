@@ -2,6 +2,8 @@
 
 module Atelier.Effects.File
     ( File
+    , Handle
+    , BufferMode (..)
     , withFile
     , hClose
     , hFlush
@@ -23,7 +25,8 @@ import Effectful.Dispatch.Static
     , unsafeEff_
     , unsafeSeqUnliftIO
     )
-import Prelude hiding (hFlush, hIsEOF, hSetBuffering, withFile)
+import System.IO (BufferMode (..), Handle)
+import Prelude
 
 import Data.ByteString.Lazy.Char8 qualified as LB8
 import System.IO qualified as IO

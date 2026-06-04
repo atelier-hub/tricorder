@@ -17,7 +17,7 @@ module Tricorder.Effects.GhciSession.GhciProcess
     ) where
 
 import Atelier.Effects.Conc (Conc)
-import Atelier.Effects.File (File)
+import Atelier.Effects.File (BufferMode (..), File, Handle)
 import Atelier.Effects.Timeout (Timeout, timeout)
 import Control.Concurrent.STM (TVar, modifyTVar', readTVar, retry, writeTVar)
 import Data.Default (Default (..))

@@ -1,6 +1,6 @@
 module Tricorder.Effects.Logging (runLogging) where
 
-import Atelier.Effects.File (File)
+import Atelier.Effects.File (BufferMode (..), File)
 import Atelier.Effects.Log (Log, Severity (..), runLogToHandle)
 import Effectful (IOE)
 import Effectful.Reader.Static (Reader, asks)

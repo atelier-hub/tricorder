@@ -10,7 +10,7 @@ module Tricorder.Socket.Client
     ) where
 
 import Atelier.Effects.Delay (Delay)
-import Atelier.Effects.File (File)
+import Atelier.Effects.File (File, Handle)
 import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Time (Millisecond)
 import Data.Aeson (decode, eitherDecode, encode)
