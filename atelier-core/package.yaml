@@ -86,6 +86,7 @@ library:
   - http-types >=0.12 && <0.13
   - ki >=1.0 && <1.1
   - list-t >=1.0 && <1.1
+  - process >=1.6 && <1.7
   - prometheus-client >=1.1 && <1.2
   - prometheus-metrics-ghc >=1.0 && <1.1
   - stm >=2.5 && <2.6
@@ -93,6 +94,7 @@ library:
   - text >=2.1 && <2.2
   - time >=1.12 && <1.13
   - time-units >=1.0 && <1.1
+  - typed-process >=0.2 && <0.3
   - unagi-chan >=0.4 && <0.5
   - unix >=2.8 && <2.9
   - unordered-containers >=0.2 && <0.3

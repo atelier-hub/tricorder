@@ -18,17 +18,9 @@ module Tricorder.Effects.GhciSession.GhciProcess
 
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.File (BufferMode (..), File, Handle)
-import Atelier.Effects.Timeout (Timeout, timeout)
-import Control.Concurrent.STM (TVar, modifyTVar', readTVar, retry, writeTVar)
-import Data.Default (Default (..))
-import Data.Time.Units (Second)
-import Effectful (IOE)
-import Effectful.Concurrent (Concurrent)
-import Effectful.Concurrent.STM (atomically, newTVarIO)
-import Effectful.Exception (bracket, finally, throwIO, try, trySync)
-import System.Process (interruptProcessGroupOf)
-import System.Process.Typed
+import Atelier.Effects.Process
     ( Process
+    , RunningProcess
     , createPipe
     , getStderr
     , getStdin
@@ -39,14 +31,19 @@ import System.Process.Typed
     , setStdout
     , setWorkingDir
     , shell
-    , startProcess
-    , stopProcess
-    , unsafeProcessHandle
-    , waitExitCode
     )
+import Atelier.Effects.Timeout (Timeout, timeout)
+import Control.Concurrent.STM (TVar, modifyTVar', readTVar, retry, writeTVar)
+import Data.Default (Default (..))
+import Data.Time.Units (Second)
+import Effectful (IOE)
+import Effectful.Concurrent (Concurrent)
+import Effectful.Concurrent.STM (atomically, newTVarIO)
+import Effectful.Exception (bracket, finally, throwIO, try, trySync)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.File qualified as File
+import Atelier.Effects.Process qualified as Process
 import Control.Exception qualified as E
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -113,7 +110,7 @@ data GhciProcess = GhciProcess
     { stdin :: Handle
     , stdout :: Handle
     , stderr :: Handle
-    , handle :: Process Handle Handle Handle
+    , handle :: RunningProcess Handle Handle Handle
     , stateVar :: TVar SessionState
     }
 
@@ -143,6 +140,7 @@ startGhciProcess
        , Concurrent :> es
        , File :> es
        , IOE :> es
+       , Process :> es
        , Timeout :> es
        )
     => Config
@@ -160,8 +158,7 @@ startGhciProcess
     -> Eff es (GhciProcess, [Text])
 startGhciProcess config cmd dir onProgress onReady = do
     p <-
-        liftIO
-            $ startProcess
+        Process.startProcess
             $ setStdin createPipe
             $ setStdout createPipe
             $ setStderr createPipe
@@ -240,7 +237,7 @@ startGhciProcess config cmd dir onProgress onReady = do
 -- for registering the process for early termination while @cabal repl@ startup
 -- (dependency build and initial compilation) is still in flight.
 withGhciProcess
-    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es, Timeout :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, IOE :> es, Process :> es, Timeout :> es)
     => Config
     -> Text
     -> FilePath
@@ -304,7 +301,7 @@ execGhci ghciProcess command onProgress = do
 --
 -- When GHCi is 'Idle' this is a true no-op: sending SIGINT and a sync marker to
 -- an idle GHCi leaves leftover marker output in the buffers.
-interruptGhci :: (Concurrent :> es, File :> es, IOE :> es) => GhciProcess -> Eff es ()
+interruptGhci :: (Concurrent :> es, File :> es, IOE :> es, Process :> es) => GhciProcess -> Eff es ()
 interruptGhci ghciProcess = do
     decision <- atomically do
         s <- readTVar ghciProcess.stateVar
@@ -314,7 +311,7 @@ interruptGhci ghciProcess = do
     case decision of
         NoOpIdle -> pure ()
         SendInterruptFor n -> do
-            liftIO $ interruptProcessGroupOf (unsafeProcessHandle ghciProcess.handle)
+            Process.interruptProcessGroup ghciProcess.handle
             sendSyncCommand ghciProcess.stdin (markerFor n)
 
 
@@ -326,15 +323,15 @@ interruptGhci ghciProcess = do
 -- SIGINT handlers that finalise the current run rather than aborting it.
 -- After this, any 'execGhci' drain raises 'UnexpectedExit' on the now-closed
 -- handles.
-terminateGhciProcess :: (IOE :> es) => GhciProcess -> Eff es ()
-terminateGhciProcess ghciProcess = liftIO $ stopProcess ghciProcess.handle
+terminateGhciProcess :: (Process :> es) => GhciProcess -> Eff es ()
+terminateGhciProcess ghciProcess = Process.stopProcess ghciProcess.handle
 
 
 -- | Stop the GHCi process gracefully, falling back to forced termination.
 --
 -- Never throws — all errors are swallowed.
 stopGhciProcess
-    :: (File :> es, IOE :> es, Timeout :> es)
+    :: (File :> es, IOE :> es, Process :> es, Timeout :> es)
     => Config -> GhciProcess -> Eff es ()
 stopGhciProcess config ghciProcess = do
     -- Try to write :quit
@@ -343,10 +340,9 @@ stopGhciProcess config ghciProcess = do
         File.hFlush ghciProcess.stdin
 
     -- Wait up to shutdownTimeout seconds for the process to exit, then force-kill
-    result <- timeout config.shutdownTimeout (liftIO $ waitExitCode ghciProcess.handle)
+    result <- timeout config.shutdownTimeout (Process.waitExitCode ghciProcess.handle)
     when (not (isJust result))
-        $ liftIO
-        $ stopProcess ghciProcess.handle
+        $ Process.stopProcess ghciProcess.handle
 
     -- Close all handles, ignoring errors
     for_ [ghciProcess.stdin, ghciProcess.stdout, ghciProcess.stderr] \h ->
@@ -432,10 +428,10 @@ waitForBannerOrFail
     :: ( Conc :> es
        , Concurrent :> es
        , File :> es
-       , IOE :> es
+       , Process :> es
        , Timeout :> es
        )
-    => Second -> Handle -> Handle -> Process Handle Handle Handle -> Eff es ()
+    => Second -> Handle -> Handle -> RunningProcess Handle Handle Handle -> Eff es ()
 waitForBannerOrFail delay out err p = do
     capturedVar <- newTVarIO ([] :: [Text])
     let captureLine line = atomically $ modifyTVar' capturedVar (line :)
@@ -455,11 +451,11 @@ waitForBannerOrFail delay out err p = do
                 -- the drain happened to have read so far.
                 _ <- timeout (1 :: Second) (Conc.await stderrThread)
                 captured <- atomically $ readTVar capturedVar
-                liftIO $ stopProcess p
+                Process.stopProcess p
                 throwIO $ StartupFailed $ fromMaybe (startupExitedMessage ex) (renderCapturedLines captured)
             Nothing -> do
                 captured <- atomically $ readTVar capturedVar
-                liftIO $ stopProcess p
+                Process.stopProcess p
                 throwIO $ maybe StartupTimeout StartupFailed (renderCapturedLines captured)
 
 

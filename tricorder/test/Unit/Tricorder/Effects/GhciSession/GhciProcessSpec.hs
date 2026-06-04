@@ -3,6 +3,7 @@ module Unit.Tricorder.Effects.GhciSession.GhciProcessSpec (spec_GhciProcess) whe
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.File (runFile)
+import Atelier.Effects.Process (runProcessIO)
 import Atelier.Effects.Timeout (runTimeout)
 import Atelier.Time (Millisecond)
 import Control.Concurrent.STM (newTVarIO)
@@ -201,6 +202,7 @@ testWaitForBannerOrFail =
                 . runDelay
                 . runFile
                 . runConc
+                . runProcessIO
                 $ do
                     -- No banner will ever arrive: close the write end so the
                     -- wait sees EOF at once and takes the "command exited"
