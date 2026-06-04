@@ -6,3 +6,12 @@ packages:
   tricorder
 
 tests: True
+
+-- Keep local/dev builds fast. The published .cabal files build optimized for
+-- consumers; -O0 is a dev-only choice and so lives here, not in package.yaml.
+package atelier-core
+  optimization: False
+package atelier-db
+  optimization: False
+package atelier-testing
+  optimization: False

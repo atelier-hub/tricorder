@@ -28,7 +28,6 @@ ghc-options:
 - -Wno-implicit-prelude
 - -Wno-unticked-promoted-constructors
 - -Wno-unused-packages
-- -O0
 - -fplugin=Effectful.Plugin
 - -threaded
 
