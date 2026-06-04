@@ -20,7 +20,6 @@ import Atelier.Effects.Timeout (Timeout)
 import Data.Default (def)
 import Effectful
     ( Effect
-    , IOE
     , Limit (..)
     , Persistence (..)
     , UnliftStrategy (..)
@@ -106,7 +105,6 @@ runGhciSession
        , Conc :> es
        , Concurrent :> es
        , File :> es
-       , IOE :> es
        , Process :> es
        , Timeout :> es
        )

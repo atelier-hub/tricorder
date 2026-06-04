@@ -10,7 +10,7 @@ module Tricorder.Arguments
     , runArguments
     ) where
 
-import Effectful (IOE)
+import Atelier.Effects.Arguments (Arguments, execParser)
 import Effectful.Reader.Static (Reader, runReader)
 import Options.Applicative
     ( Parser
@@ -20,7 +20,6 @@ import Options.Applicative
     , auto
     , command
     , eitherReader
-    , execParser
     , flag
     , fullDesc
     , header
@@ -91,13 +90,13 @@ data Command
     | Source [SourceQuery]
 
 
-runArguments :: (IOE :> es) => Eff (Reader Command : es) a -> Eff es a
+runArguments :: (Arguments :> es) => Eff (Reader Command : es) a -> Eff es a
 runArguments eff = do
-    args <- liftIO parseArguments
+    args <- parseArguments
     runReader args eff
 
 
-parseArguments :: IO Command
+parseArguments :: (Arguments :> es) => Eff es Command
 parseArguments = execParser opts
 
 

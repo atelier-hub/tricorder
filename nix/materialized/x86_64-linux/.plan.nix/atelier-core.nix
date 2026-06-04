@@ -57,6 +57,7 @@
           (hsPkgs."http-types" or (errorHandler.buildDepError "http-types"))
           (hsPkgs."ki" or (errorHandler.buildDepError "ki"))
           (hsPkgs."list-t" or (errorHandler.buildDepError "list-t"))
+          (hsPkgs."optparse-applicative" or (errorHandler.buildDepError "optparse-applicative"))
           (hsPkgs."process" or (errorHandler.buildDepError "process"))
           (hsPkgs."prometheus-client" or (errorHandler.buildDepError "prometheus-client"))
           (hsPkgs."prometheus-metrics-ghc" or (errorHandler.buildDepError "prometheus-metrics-ghc"))

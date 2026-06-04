@@ -7,19 +7,19 @@ module Tricorder.Observability
 import Atelier.Component (Component (..), Trigger, defaultComponent)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.Log (Log)
+import Atelier.Effects.Monitoring.Metrics.Server (MetricsServer)
 import Atelier.Effects.Monitoring.Tracing (TracingConfig)
 import Atelier.Time (Millisecond)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 import Atelier.Types.WithDefaults (WithDefaults (..))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
-import Effectful (IOE)
-import Effectful.Exception (IOException, try)
+import Effectful.Exception (trySync)
 import Effectful.Reader.Static (Reader, ask)
 
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.Log qualified as Log
-import Atelier.Effects.Monitoring.Metrics.Server qualified as Server
+import Atelier.Effects.Monitoring.Metrics.Server qualified as MetricsServer
 
 
 data MetricsConfig = MetricsConfig
@@ -47,7 +47,7 @@ instance Default Config where
     def = Config {metrics = def, tracing = def}
 
 
-component :: (Delay :> es, IOE :> es, Log :> es, Reader Config :> es) => Component es
+component :: (Delay :> es, Log :> es, MetricsServer :> es, Reader Config :> es) => Component es
 component =
     defaultComponent
         { name = "Observability"
@@ -61,9 +61,9 @@ component =
         }
 
 
-metricsServerTrigger :: (Delay :> es, IOE :> es, Log :> es) => Int -> Trigger es
+metricsServerTrigger :: (Delay :> es, Log :> es, MetricsServer :> es) => Int -> Trigger es
 metricsServerTrigger port = do
-    result <- try @IOException $ liftIO $ Server.runMetricsServer port
+    result <- trySync $ MetricsServer.runMetricsServer port
     case result of
         Right () -> pure ()
         Left e ->

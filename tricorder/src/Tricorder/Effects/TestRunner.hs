@@ -86,7 +86,6 @@ runTestRunnerIO
        , Conc :> es
        , Concurrent :> es
        , File :> es
-       , IOE :> es
        , Log :> es
        , Process :> es
        , Reader ProjectRoot :> es

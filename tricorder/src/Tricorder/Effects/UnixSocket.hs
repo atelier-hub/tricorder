@@ -96,7 +96,7 @@ runUnixSocketIO eff = interpretWith eff \env -> \case
             File.hSetBuffering h LineBuffering
             unlift (callback h) `finally` File.hClose h
     ReadLine h -> File.hGetLine h
-    SendLine h line -> File.hPutBsLn h (encodeUtf8 line) >> File.hFlush h
+    SendLine h line -> File.hPutTextLn h line >> File.hFlush h
     CloseHandle h -> File.hClose h
     RemoveSocketFile path ->
         liftIO $ void $ trySyncIO $ removeFile path

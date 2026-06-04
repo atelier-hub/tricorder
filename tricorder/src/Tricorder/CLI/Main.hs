@@ -1,6 +1,7 @@
 module Tricorder.CLI.Main (main) where
 
 import Atelier.Config (runConfig)
+import Atelier.Effects.Arguments (runArgumentsIO)
 import Atelier.Effects.Clock (runClock)
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Console (runConsole)
@@ -46,6 +47,7 @@ main =
         . runLoadedConfig
         . runConfig @"keybindings" @Keys.Config
         . runDaemons
+        . runArgumentsIO
         . runArguments
         . runUnixSocketIO
         $ Tricorder.run
