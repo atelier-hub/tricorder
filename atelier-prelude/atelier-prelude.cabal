@@ -49,7 +49,7 @@ library
       TypeFamilies
   ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages
   build-depends:
-      base
-    , effectful-core
-    , relude
+      base ==4.20.*
+    , effectful-core ==2.6.*
+    , relude ==1.2.*
   default-language: GHC2021

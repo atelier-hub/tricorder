@@ -49,6 +49,6 @@ default-extensions:
 library:
   source-dirs: src
   dependencies:
-  - base
-  - effectful-core
-  - relude
+  - base >=4.20 && <4.21
+  - effectful-core >=2.6 && <2.7
+  - relude >=1.2 && <1.3
