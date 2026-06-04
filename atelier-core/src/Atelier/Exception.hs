@@ -1,3 +1,9 @@
+-- | Helpers for telling synchronous exceptions apart from asynchronous ones.
+--
+-- Synchronous exceptions are genuine failures worth catching, logging, or
+-- retrying; asynchronous ones (thread cancellation, @SIGINT@) usually signal an
+-- intentional shutdown and should be allowed to propagate. The @*SyncIO@
+-- helpers catch only the former and re-throw the latter.
 module Atelier.Exception
     ( isGracefulShutdown
     , trySyncIO
@@ -24,6 +30,8 @@ trySyncIO :: IO a -> IO (Either SomeException a)
 trySyncIO f = withFrozenCallStack catchSyncIO (fmap Right f) (pure . Left)
 
 
+-- | Like @Control.Exception.catch@, but only synchronous exceptions reach the
+-- handler; asynchronous exceptions are re-thrown unchanged.
 catchSyncIO :: (HasCallStack) => IO a -> (SomeException -> IO a) -> IO a
 catchSyncIO f g =
     f `E.catch` \e ->

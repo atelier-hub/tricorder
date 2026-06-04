@@ -1,5 +1,21 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
+-- | Strongly-typed time units and conversions.
+--
+-- Re-exports the duration types from "Data.Time.Units" — so a single import
+-- covers 'Microsecond', 'Millisecond', 'Second', 'Minute' and 'Hour' — and adds
+-- conversion helpers plus JSON instances for those types. Each unit serialises
+-- as an integer count of itself: a 'Second' as a whole number of seconds, a
+-- 'Millisecond' as milliseconds, and so on.
+--
+-- Note: the 'FromJSON' and 'ToJSON' instances for the time-unit types are
+-- orphans, defined here because neither @aeson@ nor @time-units@ provides them.
+--
+-- @
+-- nominalDiffTime 1.5 :: Millisecond        -- 1.5s rounded to 1500ms
+-- convertUnit (5 :: Minute) :: Second       -- 300
+-- toMicroseconds (2 :: Second)              -- 2000000
+-- @
 module Atelier.Time
     ( -- * Time units
       TimeUnit
@@ -21,6 +37,8 @@ import Data.Time (NominalDiffTime)
 import Data.Time.Units (Hour, Microsecond, Millisecond, Minute, Second, TimeUnit, convertUnit, fromMicroseconds, toMicroseconds)
 
 
+-- | Convert a 'NominalDiffTime' to any 'TimeUnit', rounding to the nearest
+-- whole unit (the conversion goes through microsecond precision).
 nominalDiffTime :: (TimeUnit t) => NominalDiffTime -> t
 nominalDiffTime = fromMicroseconds . round @Double . (* 1_000_000) . realToFrac
 

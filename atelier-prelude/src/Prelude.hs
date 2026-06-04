@@ -1,4 +1,4 @@
--- | This Prelude is meant to mimic the `relude` package's `Relude` module,
+-- | This Prelude is meant to mimic the @relude@ package's "Relude" module,
 -- with the following exceptions:
 --
 -- - No MTL classes or monads.

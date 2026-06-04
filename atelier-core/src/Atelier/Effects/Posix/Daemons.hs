@@ -1,3 +1,8 @@
+-- | An effect for managing detached daemon processes via PID files.
+--
+-- 'daemonize' forks a program into the background, 'isRunning' checks a daemon's
+-- PID file, and 'forceKillAndWait' terminates one. Backed by the @daemons@
+-- package.
 module Atelier.Effects.Posix.Daemons
     ( Daemons
     , PidFile (..)
@@ -16,6 +21,7 @@ import Effectful.TH (makeEffect)
 import System.Posix.Daemon qualified as Daemons
 
 
+-- | Effect for managing detached daemon processes.
 data Daemons :: Effect where
     -- | Daemonize the given program, ensuring it is cleanly separated from the
     -- spawning process.
@@ -26,12 +32,14 @@ data Daemons :: Effect where
     ForceKillAndWait :: PidFile -> Daemons m (Either SomeException ())
 
 
+-- | The path to a daemon's PID file, used to track and control it.
 newtype PidFile = PidFile {getPidFile :: FilePath}
 
 
 makeEffect ''Daemons
 
 
+-- | Interpret 'Daemons' using the @daemons@ package.
 runDaemons :: (IOE :> es) => Eff (Daemons : es) a -> Eff es a
 runDaemons act = do
     interpretWith act \env -> \case

@@ -1,5 +1,11 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
+-- | A handle-based file IO effect.
+--
+-- A thin 'Eff' wrapper over the handle operations in "System.IO" and
+-- "Data.Text.IO" ('withFile', 'hPutText', 'hGetLine', …), so file IO passes
+-- through the effect system instead of raw 'IO'. 'Handle' and 'BufferMode' are
+-- re-exported for convenience.
 module Atelier.Effects.File
     ( File
     , Handle

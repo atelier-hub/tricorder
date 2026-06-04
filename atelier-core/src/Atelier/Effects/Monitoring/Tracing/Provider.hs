@@ -13,9 +13,13 @@ import OpenTelemetry.Attributes qualified as OT
 import OpenTelemetry.Trace qualified as OT
 
 
+-- | Handles to the initialised OpenTelemetry tracer provider and a tracer
+-- derived from it.
 data TracingState = TracingState
     { tracerProvider :: OT.TracerProvider
+    -- ^ The global tracer provider; flushed and shut down on teardown.
     , tracer :: OT.Tracer
+    -- ^ The tracer used to create spans.
     }
 
 

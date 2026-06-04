@@ -1,3 +1,17 @@
+-- | An effect for delaying execution.
+--
+-- 'wait' suspends the current thread for a 'TimeUnit' duration; 'every' repeats
+-- an action forever with a fixed gap between runs. 'runDelay' performs real
+-- delays, while 'runDelayNoOp' skips them so time-based code runs instantly
+-- under test.
+--
+-- @
+-- -- pause within a workflow:
+-- wait (250 :: Millisecond)
+--
+-- -- run a health check every 30 seconds, forever (the caller forks it):
+-- fork_ $ every (30 :: Second) checkHealth
+-- @
 module Atelier.Effects.Delay
     ( Delay
     , wait
@@ -13,6 +27,7 @@ import Effectful.Dispatch.Dynamic (interpret_)
 import Effectful.TH (makeEffect)
 
 
+-- | Effect for suspending execution for a given duration.
 data Delay :: Effect where
     -- | Halt the thread and wait for the passed duration before continuing.
     Wait :: (TimeUnit t) => t -> Delay m ()
@@ -30,6 +45,7 @@ every delay action = forever do
     wait delay
 
 
+-- | Interpret 'Delay' using real thread delays.
 runDelay :: (Concurrent :> es) => Eff (Delay : es) a -> Eff es a
 runDelay = interpret_ \(Wait delay) ->
     threadDelay $ fromIntegral (toMicroseconds delay)

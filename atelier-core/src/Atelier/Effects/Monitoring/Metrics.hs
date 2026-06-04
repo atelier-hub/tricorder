@@ -57,14 +57,21 @@ import Atelier.Effects.Monitoring.Metrics.Registry qualified as Registry
 
 -- | Metrics effect for tracking application metrics
 data Metrics :: Effect where
+    -- | Set a named gauge to a specific value.
     GaugeSet :: Text -> Double -> Metrics m ()
+    -- | Increment a named gauge by 1.
     GaugeInc :: Text -> Metrics m ()
+    -- | Decrement a named gauge by 1.
     GaugeDec :: Text -> Metrics m ()
+    -- | Increment a named counter by 1.
     CounterInc :: Text -> Metrics m ()
+    -- | Add a value to a named counter.
     CounterAdd :: Text -> Double -> Metrics m ()
+    -- | Observe a value in a named histogram.
     HistogramObserve :: Text -> Double -> Metrics m ()
     -- | Time an action and record its duration to a histogram metric
     WithHistogramTiming :: Text -> m a -> Metrics m a
+    -- | Export all collected metrics in Prometheus text format.
     ExportMetrics :: Metrics m Text
 
 

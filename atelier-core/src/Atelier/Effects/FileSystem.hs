@@ -1,3 +1,9 @@
+-- | An effect for filesystem operations: reading files, listing and creating
+-- directories, and querying paths.
+--
+-- 'runFileSystemIO' performs real filesystem IO; 'runFileSystemNoOp' returns
+-- inert results; and 'runFileSystemState' simulates a filesystem backed by an
+-- in-memory 'Map' for tests. 'followFile' tails a file as it grows.
 module Atelier.Effects.FileSystem
     ( FileSystem (..)
     , readFileBs
@@ -40,22 +46,34 @@ import Atelier.Time (Millisecond)
 import Atelier.Effects.Delay qualified as Delay
 
 
+-- | Effect for filesystem access.
 data FileSystem :: Effect where
+    -- | Read a file's full contents strictly.
     ReadFileBs :: FilePath -> FileSystem m ByteString
+    -- | Read a file from the given byte offset to the end, lazily.
     ReadFileLbsFrom :: FilePath -> FileOffset -> FileSystem m LBS.ByteString
+    -- | Does a regular file exist at the path?
     DoesFileExist :: FilePath -> FileSystem m Bool
+    -- | Does anything (file or directory) exist at the path?
     DoesPathExist :: FilePath -> FileSystem m Bool
+    -- | List the entries of a directory.
     ListDirectory :: FilePath -> FileSystem m [FilePath]
+    -- | Create a directory. The 'Bool' requests creation of missing parents.
     CreateDirectoryIfMissing :: Bool -> FilePath -> FileSystem m ()
+    -- | Delete a file.
     RemoveFile :: FilePath -> FileSystem m ()
+    -- | Resolve a path to a canonical, absolute form.
     CanonicalizePath :: FilePath -> FileSystem m FilePath
+    -- | The process's current working directory.
     GetCurrentDirectory :: FileSystem m FilePath
+    -- | The XDG runtime directory (@$XDG_RUNTIME_DIR@), falling back to @\/tmp@.
     GetXdgRuntimeDir :: FileSystem m FilePath
 
 
 makeEffect ''FileSystem
 
 
+-- | Read a file's full contents lazily (equivalent to reading from offset 0).
 readFileLbs :: (FileSystem :> es) => FilePath -> Eff es LBS.ByteString
 readFileLbs path = readFileLbsFrom path 0
 
@@ -76,6 +94,7 @@ followFile path onChunk = go 0
         go (offset + fromIntegral (LBS.length newContent))
 
 
+-- | Interpret 'FileSystem' against the real filesystem.
 runFileSystemIO :: (IOE :> es) => Eff (FileSystem : es) a -> Eff es a
 runFileSystemIO = interpret_ $ \case
     ReadFileBs path -> liftIO $ BS.readFile path
@@ -95,6 +114,8 @@ runFileSystemIO = interpret_ $ \case
     GetXdgRuntimeDir -> liftIO $ fromMaybe "/tmp" <$> lookupEnv "XDG_RUNTIME_DIR"
 
 
+-- | Interpret 'FileSystem' with inert results: reads return empty, existence
+-- checks return 'False', and mutations do nothing. Useful for tests.
 runFileSystemNoOp :: Eff (FileSystem : es) a -> Eff es a
 runFileSystemNoOp = interpret_ $ \case
     ReadFileBs _ -> pure mempty

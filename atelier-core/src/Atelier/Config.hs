@@ -1,5 +1,43 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
+-- | Layered application configuration.
+--
+-- A configuration is assembled from a base JSON\/YAML document plus environment
+-- variable overrides, then decoded on demand by type-level key:
+--
+-- * 'envOverrides' turns @PREFIX__A__B=value@ variables into a nested JSON
+--   'Value';
+-- * 'deepMerge' overlays that onto the base document, producing a
+--   'LoadedConfig';
+-- * 'extractConfig' and 'extractNestedConfig' decode a section by 'Symbol' key,
+--   falling back to the target type's 'Default' instance when the key is
+--   missing or fails to decode;
+-- * 'runConfig' hands a decoded section to a computation as a 'Reader'.
+--
+-- == Worked example
+--
+-- Given a base document (say, decoded from a @base.yaml@ holding
+-- @server: { port: 8080, host: localhost }@) and a @MYAPP@ environment prefix:
+--
+-- @
+-- data Server = Server { port :: Int, host :: Text }
+--     deriving stock (Generic)
+--     deriving (FromJSON) via (QuietSnake Server)
+--
+-- instance Default Server where
+--     def = Server { port = 80, host = \"0.0.0.0\" }
+--
+-- loadServer :: (Env :> es) => Value -> Eff es Server
+-- loadServer base = do
+--     overrides <- envOverrides \"MYAPP\"            -- e.g. MYAPP__SERVER__PORT=9090
+--     let loaded = LoadedConfig (deepMerge base overrides)
+--     pure (extractNestedConfig \@\"server\" loaded)
+-- @
+--
+-- With @MYAPP__SERVER__PORT=9090@ set in the environment, @loadServer@ yields
+-- @Server { port = 9090, host = \"localhost\" }@: the env override wins on
+-- @port@, the base document supplies @host@, and the 'Default' instance would
+-- cover any field absent from both.
 module Atelier.Config
     ( envOverrides
     , deepMerge
@@ -71,6 +109,8 @@ deepMerge (Object l) (Object r) = Object $ KM.unionWith deepMerge l r
 deepMerge _ r = r
 
 
+-- | A fully merged configuration document (base overlaid with overrides), ready
+-- to have sections extracted from it by key.
 newtype LoadedConfig = LoadedConfig Value
 
 

@@ -34,6 +34,7 @@ data MetricsServer :: Effect where
 makeEffect ''MetricsServer
 
 
+-- | Interpret 'MetricsServer' by running a real Warp HTTP server.
 runMetricsServerIO :: (IOE :> es) => Eff (MetricsServer : es) a -> Eff es a
 runMetricsServerIO = interpret_ \case
     RunMetricsServer port -> liftIO $ Warp.run port metricsApp

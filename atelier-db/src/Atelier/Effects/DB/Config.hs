@@ -1,3 +1,8 @@
+-- | Database connection configuration and pool acquisition.
+--
+-- 'DBConfig' describes how to reach a database as one user, and 'PoolConfig'
+-- tunes its connection pool. 'acquireDatabasePools' builds separate reader and
+-- writer pools ('DBPools'), typically using distinct least-privilege roles.
 module Atelier.Effects.DB.Config
     ( DBConfig (..)
     , DBPools (..)
@@ -17,33 +22,45 @@ import Hasql.Pool qualified as Pool
 import Hasql.Pool.Config qualified as Pool
 
 
--- | Connection pool configuration
+-- | Connection pool configuration.
 data PoolConfig = PoolConfig
     { size :: Int
+    -- ^ Maximum number of connections in the pool.
     , acquisitionTimeoutSeconds :: Int
+    -- ^ How long to wait for a free connection before failing.
     , agingTimeoutSeconds :: Int
+    -- ^ Maximum lifetime of a connection before it is retired.
     , idlenessTimeoutSeconds :: Int
+    -- ^ How long an idle connection is kept before being closed.
     }
     deriving stock (Eq, Generic, Show)
     deriving (FromJSON) via QuietSnake PoolConfig
 
 
--- | Database configuration for a single user
+-- | Connection details for reaching a database as a single user.
 data DBConfig = DBConfig
     { host :: Text
+    -- ^ Database server host.
     , port :: Word16
+    -- ^ Database server port.
     , user :: Text
+    -- ^ Role to connect as.
     , password :: Text
+    -- ^ Password for the role.
     , databaseName :: Text
+    -- ^ Name of the database to connect to.
     , pool :: PoolConfig
+    -- ^ Connection pool settings.
     }
     deriving stock (Eq, Show)
 
 
--- | Separate connection pools for read and write operations
+-- | Separate connection pools for read and write operations.
 data DBPools = DBPools
     { readerPool :: Pool.Pool
+    -- ^ Pool for read-only queries.
     , writerPool :: Pool.Pool
+    -- ^ Pool for write transactions.
     }
 
 

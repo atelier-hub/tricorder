@@ -60,17 +60,27 @@ import Atelier.Types.JsonReadShow (JsonReadShow (..))
 import Atelier.Types.QuietSnake (QuietSnake (..))
 
 
+-- | Effect for structured logging with hierarchical namespaces.
 data Log :: Effect where
+    -- | Emit a fully-formed log 'Message'.
     LogMsg :: Message -> Log m ()
+    -- | Run an action with an extra namespace segment appended to the current
+    -- one.
     WithNamespace :: Namespace -> m a -> Log m a
+    -- | Get the namespace in effect for the current action.
     GetNamespace :: Log m Namespace
 
 
+-- | A single log record.
 data Message = Message
     { namespace :: Namespace
+    -- ^ The hierarchical namespace the message was logged under.
     , text :: Text
+    -- ^ The human-readable message body.
     , severity :: Severity
+    -- ^ The severity level of the message.
     , stack :: CallStack
+    -- ^ The call site, captured via 'HasCallStack'.
     }
 
 
@@ -85,18 +95,25 @@ instance Semigroup Namespace where
     Namespace a <> Namespace b = Namespace (a <> "." <> b)
 
 
+-- | Logging configuration.
 data Config = Config
     { minimumSeverity :: Severity
+    -- ^ Messages below this severity are discarded.
     }
     deriving stock (Eq, Generic, Show)
     deriving (FromJSON) via QuietSnake Config
 
 
+-- | Log severity levels, ordered from least to most severe.
 data Severity
-    = DEBUG
-    | INFO
-    | WARN
-    | ERROR
+    = -- | Verbose diagnostic detail.
+      DEBUG
+    | -- | Normal operational information.
+      INFO
+    | -- | Something unexpected, but recoverable.
+      WARN
+    | -- | A failure that needs attention.
+      ERROR
     deriving stock (Bounded, Enum, Eq, Ord, Read, Show)
     deriving (FromJSON) via (JsonReadShow Severity)
 
@@ -111,6 +128,8 @@ instance Default Config where
 makeEffect ''Log
 
 
+-- | Log a message at the given severity, capturing the current namespace and
+-- call site.
 log :: (HasCallStack, Log :> es) => Severity -> Text -> Eff es ()
 log severity text = do
     namespace <- getNamespace
@@ -124,18 +143,22 @@ log severity text = do
                 }
 
 
+-- | Log a message at 'DEBUG' severity.
 debug :: (HasCallStack, Log :> es) => Text -> Eff es ()
 debug = withFrozenCallStack $ log DEBUG
 
 
+-- | Log a message at 'INFO' severity.
 info :: (HasCallStack, Log :> es) => Text -> Eff es ()
 info = withFrozenCallStack $ log INFO
 
 
+-- | Log a message at 'WARN' severity.
 warn :: (HasCallStack, Log :> es) => Text -> Eff es ()
 warn = withFrozenCallStack $ log WARN
 
 
+-- | Log a message at 'ERROR' severity.
 err :: (HasCallStack, Log :> es) => Text -> Eff es ()
 err = withFrozenCallStack $ log ERROR
 
@@ -149,6 +172,11 @@ runLogNoOp = reinterpret (runReader (Namespace "")) $ \env -> \case
     GetNamespace -> ask
 
 
+-- | Interpret 'Log' by writing formatted messages to stdout.
+--
+-- The minimum severity defaults to 'Config'\'s @minimumSeverity@, but can be
+-- overridden at runtime by the @DEBUG@, @LOGGING@ or @LOG@ environment
+-- variables (checked in that order).
 runLog :: (Env :> es, IOE :> es, Reader Config :> es) => Eff (Log : es) a -> Eff es a
 runLog action = do
     config <- ask
@@ -191,6 +219,7 @@ runLogToHandle handle minSeverity action =
         GetNamespace -> ask
 
 
+-- | Interpret 'Log' by collecting messages into a 'Writer', for tests.
 runLogWriter :: (Writer [Message] :> es) => Eff (Log : es) a -> Eff es a
 runLogWriter = reinterpret (runReader (Namespace "")) $ \env -> \case
     LogMsg msg -> tell [msg]

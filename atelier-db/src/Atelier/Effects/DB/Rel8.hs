@@ -1,3 +1,9 @@
+-- | Rel8 query helpers layered over the 'DBRead' and 'DBWrite' effects.
+--
+-- Thin wrappers that build Hasql @Statement@s from Rel8 queries and run them
+-- through the database effects: 'select' and 'select1' for reads, and 'transact'
+-- with 'insert_', 'update_', 'delete_' and 'selectTx' for writes. The Hasql
+-- 'Transaction' type is re-exported for building transaction bodies.
 module Atelier.Effects.DB.Rel8
     ( Transaction
     , select

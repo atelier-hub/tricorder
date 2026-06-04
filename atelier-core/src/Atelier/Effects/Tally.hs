@@ -82,6 +82,9 @@ runTally = reinterpret (runCacheTtl @key @Int) $ \env -> \case
         unlift $ continuation (classify count)
 
 
+-- | Interpret 'Tally' with a fixed count for every key, ignoring real
+-- tallying. The classifier is always handed @c@, making the outcome
+-- deterministic for tests.
 runTallyConst :: Int -> Eff (Tally key : es) a -> Eff es a
 runTallyConst c = interpret \env -> \case
     WithTallyCheck _ classify f -> localSeqUnlift env \unlift -> unlift $ f (classify c)
