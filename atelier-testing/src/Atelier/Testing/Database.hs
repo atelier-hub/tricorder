@@ -1,3 +1,10 @@
+-- | Hspec helpers for running tests against a real, ephemeral PostgreSQL
+-- database.
+--
+-- 'withCleanTestDatabase' starts a temporary PostgreSQL server once per test
+-- process, applies your migrations into a template database, and hands each spec
+-- group a fresh database (as 'DBPools') that is truncated between individual
+-- tests. Configure it with a 'TmpDbConfig'.
 module Atelier.Testing.Database
     ( TmpDbConfig (..)
     , withCleanTestDatabase

@@ -88,8 +88,10 @@ instance Default TracingConfig where
 
 -- | Span status for indicating success or failure
 data SpanStatus
-    = Ok
-    | Error Text
+    = -- | The operation completed successfully.
+      Ok
+    | -- | The operation failed, with an explanatory message.
+      Error Text
     deriving stock (Eq, Show)
 
 
@@ -129,6 +131,9 @@ instance OT.ToAttribute Attr where
     toAttribute (Attr a) = OT.toAttribute a
 
 
+-- | Wrapper that turns any 'Show'able value into an OpenTelemetry attribute via
+-- its 'Show' instance. Derive an attribute instance @via 'ToAttributeShow' T@,
+-- or wrap a value directly.
 newtype ToAttributeShow a = ToAttributeShow
     { getToAttributeShow :: a
     }

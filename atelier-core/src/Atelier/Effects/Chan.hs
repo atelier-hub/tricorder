@@ -1,7 +1,28 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
--- | Module: Atelier.Effects.Chan
--- Description: Effect for creating and operating on bidirectional channels
+-- | A typed, unbounded channel effect backed by @unagi-chan@.
+--
+-- Exposes the split in\/out ends of a fast concurrent queue as an effect, plus a
+-- batched read ('readChanBatched') for draining several items at once. The
+-- 'InChan' and 'OutChan' types are re-exported so callers need not depend on
+-- @unagi-chan@ directly.
+--
+-- @
+-- -- write a few items (writeChan never blocks), then drain them in one batch:
+-- pipeline :: (Chan :> es, Timeout :> es) => Eff es (NonEmpty Int)
+-- pipeline = do
+--     (inn, out) <- newChan
+--     traverse_ (writeChan inn) [1 .. 10]
+--     readChanBatched (50 :: Millisecond) 100 out   -- one blocking read, up to 100 items
+--
+-- -- dupChan gives a second, independent read end that sees later writes:
+-- broadcast :: (Chan :> es) => Eff es (Int, Int)
+-- broadcast = do
+--     (inn, out1) <- newChan
+--     out2 <- dupChan inn
+--     writeChan inn 7
+--     (,) <$> readChan out1 <*> readChan out2       -- (7, 7)
+-- @
 module Atelier.Effects.Chan
     ( -- * Effect
       Chan
@@ -39,25 +60,32 @@ type instance DispatchOf Chan = Static WithSideEffects
 data instance StaticRep Chan = Chan
 
 
+-- | Run the 'Chan' effect, allowing channel operations to perform their IO.
 runChan :: forall a es. (IOE :> es) => Eff (Chan : es) a -> Eff es a
 runChan = evalStaticRep Chan
 
 
+-- | Create a new channel, returning its write ('InChan') and read ('OutChan')
+-- ends.
 newChan :: forall a es. (Chan :> es) => Eff es (InChan a, OutChan a)
 newChan =
     unsafeEff_ Unagi.newChan
 
 
+-- | Read the next item from a channel, blocking until one is available.
 readChan :: forall a es. (Chan :> es) => OutChan a -> Eff es a
 readChan outChan =
     unsafeEff_ $ Unagi.readChan outChan
 
 
+-- | Write an item to a channel. Never blocks (the channel is unbounded).
 writeChan :: forall a es. (Chan :> es) => InChan a -> a -> Eff es ()
 writeChan inChan val =
     unsafeEff_ $ Unagi.writeChan inChan val
 
 
+-- | Duplicate a channel, producing a new read end that observes every item
+-- written after the duplication.
 dupChan :: forall a es. (Chan :> es) => InChan a -> Eff es (OutChan a)
 dupChan inChan =
     unsafeEff_ $ Unagi.dupChan inChan

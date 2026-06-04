@@ -1,3 +1,11 @@
+-- | A singleflight cache effect: deduplicate concurrent computations of the
+-- same key.
+--
+-- When several threads request the same key at once, the first runs the
+-- computation while the rest wait and share its result — so an expensive lookup
+-- happens once per key per in-flight window. Results (and exceptions) can also
+-- be seeded with 'updateCache' or invalidated with 'removeFromCache'. Each
+-- operation is traced (see "Atelier.Effects.Monitoring.Tracing").
 module Atelier.Effects.Cache.Singleflight
     ( Singleflight
     , withCache

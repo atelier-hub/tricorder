@@ -1,3 +1,8 @@
+-- | Configuration shared by the TTL cache interpreters.
+--
+-- 'Config' controls how long entries live and how often the background eviction
+-- sweep runs. It is re-exported by "Atelier.Effects.Cache" and
+-- "Atelier.Effects.Tally".
 module Atelier.Effects.Cache.Config
     ( Config (..)
     ) where

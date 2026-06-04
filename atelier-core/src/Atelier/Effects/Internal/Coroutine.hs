@@ -1,3 +1,9 @@
+-- | Internal: the shared implementation of the 'Yield' and 'Await' coroutine
+-- effects.
+--
+-- Both effects, along with their operations and interpreters, are defined here;
+-- "Atelier.Effects.Yield" and "Atelier.Effects.Await" re-export curated subsets
+-- for public use. Exposed chiefly for testing — prefer the public modules.
 module Atelier.Effects.Internal.Coroutine
     ( -- * Yield
       Yield (..)

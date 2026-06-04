@@ -18,6 +18,8 @@ import Data.Map.Strict qualified as Map
 import Prometheus qualified as Prom
 
 
+-- | Mutable handles to the registered Prometheus metrics, keyed by name and
+-- created on first use.
 data MetricHandles = MetricHandles
     { gauges :: IORef (Map Text Prom.Gauge)
     , counters :: IORef (Map Text Prom.Counter)

@@ -1,3 +1,10 @@
+-- | Structured concurrency built on @ki@.
+--
+-- 'Conc' exposes forking, awaiting, racing and nurseries ('scoped') as an
+-- effect, so concurrent code stays in 'Eff' and inherits structured-concurrency
+-- guarantees: every child thread is bound to a scope and is cancelled when that
+-- scope closes. The base interpreter ('runConc') ignores tracing; use
+-- "Atelier.Effects.Conc.Traced" to propagate OpenTelemetry context across forks.
 module Atelier.Effects.Conc
     ( -- * Effect
       Conc (..)
@@ -54,18 +61,26 @@ data Conc :: Effect where
     -- | Fork a thread that never terminates (e.g. a server loop).
     -- The @Void@ return type enforces this — use 'fork' for threads that exit.
     Fork_ :: m Void -> Conc m ()
+    -- | Block until a forked 'Thread' finishes and return its result.
     Await :: Thread a -> Conc m a
+    -- | Block until every thread in the current scope has finished.
     AwaitAll :: Conc m ()
+    -- | Like 'Fork', but the thread captures a synchronous exception of type @e@
+    -- as a 'Left' instead of propagating it to the enclosing scope.
     ForkTry :: (Exception e) => m a -> Conc m (Thread (Either e a))
     -- | Races two computations concurrently and returns the result of the
     -- operation that finished first.
     Race :: m a -> m b -> Conc m (Either a b)
+    -- | Open a nursery scope. Threads forked inside it are awaited or cancelled
+    -- when the action returns.
     Scoped :: m a -> Conc m a
 
 
+-- | A concurrency scope (nursery) that forked threads are bound to.
 newtype Scope = Scope Ki.Scope
 
 
+-- | A handle to a forked thread, awaited with 'await'.
 newtype Thread a = Thread (Ki.Thread a)
 
 
@@ -153,5 +168,8 @@ runConc eff = withEffToIO concStrat $ \unlift ->
         unlift $ runConcBase (Scope scope) eff
 
 
+-- | The unlift strategy used when running forked actions: a persistent,
+-- unlimited concurrent unlift, so forked threads may themselves use the effects
+-- of the enclosing computation. Shared with "Atelier.Effects.Conc.Traced".
 concStrat :: UnliftStrategy
 concStrat = ConcUnlift Persistent Unlimited

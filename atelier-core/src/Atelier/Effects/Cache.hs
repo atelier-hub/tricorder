@@ -42,10 +42,16 @@ import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.Log qualified as Log
 
 
+-- | Effect for a generic key-value cache.
 data Cache key value :: Effect where
+    -- | Look up a key, returning 'Nothing' if it is absent.
     CacheLookup :: key -> Cache key value m (Maybe value)
+    -- | Insert or overwrite the value at a key.
     CacheInsert :: key -> value -> Cache key value m ()
+    -- | Remove a key from the cache.
     CacheDelete :: key -> Cache key value m ()
+    -- | Apply a function to a key's current value (or its absence), store the
+    -- result, and return it.
     CacheModify :: key -> (Maybe value -> value) -> Cache key value m value
 
 
@@ -80,6 +86,10 @@ runCacheTtl act = do
     runCacheTtlWithWait (Delay.wait $ nominalDiffTime @Microsecond cfg.cleanupInterval) act
 
 
+-- | Like 'runCacheTtl', but with the cleanup cadence supplied explicitly as a
+-- waiting action rather than read from 'Config'. Each time the action
+-- completes, expired entries are swept. Useful for tests that drive cleanup
+-- deterministically.
 runCacheTtlWithWait
     :: forall key value es a
      . ( Clock :> es

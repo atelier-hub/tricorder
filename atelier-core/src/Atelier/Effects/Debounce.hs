@@ -12,8 +12,17 @@
 -- == Example
 --
 -- @
--- watchFilePaths watches \path event ->
---     debouncedWith 100 mergeFileEvent path event (handleChange path)
+-- -- Coalesce rapid saves per file: only the last edit within a 200ms window
+-- -- triggers a rebuild, keyed by path.
+-- onEdit :: (Debounce FilePath :> es) => FilePath -> Eff es ()
+-- onEdit path = debounced 200 path (rebuild path)
+--
+-- -- Or merge the burst instead of keeping just the last value. Here every
+-- -- event seen within the window is combined (list append) before a single
+-- -- rebuild fires with the full batch.
+-- onChange :: (Debounce FilePath :> es) => FilePath -> FileEvent -> Eff es ()
+-- onChange path event =
+--     debouncedWith 200 (<>) path [event] (rebuildWith path)
 -- @
 module Atelier.Effects.Debounce
     ( -- * Effect
@@ -49,6 +58,8 @@ import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Delay qualified as Delay
 
 
+-- | Effect for coalescing rapid bursts of keyed events into a single delayed
+-- callback.
 data Debounce key :: Effect where
     -- | Schedule @callback merged@ after the settle window. If another call
     -- with the same @key@ arrives before the window expires, the two values are
@@ -73,9 +84,14 @@ debounced :: (Debounce key :> es) => Millisecond -> key -> Eff es a -> Eff es ()
 debounced settleMs key action = debouncedWith settleMs (\_ _ -> ()) key () (\_ -> action)
 
 
+-- | Per-key debounce state: the latest (merged) pending argument and a
+-- generation counter used to tell whether a scheduled fire is still the most
+-- recent call for that key.
 data Entry = Entry
     { arg :: Maybe Dynamic
+    -- ^ The latest pending argument (type-erased), or 'Nothing' once consumed.
     , generation :: Int
+    -- ^ Counter bumped on every call for the key; identifies the latest one.
     }
 
 

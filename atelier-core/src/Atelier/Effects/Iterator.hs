@@ -1,3 +1,9 @@
+-- | A pull-based iterator over a (possibly infinite) stream of values.
+--
+-- Where the 'Yield' effect pushes values to a consumer, an 'Iterator' is pulled
+-- one value at a time with 'next'. 'fromEvents' adapts a 'Sub' event source into
+-- an iterator with a buffered, race-free subscription, and a stream can be
+-- narrowed with 'filter' and 'changes'.
 module Atelier.Effects.Iterator
     ( Iterator
     , next
@@ -18,8 +24,12 @@ import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Publishing qualified as Sub
 
 
--- | An pull-based iterator of (potentially infinite) values.
-newtype Iterator es a = Iterator {next :: Eff es a}
+-- | A pull-based iterator of (potentially infinite) values.
+newtype Iterator es a = Iterator
+    { next :: Eff es a
+    -- ^ Pull the next value from the iterator, performing whatever effects that
+    -- requires.
+    }
     deriving (Functor) via (Eff es)
 
 

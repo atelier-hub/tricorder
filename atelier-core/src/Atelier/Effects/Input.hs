@@ -1,3 +1,8 @@
+-- | An effect for requesting a value from the environment on each call.
+--
+-- Unlike 'Effectful.Reader.Static.Reader', 'Input' makes no assumption that the
+-- value is stable across the computation — each 'input' may observe a different
+-- value. See the 'Input' type below for the full comparison.
 module Atelier.Effects.Input
     ( Input
     , input

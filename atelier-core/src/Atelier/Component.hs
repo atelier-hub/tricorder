@@ -1,8 +1,19 @@
+-- | A small component model for assembling long-running applications.
+--
+-- A 'Component' bundles a named unit of work with a lifecycle: one-off 'setup',
+-- a set of 'listeners' and 'triggers' that run as forked threads, and a
+-- post-'start' action. 'runSystem' drives a collection of components through
+-- these phases in lockstep, so that (for example) every component has finished
+-- 'setup' before any 'start' action runs and publishes events the others react
+-- to.
 module Atelier.Component
-    ( Component (..)
+    ( -- * Components
+      Component (..)
     , defaultComponent
     , Listener
     , Trigger
+
+      -- * Running
     , runComponent
     , runSystem
     ) where
@@ -17,14 +28,19 @@ import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Log qualified as Log
 
 
--- | Type aliases for semantic clarity
+-- | A listener reacts to events and runs forever; it never returns normally,
+-- hence the 'Void' result.
 type Listener es = Eff es Void
 
 
+-- | A trigger initiates periodic or scheduled work and, like a 'Listener', runs
+-- forever and never returns normally.
 type Trigger es = Eff es Void
 
 
--- | Component interface for modular application structure
+-- | A named unit of application work together with its lifecycle hooks.
+--
+-- Build one by overriding the fields of 'defaultComponent' you care about.
 data Component es = Component
     { name :: ~Text
     -- ^ Component name for tracing
@@ -39,6 +55,10 @@ data Component es = Component
     }
 
 
+-- | A 'Component' with no-op lifecycle hooks and no listeners or triggers.
+--
+-- Override the fields you need. 'name' is deliberately left as an 'error' so a
+-- component created without a name fails fast rather than tracing anonymously.
 defaultComponent :: (HasCallStack) => Component es
 defaultComponent =
     Component

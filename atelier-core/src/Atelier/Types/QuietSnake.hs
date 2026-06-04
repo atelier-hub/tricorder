@@ -1,5 +1,18 @@
 {-# LANGUAGE UndecidableInstances #-}
 
+-- | Derive 'FromJSON' and 'ToJSON' for a record so its Haskell field names map
+-- to @quiet_snake_case@ JSON keys.
+--
+-- \"Quiet\" snake case lowercases and underscore-separates words without an
+-- extra leading underscore, so the field @maxRetries@ becomes the JSON key
+-- @max_retries@. Derive via this wrapper to keep idiomatic Haskell field names
+-- while exposing snake-case JSON:
+--
+-- @
+-- data Settings = Settings { maxRetries :: Int, dryRun :: Bool }
+--     deriving stock (Generic)
+--     deriving (FromJSON, ToJSON) via (QuietSnake Settings)
+-- @
 module Atelier.Types.QuietSnake
     ( QuietSnake (..)
     ) where
@@ -11,7 +24,7 @@ import GHC.Generics (Rep)
 import Text.Casing (quietSnake)
 
 
--- | Newtype wrapper for deriving FromJSON with quiet_snake_case field names
+-- | Carrier for deriving @quiet_snake_case@ JSON instances generically.
 newtype QuietSnake a = QuietSnake {getQuietSnake :: a}
 
 

@@ -1,3 +1,14 @@
+-- | A typed publish/subscribe effect pair.
+--
+-- 'Pub' publishes events of a given type; 'Sub' subscribes and delivers each
+-- published event to a listener. 'runPubSub' wires the two together over an
+-- internal broadcast channel, propagating tracing context from publisher to
+-- listener; 'runPubWriter' instead records published events to a 'Writer', for
+-- tests.
+--
+-- Subscriptions are established asynchronously, so a listener you intend to
+-- publish to should be started with 'forkListener' or 'forkListener_', which
+-- block until the subscription is live and therefore cannot miss early events.
 module Atelier.Effects.Publishing
     ( Pub
     , Sub
@@ -41,10 +52,13 @@ import Atelier.Effects.Clock qualified as Clock
 import Atelier.Effects.Monitoring.Tracing qualified as Tracing
 
 
+-- | Effect for publishing events of type @event@.
 data Pub (event :: Type) :: Effect where
+    -- | Publish an event to all current subscribers.
     Publish :: event -> Pub event m ()
 
 
+-- | Effect for subscribing to events of type @event@.
 data Sub (event :: Type) :: Effect where
     -- | Subscribe, then run @onSubscribed@ once the subscription is established
     -- — after the internal channel has been duplicated and before any event is
@@ -66,6 +80,7 @@ listen :: (Sub event :> es) => (UTCTime -> event -> Eff es ()) -> Eff es Void
 listen = listenWith (pure ())
 
 
+-- | Like 'listen', but the listener ignores the event timestamp.
 listen_ :: (Sub event :> es) => (event -> Eff es ()) -> Eff es Void
 listen_ listener = listen $ \_timestamp event -> listener event
 
