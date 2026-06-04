@@ -9,9 +9,12 @@ version:        0.1.0.0
 synopsis:       TODO write a short description
 description:    TODO write a long description
 author:         Christian Georgii
-maintainer:     cgeorgii@gmail.com
+maintainer:     christian.georgii@tweag.io
 license:        MIT
+license-file:   LICENSE
 build-type:     Simple
+extra-doc-files:
+    README.md
 
 library tricorder-internal
   exposed-modules:

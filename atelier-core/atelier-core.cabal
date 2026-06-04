@@ -12,7 +12,7 @@ category:       Control
 homepage:       https://github.com/atelier-hub/tricorder#readme
 bug-reports:    https://github.com/atelier-hub/tricorder/issues
 author:         Christian Georgii
-maintainer:     cgeorgii@gmail.com
+maintainer:     christian.georgii@tweag.io
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple

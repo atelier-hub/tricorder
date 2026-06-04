@@ -3,7 +3,7 @@ version:             0.1.0.0
 synopsis:            Relational database effect for atelier (Hasql/Rel8)
 description:         Relational database access via Hasql and Rel8, exposed as an Effectful effect — part of the atelier toolkit.
 author:              Christian Georgii
-maintainer:          cgeorgii@gmail.com
+maintainer:          christian.georgii@tweag.io
 license:             MIT
 license-file:        LICENSE
 github:              atelier-hub/tricorder
@@ -11,6 +11,7 @@ category:            Database
 
 extra-doc-files:
 - CHANGELOG.md
+- README.md
 
 language: GHC2021
 
