@@ -1,11 +1,13 @@
 name:                tricorder
 version:             0.1.0.0
-synopsis:            TODO write a short description
-description:         TODO write a long description
+synopsis:            Continuous Haskell build status, diagnostics, and tests via a shared daemon
+description:         tricorder rebuilds your Haskell project continuously and surfaces build status, diagnostics, test results, and documentation - for developers and LLM coding agents. Like ghcid and ghciwatch it reloads on every change, but builds run in a background daemon so multiple clients (an interactive TUI, a status CLI, an agent skill) share a single build state without triggering redundant rebuilds. It discovers components across multi-package cabal.project workspaces automatically and ships context-friendly output for agentic use via the CLI.
 author:              Christian Georgii
 maintainer:          christian.georgii@tweag.io
 license:             MIT
 license-file:        LICENSE
+github:              atelier-hub/tricorder
+category:            Development
 
 extra-doc-files:
 - README.md
@@ -25,13 +27,12 @@ ghc-options:
 - -Wno-implicit-prelude
 - -Wno-unticked-promoted-constructors
 - -Wno-unused-packages
-- -O0
 - -fplugin=Effectful.Plugin
 - -threaded
 
 dependencies:
-- effectful-core
-- effectful-plugin
+- effectful-core >=2.6 && <2.7
+- effectful-plugin >=2.0 && <2.1
 
 default-extensions:
 - BlockArguments
@@ -59,37 +60,38 @@ internal-libraries:
     source-dirs: src
     dependencies:
     - name: base
+      version: ">=4.20 && <4.21"
       mixin:
         - hiding (Prelude)
-    - atelier-prelude
-    - atelier-core
-    - Cabal-syntax
-    - aeson
-    - ansi-terminal
-    - brick
-    - bytestring
-    - casing
-    - containers
-    - data-default
-    - directory
-    - effectful
-    - effectful-th
-    - filepath
-    - hashable
-    - process
-    - template-haskell
-    - megaparsec
-    - mtl
-    - network
-    - optparse-applicative
-    - relude
-    - stm
-    - text
-    - time
-    - time-units
-    - vty
-    - vty-crossplatform
-    - yaml
+    - atelier-prelude >=0.1 && <0.2
+    - atelier-core >=0.1 && <0.2
+    - Cabal-syntax >=3.12 && <3.13
+    - aeson >=2.2 && <2.3
+    - ansi-terminal >=1.1 && <1.2
+    - brick >=2.10 && <2.11
+    - bytestring >=0.12 && <0.13
+    - casing >=0.1 && <0.2
+    - containers >=0.7 && <0.8
+    - data-default >=0.8 && <0.9
+    - directory >=1.3 && <1.4
+    - effectful >=2.6 && <2.7
+    - effectful-th >=1.0 && <1.1
+    - filepath >=1.5 && <1.6
+    - hashable >=1.5 && <1.6
+    - process >=1.6 && <1.7
+    - template-haskell >=2.22 && <2.23
+    - megaparsec >=9.7 && <9.8
+    - mtl >=2.3 && <2.4
+    - network >=3.2 && <3.3
+    - optparse-applicative >=0.19 && <0.20
+    - relude >=1.2 && <1.3
+    - stm >=2.5 && <2.6
+    - text >=2.1 && <2.2
+    - time >=1.12 && <1.13
+    - time-units >=1.0 && <1.1
+    - vty >=6.5 && <6.6
+    - vty-crossplatform >=0.5 && <0.6
+    - yaml >=0.11 && <0.12
 
 executables:
   tricorder-exe:
@@ -99,9 +101,10 @@ executables:
     - '"-with-rtsopts=-N -T"'
     dependencies:
     - name: base
+      version: ">=4.20 && <4.21"
       mixin:
         - hiding (Prelude)
-    - atelier-prelude
+    - atelier-prelude >=0.1 && <0.2
     - tricorder-internal
   tricorder-daemon:
     main:                Main.hs
@@ -110,9 +113,10 @@ executables:
       - '"-with-rtsopts=-N -T"'
     dependencies:
     - name: base
+      version: ">=4.20 && <4.21"
       mixin:
         - hiding (Prelude)
-    - atelier-prelude
+    - atelier-prelude >=0.1 && <0.2
     - tricorder-internal
 
 tests:
@@ -125,24 +129,25 @@ tests:
     - tasty-discover:tasty-discover
     dependencies:
     - name: base
+      version: ">=4.20 && <4.21"
       mixin:
         - hiding (Prelude)
-    - atelier-prelude
+    - atelier-prelude >=0.1 && <0.2
     - tricorder-internal
-    - atelier-core
-    - Cabal-syntax
-    - aeson
-    - containers
-    - data-default
-    - effectful
-    - hspec
-    - process
-    - stm
-    - tasty
-    - tasty-discover
-    - tasty-hspec
-    - text
-    - time
-    - time-units
-    - typed-process
-    - unagi-chan
+    - atelier-core >=0.1 && <0.2
+    - Cabal-syntax >=3.12 && <3.13
+    - aeson >=2.2 && <2.3
+    - containers >=0.7 && <0.8
+    - data-default >=0.8 && <0.9
+    - effectful >=2.6 && <2.7
+    - hspec >=2.11 && <2.12
+    - process >=1.6 && <1.7
+    - stm >=2.5 && <2.6
+    - tasty >=1.5 && <1.6
+    - tasty-discover >=5.2 && <5.3
+    - tasty-hspec >=1.2 && <1.3
+    - text >=2.1 && <2.2
+    - time >=1.12 && <1.13
+    - time-units >=1.0 && <1.1
+    - typed-process >=0.2 && <0.3
+    - unagi-chan >=0.4 && <0.5
