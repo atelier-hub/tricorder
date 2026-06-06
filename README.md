@@ -15,6 +15,17 @@ Like similar tools (`ghcid`, `ghciwatch`), it builds the code continuously on ev
 - **Project context** - Tools like `tricorder source Some.Module` will attempt to find and provide the source code for a given dependency from disk, which allows exploring library APIs more easily.
 - **Machine-readable output** - Using `tricorder status --json` we can get build information in a format appropriate for programmatic usage.
 
+## Installing with cabal
+
+`tricorder` is published on [Hackage](https://hackage.haskell.org/package/tricorder). With a GHC and `cabal` toolchain available, install the executable from source:
+
+```bash
+cabal update
+cabal install tricorder
+```
+
+This builds and installs the `tricorder` binary into cabal's install directory (typically `~/.local/bin`, or `~/.cabal/bin` on older setups); make sure it is on your `PATH`.
+
 ## Using with Nix
 
 > [!TIP]
