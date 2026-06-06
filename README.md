@@ -32,9 +32,15 @@ This builds and installs the `tricorder` binary into cabal's install directory (
 > Configure the binary cache to avoid building GHC from scratch:
 >
 > ```nix
-> nix.settings = {
->   extra-substituters = [ "https://atelier.cachix.org" ];
->   extra-trusted-public-keys = [ "atelier.cachix.org-1:rEyd/Z4TiXZbBVuU/lDnKZ/7WtnFTwJ17OKHGcahVUo=" ];
+> nixConfig = {
+>   extra-substituters = [
+>     "https://cache.iog.io"
+>     "https://atelier.cachix.org"
+>   ];
+>   extra-trusted-public-keys = [
+>     "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
+>     "atelier.cachix.org-1:rEyd/Z4TiXZbBVuU/lDnKZ/7WtnFTwJ17OKHGcahVUo="
+>   ];
 > };
 > ```
 
