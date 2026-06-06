@@ -563,7 +563,6 @@
           "Cabal-syntax".components.library.planned = lib.mkOverride 900 true;
           "crypton-asn1-encoding".components.library.planned = lib.mkOverride 900 true;
           "product-profunctors".components.library.planned = lib.mkOverride 900 true;
-          "tricorder".components.exes."tricorder-exe".planned = lib.mkOverride 900 true;
           "integer-conversion".components.library.planned = lib.mkOverride 900 true;
           "pretty-show".components.library.planned = lib.mkOverride 900 true;
           "monad-loops".components.library.planned = lib.mkOverride 900 true;
@@ -859,6 +858,7 @@
           "brick".components.library.planned = lib.mkOverride 900 true;
           "hsc2hs".components.exes."hsc2hs".planned = lib.mkOverride 900 true;
           "vector-stream".components.library.planned = lib.mkOverride 900 true;
+          "tricorder".components.exes."tricorder".planned = lib.mkOverride 900 true;
           "text-conversions".components.library.planned = lib.mkOverride 900 true;
           "unix-time".components.library.planned = lib.mkOverride 900 true;
           "ghc-platform".components.library.planned = lib.mkOverride 900 true;
