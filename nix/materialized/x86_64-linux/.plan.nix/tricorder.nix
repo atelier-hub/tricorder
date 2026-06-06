@@ -11,7 +11,7 @@
     flags = {};
     package = {
       specVersion = "2.0";
-      identifier = { name = "tricorder"; version = "0.1.0.0"; };
+      identifier = { name = "tricorder"; version = "0.1.0.1"; };
       license = "MIT";
       copyright = "";
       maintainer = "christian.georgii@tweag.io";
@@ -73,6 +73,19 @@
         };
       };
       exes = {
+        "tricorder" = {
+          depends = [
+            (hsPkgs."atelier-prelude" or (errorHandler.buildDepError "atelier-prelude"))
+            (hsPkgs."base" or (errorHandler.buildDepError "base"))
+            (hsPkgs."effectful-core" or (errorHandler.buildDepError "effectful-core"))
+            (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))
+            (hsPkgs."tricorder".components.sublibs.tricorder-internal or (errorHandler.buildDepError "tricorder:tricorder-internal"))
+          ];
+          buildable = true;
+          modules = [ "Paths_tricorder" ];
+          hsSourceDirs = [ "app" ];
+          mainPath = [ "Main.hs" ];
+        };
         "tricorder-daemon" = {
           depends = [
             (hsPkgs."atelier-prelude" or (errorHandler.buildDepError "atelier-prelude"))
@@ -84,19 +97,6 @@
           buildable = true;
           modules = [ "Paths_tricorder" ];
           hsSourceDirs = [ "daemon" ];
-          mainPath = [ "Main.hs" ];
-        };
-        "tricorder-exe" = {
-          depends = [
-            (hsPkgs."atelier-prelude" or (errorHandler.buildDepError "atelier-prelude"))
-            (hsPkgs."base" or (errorHandler.buildDepError "base"))
-            (hsPkgs."effectful-core" or (errorHandler.buildDepError "effectful-core"))
-            (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))
-            (hsPkgs."tricorder".components.sublibs.tricorder-internal or (errorHandler.buildDepError "tricorder:tricorder-internal"))
-          ];
-          buildable = true;
-          modules = [ "Paths_tricorder" ];
-          hsSourceDirs = [ "app" ];
           mainPath = [ "Main.hs" ];
         };
       };

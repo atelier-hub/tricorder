@@ -60,12 +60,8 @@ let
     fi
   '';
 
-  tricorderExe = projectFlake.packages."tricorder:exe:tricorder-exe";
-  # Wrap the cabal executable (tricorder-exe) so consumers get a binary named `tricorder`
-  tricorder = pkgs.runCommand "tricorder" { } ''
-    mkdir -p $out/bin
-    ln -s ${tricorderExe}/bin/tricorder-exe $out/bin/tricorder
-  '';
+  # The cabal executable is named `tricorder`, so it can be consumed directly.
+  tricorder = projectFlake.packages."tricorder:exe:tricorder";
 
   # Git hooks check (defined once, used in both checks and shell)
   gitHooks = inputs.git-hooks.lib.${system}.run {
@@ -152,7 +148,7 @@ in
   checks = projectFlake.checks // {
     git-hooks = gitHooks;
     # Ensure the executable builds in CI
-    tricorder-exe = tricorderExe;
+    tricorder = tricorder;
     # Ensure the overlay correctly exposes pkgs.tricorder
     overlay =
       pkgs.runCommand "check-overlay"

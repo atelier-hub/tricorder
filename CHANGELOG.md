@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+#### tricorder
+
+- Renamed the installed executable from `tricorder-exe` to `tricorder` so `cabal install tricorder` provides a binary matching the package name
+
 ### Added
 
 #### tricorder

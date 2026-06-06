@@ -5,7 +5,7 @@ cabal-version: 2.0
 -- see: https://github.com/sol/hpack
 
 name:           tricorder
-version:        0.1.0.0
+version:        0.1.0.1
 synopsis:       Continuous Haskell build status, diagnostics, and tests via a shared daemon
 description:    tricorder rebuilds your Haskell project continuously and surfaces build status, diagnostics, test results, and documentation - for developers and LLM coding agents. Like ghcid and ghciwatch it reloads on every change, but builds run in a background daemon so multiple clients (an interactive TUI, a status CLI, an agent skill) share a single build state without triggering redundant rebuilds. It discovers components across multi-package cabal.project workspaces automatically and ships context-friendly output for agentic use via the CLI.
 category:       Development
@@ -126,14 +126,14 @@ library tricorder-internal
       base hiding (Prelude)
   default-language: GHC2021
 
-executable tricorder-daemon
+executable tricorder
   main-is: Main.hs
   other-modules:
       Paths_tricorder
   autogen-modules:
       Paths_tricorder
   hs-source-dirs:
-      daemon
+      app
   default-extensions:
       BlockArguments
       DataKinds
@@ -162,14 +162,14 @@ executable tricorder-daemon
       base hiding (Prelude)
   default-language: GHC2021
 
-executable tricorder-exe
+executable tricorder-daemon
   main-is: Main.hs
   other-modules:
       Paths_tricorder
   autogen-modules:
       Paths_tricorder
   hs-source-dirs:
-      app
+      daemon
   default-extensions:
       BlockArguments
       DataKinds
