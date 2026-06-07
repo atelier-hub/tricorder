@@ -26,6 +26,8 @@ cabal install tricorder
 
 This builds and installs the `tricorder` binary into cabal's install directory (typically `~/.local/bin`, or `~/.cabal/bin` on older setups); make sure it is on your `PATH`.
 
+`tricorder` runs on both Linux and macOS.
+
 ## Using with Nix
 
 > [!TIP]

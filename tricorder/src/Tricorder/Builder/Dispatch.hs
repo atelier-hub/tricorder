@@ -12,8 +12,9 @@ module Tricorder.Builder.Dispatch
 
 import Atelier.Effects.FileWatcher (FileEvent (..))
 import Data.Default (Default (..))
-import System.FilePath (isAbsolute, (</>))
+import System.FilePath (isAbsolute, normalise, splitDirectories, takeExtension, (</>))
 
+import Data.List qualified as List
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
@@ -72,9 +73,30 @@ newtype KnownTargetNames = KnownTargetNames {unKnownTargetNames :: Set Text}
 
 
 -- | Whether a file path corresponds to one of GHCi's targets.
+--
+-- @:show targets@ entries are either dotted module names (e.g.
+-- @Tricorder.CLI.Main@) or file paths (e.g. @app/Main.hs@). GHCi uses the path
+-- form when a module name is ambiguous across home units — i.e. every
+-- executable/test 'Main'. We match both forms.
+--
+-- The path form matters because a /failed/ executable 'Main' drops out of
+-- @:show modules@ but survives in @:show targets@ as its path. Without matching
+-- it, fixing the executable would dispatch a no-op 'Add' instead of a 'Reload',
+-- leaving the diagnostic stale.
 fileMatchesAnyTarget :: KnownTargetNames -> FilePath -> Bool
 fileMatchesAnyTarget (KnownTargetNames targets) fp =
     any (`Set.member` targets) (pathSuffixesAsModuleName fp)
+        || any (pathTargetMatches fp . toString) (Set.toList targets)
+
+
+-- | Whether a path-shaped @:show targets@ entry refers to the given file,
+-- compared on directory-segment boundaries (so @app/Main.hs@ matches
+-- @./tricorder/app/Main.hs@ but @pp/Main.hs@ does not). Module-name targets
+-- (no @.hs@ extension) are left to the module-name branch above.
+pathTargetMatches :: FilePath -> FilePath -> Bool
+pathTargetMatches file target =
+    takeExtension target == ".hs"
+        && splitDirectories (normalise target) `List.isSuffixOf` splitDirectories (normalise file)
 
 
 -- | A GHCi command to issue in response to a source file change.

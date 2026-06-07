@@ -246,6 +246,19 @@ testReloadOnSourceChange = do
                         (SourceChangeDetected "/abs/src/Foo.hs" Modified)
                 buildResultsFrom phases `shouldMatchList` [resultFor reloadLr]
 
+        -- A failed executable 'Main' appears in :show targets only as its
+        -- path ("app/Main.hs", since the name 'Main' is ambiguous across home
+        -- units), so dispatch must match that path form to Reload, not :add.
+        describe "when the file is a path-shaped target that failed on initial load" do
+            it "calls controls.reload, not controls.add" do
+                phases <-
+                    runTest
+                        Map.empty
+                        (KnownTargetNames (Set.singleton "app/Main.hs"))
+                        distinctCtrls
+                        (SourceChangeDetected "/abs/app/Main.hs" Modified)
+                buildResultsFrom phases `shouldMatchList` [resultFor reloadLr]
+
     describe "Added" do
         describe "when the file is not loaded" $ it "calls controls.add" do
             phases <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
@@ -657,6 +670,26 @@ testFileMatchesAnyTarget = do
             (KnownTargetNames (Set.singleton "Foo.Bar"))
             "./src/Foo/Bar.lhs"
             `shouldBe` True
+
+    -- GHCi renders a target whose module name is ambiguous across home units
+    -- (every executable/test 'Main') as its source path, e.g. "app/Main.hs".
+    it "matches a path-shaped target on directory-segment boundaries" do
+        fileMatchesAnyTarget
+            (KnownTargetNames (Set.singleton "app/Main.hs"))
+            "./tricorder/app/Main.hs"
+            `shouldBe` True
+
+    it "does not match a path-shaped target on a partial segment" do
+        fileMatchesAnyTarget
+            (KnownTargetNames (Set.singleton "pp/Main.hs"))
+            "./tricorder/app/Main.hs"
+            `shouldBe` False
+
+    it "does not match a path-shaped target for a different file" do
+        fileMatchesAnyTarget
+            (KnownTargetNames (Set.singleton "daemon/Main.hs"))
+            "./tricorder/app/Main.hs"
+            `shouldBe` False
 
 
 --------------------------------------------------------------------------------
