@@ -245,47 +245,69 @@ testResolveCommand = do
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveCommand pr def {command = Just "foo"}
+                        $ resolveCommand pr def {command = Just "foo"} testTargets
             actual `shouldBe` "foo"
 
-    describe "when config does not have a command" do
+    describe "when config has explicit targets" do
+        it "should spell them out verbatim, ignoring discovered test targets" do
+            let actual =
+                    runPureEff
+                        . evalState (Map.singleton "/cabal.project" "")
+                        . runFileSystemState
+                        $ resolveCommand pr cfg {targets = ["lib:foo"]} testTargets
+            actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild lib:foo"
+
+    describe "when config does not have a command or targets" do
         describe "and there is a cabal.project file" do
-            it "should use cabal with --enable-multi-repl" do
+            it "should use cabal 'all' plus the discovered test targets" do
                 let actual =
                         runPureEff
                             . evalState (Map.singleton "/cabal.project" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg
-                actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild lib:foo"
+                            $ resolveCommand pr cfg testTargets
+                actual
+                    `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all test:foo"
 
         describe "and there is at least one *.cabal file" do
-            it "should use cabal with --enable-multi-repl" do
+            it "should use cabal 'all' plus the discovered test targets" do
                 let actual =
                         runPureEff
                             . evalState (Map.singleton "/foo.cabal" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg
-                actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild lib:foo"
+                            $ resolveCommand pr cfg testTargets
+                actual
+                    `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all test:foo"
+
         describe "and there is a stack.yaml file" do
-            it "should use stack ghci" do
+            it "should use stack ghci with 'all' plus test targets" do
                 let actual =
                         runPureEff
                             . evalState (Map.singleton "/stack.yaml" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg
-                actual `shouldBe` "stack ghci lib:foo"
+                            $ resolveCommand pr cfg testTargets
+                actual `shouldBe` "stack ghci all test:foo"
 
         describe "but there are no project files" do
-            it "should use default cabal repl" do
+            it "should use default cabal repl with 'all' plus test targets" do
                 let actual =
                         runPureEff
                             . evalState mempty
                             . runFileSystemState
-                            $ resolveCommand pr cfg
-                actual `shouldBe` "cabal repl --builddir /replbuild lib:foo"
+                            $ resolveCommand pr cfg testTargets
+                actual `shouldBe` "cabal repl --builddir /replbuild all test:foo"
+
+        describe "and no test targets are discovered" do
+            it "should fall back to plain 'all'" do
+                let actual =
+                        runPureEff
+                            . evalState (Map.singleton "/cabal.project" "")
+                            . runFileSystemState
+                            $ resolveCommand pr cfg []
+                actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all"
   where
     pr = ProjectRoot "/"
-    cfg = def {replBuildDir = "/replbuild", targets = ["lib:foo"]}
+    cfg = def {replBuildDir = "/replbuild"}
+    testTargets = ["test:foo"]
 
 
 --------------------------------------------------------------------------------

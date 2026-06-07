@@ -11,7 +11,7 @@
     flags = {};
     package = {
       specVersion = "2.0";
-      identifier = { name = "tricorder"; version = "0.1.0.1"; };
+      identifier = { name = "tricorder"; version = "0.1.1.0"; };
       license = "MIT";
       copyright = "";
       maintainer = "christian.georgii@tweag.io";
