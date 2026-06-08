@@ -1,64 +1,55 @@
-_common/lib: !include "../_common/package.yaml"
+# Generated with nix2hpack from package.nix
 
-name:                atelier-prelude
-version:             0.1.0.0
-synopsis:            Custom relude-based prelude with Effectful conventions
-description:         A custom prelude based on relude, adapted for Effectful — part of the atelier toolkit.
-author:              Christian Georgii
-maintainer:          christian.georgii@tweag.io
-license:             MIT
-license-file:        LICENSE
-github:              atelier-hub/tricorder
-homepage:            https://github.com/atelier-hub/tricorder/tree/main/atelier-prelude
-category:            Prelude
-
-extra-doc-files:
-- CHANGELOG.md
-- README.md
-
-language: GHC2021
-
-ghc-options:
-- -Weverything
-- -Wno-unsafe
-- -Wno-missing-safe-haskell-mode
-- -Wno-monomorphism-restriction
-- -Wno-missing-kind-signatures
-- -Wno-missing-poly-kind-signatures
-- -Wno-missing-role-annotations
-- -Wno-missing-local-signatures
-- -Wno-missing-import-lists
-- -Wno-implicit-prelude
-- -Wno-unticked-promoted-constructors
-- -Wno-unused-packages
-# Missed-specialisation warnings fire on imported overloaded functions that we
-# can't annotate with INLINABLE. They only appear under optimization and aren't
-# actionable.
-- -Wno-all-missed-specialisations
-- -Wno-missed-specialisations
-
+author: Christian Georgii
+category: Prelude
 default-extensions:
-- BlockArguments
-- DataKinds
-- DeriveAnyClass
-- DerivingStrategies
-- DerivingVia
-- DuplicateRecordFields
-- FlexibleContexts
-- GADTs
-- LambdaCase
-- MultiWayIf
-- OverloadedLabels
-- OverloadedRecordDot
-- OverloadedStrings
-- StrictData
-- TemplateHaskell
-- TypeFamilies
-
+  - BlockArguments
+  - DataKinds
+  - DeriveAnyClass
+  - DerivingStrategies
+  - DerivingVia
+  - DuplicateRecordFields
+  - FlexibleContexts
+  - GADTs
+  - LambdaCase
+  - MultiWayIf
+  - OverloadedLabels
+  - OverloadedRecordDot
+  - OverloadedStrings
+  - StrictData
+  - TemplateHaskell
+  - TypeFamilies
+description: A custom prelude based on relude, adapted for Effectful — part of the atelier toolkit.
+extra-doc-files:
+  - CHANGELOG.md
+  - README.md
+ghc-options:
+  - -Weverything
+  - -Wno-unsafe
+  - -Wno-missing-safe-haskell-mode
+  - -Wno-monomorphism-restriction
+  - -Wno-missing-kind-signatures
+  - -Wno-missing-poly-kind-signatures
+  - -Wno-missing-role-annotations
+  - -Wno-missing-local-signatures
+  - -Wno-missing-import-lists
+  - -Wno-implicit-prelude
+  - -Wno-unticked-promoted-constructors
+  - -Wno-unused-packages
+  - -Wno-all-missed-specialisations
+  - -Wno-missed-specialisations
+github: atelier-hub/tricorder
+homepage: https://github.com/atelier-hub/tricorder/tree/main/atelier-prelude
+language: GHC2021
 library:
-  source-dirs: src
   dependencies:
-  - name: base
-    version: *version-base
-  - *dep-effectful-core
-  - *dep-relude
+    - base >=4.20 && < 4.21
+    - effectful-core >=2.6 && <2.7
+    - relude >=1.2 && <1.3
+  source-dirs: src
+license: MIT
+license-file: LICENSE
+maintainer: christian.georgii@tweag.io
+name: atelier-prelude
+synopsis: Custom relude-based prelude with Effectful conventions
+version: 0.1.0.0

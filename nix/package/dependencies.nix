@@ -1,5 +1,6 @@
 let
-  depList = map (name: "${name} ${constraints.${name}}");
+  dep = name: "${name} ${constraints.${name}}";
+  depList = map dep;
   constraints = {
     base = ">=4.20 && < 4.21";
     Cabal-syntax = ">=3.12 && <3.13";
@@ -72,5 +73,5 @@ let
   };
 in
 {
-  inherit constraints depList;
+  inherit constraints dep depList;
 }

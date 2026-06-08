@@ -99,6 +99,7 @@ in
   packages = projectFlake.packages // {
     default = tricorder;
     tricorder = tricorder;
+    nix2hpack = pkgs.callPackage ./package/nix2hpack.nix { };
   };
 
   # Development shell
@@ -141,7 +142,6 @@ in
         echo "Hlint refactoring complete!"
       ''}";
     };
-
   };
 
   # Checks

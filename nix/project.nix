@@ -4,14 +4,6 @@
   compiler-nix-name,
   self,
 }:
-let
-  mod = {
-    # Treat warnings as errors in Nix builds (CI), but not in local dev.
-    # Applied to every first-party package.
-    ghcOptions = [ "-Werror" ];
-    allComponent.extraSrcFiles = [ "_common" ];
-  };
-in
 pkgs.haskell-nix.cabalProject' {
   src = ../.;
   inherit compiler-nix-name;
@@ -39,13 +31,16 @@ pkgs.haskell-nix.cabalProject' {
         # Disable tests for tmp-postgres
         tmp-postgres.doCheck = false;
 
-        atelier-prelude = mod;
-        atelier-core = mod;
-        atelier-db = mod;
-        atelier-testing = mod;
+        # Treat warnings as errors in Nix builds (CI), but not in local dev.
+        # Applied to every first-party package.
+        atelier-prelude.ghcOptions = [ "-Werror" ];
+        atelier-core.ghcOptions = [ "-Werror" ];
+        atelier-db.ghcOptions = [ "-Werror" ];
+        atelier-testing.ghcOptions = [ "-Werror" ];
 
         # Configure tricorder package
-        tricorder = mod // {
+        tricorder = {
+          ghcOptions = [ "-Werror" ];
           # Embed the flake's git revision so the released binary carries the
           # correct hash. Falls back to "unknown" on dirty trees (no shortRev).
           preBuild = ''
