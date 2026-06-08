@@ -1,3 +1,5 @@
+_common/lib: !include "../_common/package.yaml"
+
 name:                tricorder
 version:             0.1.1.0
 synopsis:            Continuous Haskell build status, diagnostics, and tests via a shared daemon
@@ -31,8 +33,8 @@ ghc-options:
 - -threaded
 
 dependencies:
-- effectful-core >=2.6 && <2.7
-- effectful-plugin >=2.0 && <2.1
+- *dep-effectful-core
+- *dep-effectful-plugin
 
 default-extensions:
 - BlockArguments
@@ -60,38 +62,38 @@ internal-libraries:
     source-dirs: src
     dependencies:
     - name: base
-      version: ">=4.20 && <4.21"
+      version: *version-base
       mixin:
         - hiding (Prelude)
-    - atelier-prelude >=0.1 && <0.2
-    - atelier-core >=0.1 && <0.2
-    - Cabal-syntax >=3.12 && <3.13
-    - aeson >=2.2 && <2.3
-    - ansi-terminal >=1.1 && <1.2
-    - brick >=2.10 && <2.11
-    - bytestring >=0.12 && <0.13
-    - casing >=0.1 && <0.2
-    - containers >=0.7 && <0.8
-    - data-default >=0.8 && <0.9
-    - directory >=1.3 && <1.4
-    - effectful >=2.6 && <2.7
-    - effectful-th >=1.0 && <1.1
-    - filepath >=1.5 && <1.6
-    - hashable >=1.5 && <1.6
-    - process >=1.6 && <1.7
-    - template-haskell >=2.22 && <2.23
-    - megaparsec >=9.7 && <9.8
-    - mtl >=2.3 && <2.4
-    - network >=3.2 && <3.3
-    - optparse-applicative >=0.19 && <0.20
-    - relude >=1.2 && <1.3
-    - stm >=2.5 && <2.6
-    - text >=2.1 && <2.2
-    - time >=1.12 && <1.13
-    - time-units >=1.0 && <1.1
-    - vty >=6.5 && <6.6
-    - vty-crossplatform >=0.5 && <0.6
-    - yaml >=0.11 && <0.12
+    - *dep-atelier-prelude
+    - *dep-atelier-core
+    - *dep-Cabal-syntax
+    - *dep-aeson
+    - *dep-ansi-terminal
+    - *dep-brick
+    - *dep-bytestring
+    - *dep-casing
+    - *dep-containers
+    - *dep-data-default
+    - *dep-directory
+    - *dep-effectful
+    - *dep-effectful-th
+    - *dep-filepath
+    - *dep-hashable
+    - *dep-process
+    - *dep-template-haskell
+    - *dep-megaparsec
+    - *dep-mtl
+    - *dep-network
+    - *dep-optparse-applicative
+    - *dep-relude
+    - *dep-stm
+    - *dep-text
+    - *dep-time
+    - *dep-time-units
+    - *dep-vty
+    - *dep-vty-crossplatform
+    - *dep-yaml
 
 executables:
   tricorder:
@@ -101,10 +103,10 @@ executables:
     - '"-with-rtsopts=-N -T"'
     dependencies:
     - name: base
-      version: ">=4.20 && <4.21"
+      version: *version-base
       mixin:
         - hiding (Prelude)
-    - atelier-prelude >=0.1 && <0.2
+    - *dep-atelier-prelude
     - tricorder-internal
   tricorder-daemon:
     main:                Main.hs
@@ -113,10 +115,10 @@ executables:
       - '"-with-rtsopts=-N -T"'
     dependencies:
     - name: base
-      version: ">=4.20 && <4.21"
+      version: *version-base
       mixin:
         - hiding (Prelude)
-    - atelier-prelude >=0.1 && <0.2
+    - *dep-atelier-prelude
     - tricorder-internal
 
 tests:
@@ -129,25 +131,25 @@ tests:
     - tasty-discover:tasty-discover
     dependencies:
     - name: base
-      version: ">=4.20 && <4.21"
+      version: *version-base
       mixin:
         - hiding (Prelude)
-    - atelier-prelude >=0.1 && <0.2
+    - *dep-atelier-prelude
     - tricorder-internal
-    - atelier-core >=0.1 && <0.2
-    - Cabal-syntax >=3.12 && <3.13
-    - aeson >=2.2 && <2.3
-    - containers >=0.7 && <0.8
-    - data-default >=0.8 && <0.9
-    - effectful >=2.6 && <2.7
-    - hspec >=2.11 && <2.12
-    - process >=1.6 && <1.7
-    - stm >=2.5 && <2.6
-    - tasty >=1.5 && <1.6
-    - tasty-discover >=5.2 && <5.3
-    - tasty-hspec >=1.2 && <1.3
-    - text >=2.1 && <2.2
-    - time >=1.12 && <1.13
-    - time-units >=1.0 && <1.1
-    - typed-process >=0.2 && <0.3
-    - unagi-chan >=0.4 && <0.5
+    - *dep-atelier-core
+    - *dep-Cabal-syntax
+    - *dep-aeson
+    - *dep-containers
+    - *dep-data-default
+    - *dep-effectful
+    - *dep-hspec
+    - *dep-process
+    - *dep-stm
+    - *dep-tasty
+    - *dep-tasty-discover
+    - *dep-tasty-hspec
+    - *dep-text
+    - *dep-time
+    - *dep-time-units
+    - *dep-typed-process
+    - *dep-unagi-chan

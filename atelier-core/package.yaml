@@ -1,3 +1,5 @@
+_common/lib: !include "../_common/package.yaml"
+
 name:                atelier-core
 version:             0.1.0.0
 synopsis:            Foundational Effectful-based effects and utilities
@@ -37,8 +39,8 @@ ghc-options:
 - -threaded
 
 dependencies:
-- effectful-core >=2.6 && <2.7
-- effectful-plugin >=2.0 && <2.1
+- *dep-effectful-core
+- *dep-effectful-plugin
 
 default-extensions:
 - BlockArguments
@@ -62,46 +64,46 @@ library:
   source-dirs: src
   dependencies:
   - name: base
-    version: ">=4.20 && <4.21"
+    version: *version-base
     mixin:
       - hiding (Prelude)
-  - atelier-prelude >=0.1 && <0.2
-  - aeson >=2.2 && <2.3
-  - base64-bytestring >=1.2 && <1.3
-  - bytestring >=0.12 && <0.13
-  - casing >=0.1 && <0.2
-  - containers >=0.7 && <0.8
-  - contra-tracer >=0.2 && <0.3
-  - daemons >=0.4 && <0.5
-  - data-default >=0.8 && <0.9
-  - directory >=1.3 && <1.4
-  - effectful >=2.6 && <2.7
-  - effectful-th >=1.0 && <1.1
-  - filepath >=1.5 && <1.6
-  - fsnotify >=0.4 && <0.5
-  - hs-opentelemetry-api >=0.3 && <0.4
-  - hs-opentelemetry-exporter-otlp >=0.1 && <0.2
-  - hs-opentelemetry-sdk >=0.1 && <0.2
-  - http-api-data >=0.7 && <0.8
-  - http-types >=0.12 && <0.13
-  - ki >=1.0 && <1.1
-  - list-t >=1.0 && <1.1
-  - optparse-applicative >=0.19 && <0.20
-  - process >=1.6 && <1.7
-  - prometheus-client >=1.1 && <1.2
-  - prometheus-metrics-ghc >=1.0 && <1.1
-  - stm >=2.5 && <2.6
-  - stm-containers >=1.2 && <1.3
-  - text >=2.1 && <2.2
-  - time >=1.12 && <1.13
-  - time-units >=1.0 && <1.1
-  - typed-process >=0.2 && <0.3
-  - unagi-chan >=0.4 && <0.5
-  - unix >=2.8 && <2.9
-  - unordered-containers >=0.2 && <0.3
-  - uuid >=1.3 && <1.4
-  - wai >=3.2 && <3.3
-  - warp >=3.4 && <3.5
+  - *dep-atelier-prelude
+  - *dep-aeson
+  - *dep-base64-bytestring
+  - *dep-bytestring
+  - *dep-casing
+  - *dep-containers
+  - *dep-contra-tracer
+  - *dep-daemons
+  - *dep-data-default
+  - *dep-directory
+  - *dep-effectful
+  - *dep-effectful-th
+  - *dep-filepath
+  - *dep-fsnotify
+  - *dep-hs-opentelemetry-api
+  - *dep-hs-opentelemetry-exporter-otlp
+  - *dep-hs-opentelemetry-sdk
+  - *dep-http-api-data
+  - *dep-http-types
+  - *dep-ki
+  - *dep-list-t
+  - *dep-optparse-applicative
+  - *dep-process
+  - *dep-prometheus-client
+  - *dep-prometheus-metrics-ghc
+  - *dep-stm
+  - *dep-stm-containers
+  - *dep-text
+  - *dep-time
+  - *dep-time-units
+  - *dep-typed-process
+  - *dep-unagi-chan
+  - *dep-unix
+  - *dep-unordered-containers
+  - *dep-uuid
+  - *dep-wai
+  - *dep-warp
 
 tests:
   atelier-test:
@@ -113,23 +115,23 @@ tests:
     - tasty-discover:tasty-discover
     dependencies:
     - name: base
-      version: ">=4.20 && <4.21"
+      version: *version-base
       mixin:
         - hiding (Prelude)
-    - atelier-prelude >=0.1 && <0.2
-    - atelier-core >=0.1 && <0.2
-    - aeson >=2.2 && <2.3
-    - async >=2.2 && <2.3
-    - bytestring >=0.12 && <0.13
-    - containers >=0.7 && <0.8
-    - data-default >=0.8 && <0.9
-    - effectful >=2.6 && <2.7
-    - hedgehog >=1.7 && <1.8
-    - hs-opentelemetry-api >=0.3 && <0.4
-    - hspec >=2.11 && <2.12
-    - hspec-hedgehog >=0.3 && <0.4
-    - stm >=2.5 && <2.6
-    - stm-containers >=1.2 && <1.3
-    - tasty >=1.5 && <1.6
-    - tasty-hspec >=1.2 && <1.3
-    - time >=1.12 && <1.13
+    - *dep-atelier-prelude
+    - *dep-atelier-core
+    - *dep-aeson
+    - *dep-async
+    - *dep-bytestring
+    - *dep-containers
+    - *dep-data-default
+    - *dep-effectful
+    - *dep-hedgehog
+    - *dep-hs-opentelemetry-api
+    - *dep-hspec
+    - *dep-hspec-hedgehog
+    - *dep-stm
+    - *dep-stm-containers
+    - *dep-tasty
+    - *dep-tasty-hspec
+    - *dep-time

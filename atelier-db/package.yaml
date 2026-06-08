@@ -1,3 +1,5 @@
+_common/lib: !include "../_common/package.yaml"
+
 name:                atelier-db
 version:             0.1.0.0
 synopsis:            Relational database effect for atelier (Hasql/Rel8)
@@ -37,8 +39,8 @@ ghc-options:
 - -threaded
 
 dependencies:
-- effectful-core >=2.6 && <2.7
-- effectful-plugin >=2.0 && <2.1
+- *dep-effectful-core
+- *dep-effectful-plugin
 
 default-extensions:
 - BlockArguments
@@ -62,20 +64,20 @@ library:
   source-dirs: src
   dependencies:
   - name: base
-    version: ">=4.20 && <4.21"
+    version: *version-base
     mixin:
       - hiding (Prelude)
-  - atelier-prelude >=0.1 && <0.2
-  - atelier-core >=0.1 && <0.2
-  - aeson >=2.2 && <2.3
-  - bytestring >=0.12 && <0.13
-  - containers >=0.7 && <0.8
-  - data-default >=0.8 && <0.9
-  - effectful >=2.6 && <2.7
-  - effectful-th >=1.0 && <1.1
-  - hasql >=1.9 && <1.10
-  - hasql-pool >=1.3 && <1.4
-  - hasql-transaction >=1.2 && <1.3
-  - rel8 >=1.7 && <1.8
-  - text >=2.1 && <2.2
-  - time >=1.12 && <1.13
+  - *dep-atelier-prelude
+  - *dep-atelier-core
+  - *dep-aeson
+  - *dep-bytestring
+  - *dep-containers
+  - *dep-data-default
+  - *dep-effectful
+  - *dep-effectful-th
+  - *dep-hasql
+  - *dep-hasql-pool
+  - *dep-hasql-transaction
+  - *dep-rel8
+  - *dep-text
+  - *dep-time

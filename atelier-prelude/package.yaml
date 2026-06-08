@@ -1,3 +1,5 @@
+_common/lib: !include "../_common/package.yaml"
+
 name:                atelier-prelude
 version:             0.1.0.0
 synopsis:            Custom relude-based prelude with Effectful conventions
@@ -56,6 +58,7 @@ default-extensions:
 library:
   source-dirs: src
   dependencies:
-  - base >=4.20 && <4.21
-  - effectful-core >=2.6 && <2.7
-  - relude >=1.2 && <1.3
+  - name: base
+    version: *version-base
+  - *dep-effectful-core
+  - *dep-relude
