@@ -14,10 +14,7 @@ let
       nixfmt-rfc-style
       postgresql
       pre-commit
-    ])
-    ++ [
-      (pkgs.callPackage ./package/nix2hpack.nix { })
-    ];
+    ]);
 in
 project.shellFor {
   name = "tricorder-shell-${compiler-nix-name}";
