@@ -10,6 +10,7 @@ module Atelier.Effects.File
     ( File
     , Handle
     , BufferMode (..)
+    , IOMode (..)
     , withFile
     , hClose
     , hFlush
