@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
+
 -- | Helpers for telling synchronous exceptions apart from asynchronous ones.
 --
 -- Synchronous exceptions are genuine failures worth catching, logging, or
