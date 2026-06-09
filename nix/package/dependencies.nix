@@ -2,8 +2,8 @@ let
   dep = name: "${name} ${constraints.${name}}";
   depList = map dep;
   constraints = {
-    base = ">=4.20 && < 4.21";
-    Cabal-syntax = ">=3.12 && <3.13";
+    base = ">=4.19 && < 4.23";
+    Cabal-syntax = ">=3.12 && <3.17";
     aeson = ">=2.2 && <2.3";
     ansi-terminal = ">=1.1 && <1.2";
     async = ">=2.2 && <2.3";
@@ -14,19 +14,19 @@ let
     brick = ">=2.10 && <2.11";
     bytestring = ">=0.12 && <0.13";
     casing = ">=0.1 && <0.2";
-    containers = ">=0.7 && <0.8";
+    containers = ">=0.6 && <0.9";
     contra-tracer = ">=0.2 && <0.3";
     daemons = ">=0.4 && <0.5";
     data-default = ">=0.8 && <0.9";
     directory = ">=1.3 && <1.4";
     effectful = ">=2.6 && <2.7";
     effectful-core = ">=2.6 && <2.7";
-    effectful-plugin = ">=2.0 && <2.1";
+    effectful-plugin = ">=2.0 && <2.2";
     effectful-th = ">=1.0 && <1.1";
-    filepath = ">=1.5 && <1.6";
+    filepath = ">=1.4 && <1.6";
     fsnotify = ">=0.4 && <0.5";
     hashable = ">=1.5 && <1.6";
-    hasql = ">=1.9 && <1.10";
+    hasql = ">=1.9 && <1.11";
     hasql-pool = ">=1.3 && <1.4";
     hasql-transaction = ">=1.2 && <1.3";
     hedgehog = ">=1.7 && <1.8";
@@ -55,9 +55,9 @@ let
     tasty = ">=1.5 && <1.6";
     tasty-discover = ">=5.2 && <5.3";
     tasty-hspec = ">=1.2 && <1.3";
-    template-haskell = ">=2.22 && <2.23";
+    template-haskell = ">=2.21 && <2.25";
     text = ">=2.1 && <2.2";
-    time = ">=1.12 && <1.13";
+    time = ">=1.12 && <1.16";
     time-units = ">=1.0 && <1.1";
     tmp-postgres = ">=1.35 && <1.36";
     typed-process = ">=0.2 && <0.3";
