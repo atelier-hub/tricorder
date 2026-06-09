@@ -2,11 +2,10 @@
   inputs,
   system,
   self,
+  # GHC version to use across all tools and the project
+  compiler-nix-name,
 }:
 let
-  # GHC version to use across all tools and the project
-  compiler-nix-name = "ghc9102";
-
   # Initialize package set with haskell.nix
   pkgs = import ./pkgs.nix { inherit inputs system; };
 
@@ -50,7 +49,7 @@ let
       echo "Checking if haskell.nix materialization is up to date..."
 
       # Try to evaluate the project - this will fail if materialization is stale
-      if ! nix eval --no-warn-dirty .#checks.${system}.git-hooks --apply 'x: "ok"' 2>/dev/null >/dev/null; then
+      if ! nix eval --no-warn-dirty .#legacyChecks.${system}.${compiler-nix-name}.git-hooks --apply 'x: "ok"' 2>/dev/null >/dev/null; then
         echo "⚠️  WARNING: haskell.nix materialization may be out of date!"
         echo "If you changed dependencies or flake inputs, please run:"
         echo "  nix build --no-link 2>&1 | grep -o '/[/[:alnum:]]\+-generateMaterialized [/_[:alnum:]]\+$' | sh"
@@ -102,6 +101,27 @@ let
     ];
   };
   nix-hpack = pkgs.callPackage ./package/nix-hpack.nix { inherit (tools) hpack; };
+
+  checks = projectFlake.checks // {
+    git-hooks = gitHooks;
+    # Ensure the executable builds in CI
+    tricorder = tricorder;
+    # Ensure the overlay correctly exposes pkgs.tricorder
+    overlay =
+      pkgs.runCommand "check-overlay"
+        {
+          tricorder =
+            (pkgs.extend (import ./overlays.nix { ${pkgs.stdenv.system}.default = tricorder; })).tricorder;
+        }
+        ''
+          ls -la
+          test -x $tricorder/bin/tricorder
+          # Ensuring $out is a directory makes this check compatible with
+          # symlinkJoin.
+          mkdir -p $out
+          touch $out/ok
+        '';
+  };
 in
 {
   # Expose packages built by haskell.nix
@@ -153,20 +173,19 @@ in
     };
   };
 
-  # Checks
-  checks = projectFlake.checks // {
-    git-hooks = gitHooks;
-    # Ensure the executable builds in CI
-    tricorder = tricorder;
-    # Ensure the overlay correctly exposes pkgs.tricorder
-    overlay =
-      pkgs.runCommand "check-overlay"
-        {
-          tricorder = (pkgs.extend self.overlays.default).tricorder;
-        }
-        ''
-          test -x $tricorder/bin/tricorder
-          touch $out
-        '';
+  legacyChecks.${compiler-nix-name} = {
+    all = pkgs.symlinkJoin {
+      name = "all-checks-${compiler-nix-name}";
+      paths = builtins.attrValues checks;
+    };
+
+    # Used by CI to build as little as possible in an attempt at checking
+    # materialization.
+    materialization-target = pkgs.runCommand "${compiler-nix-name}-materialization-target" { } ''
+      mkdir -p $out
+      echo ${tricorder.pname} > $out/ok
+    '';
   };
+
+  inherit checks;
 }
