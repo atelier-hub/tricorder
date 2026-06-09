@@ -7,21 +7,15 @@ let
   # GHC version to use across all tools and the project
   compiler-nix-name = "ghc9102";
 
+  ghcVersions = [
+    compiler-nix-name
+    "ghc98"
+    "ghc912"
+    "ghc914"
+  ];
+
   # Initialize package set with haskell.nix
   pkgs = import ./pkgs.nix { inherit inputs system; };
-
-  # Configure haskell.nix project
-  project = import ./project.nix {
-    inherit
-      inputs
-      pkgs
-      compiler-nix-name
-      self
-      ;
-  };
-
-  # Get the project flake for packages
-  projectFlake = project.flake { };
 
   # Tools and binaries used by git-hooks and in the dev shell
   tools = {
@@ -44,68 +38,119 @@ let
   };
 
   # Custom hook to check materialization is up to date
-  checkMaterialization = pkgs.writeShellScript "check-materialization" ''
-    # Only check if nix/project.nix or cabal files changed
-    if git diff --cached --name-only | grep -qE '(nix/project\.nix|.*\.cabal|cabal\.project|flake\.lock)'; then
-      echo "Checking if haskell.nix materialization is up to date..."
+  checkMaterialization =
+    ghcVersion:
+    pkgs.writeShellScript "check-materialization" ''
+      # Only check if nix/project.nix or cabal files changed
+      if git diff --cached --name-only | grep -qE '(nix/project\.nix|.*\.cabal|cabal\.project|flake\.lock)'; then
+        echo "Checking if haskell.nix materialization is up to date..."
 
-      # Try to evaluate the project - this will fail if materialization is stale
-      if ! nix eval --no-warn-dirty .#checks.${system}.git-hooks --apply 'x: "ok"' 2>/dev/null >/dev/null; then
-        echo "⚠️  WARNING: haskell.nix materialization may be out of date!"
-        echo "If you changed dependencies or flake inputs, please run:"
-        echo "  nix build --no-link 2>&1 | grep -o '/[/[:alnum:]]\+-generateMaterialized [/_[:alnum:]]\+$' | sh"
-        echo ""
-        echo "Press Enter to continue anyway, or Ctrl-C to abort and regenerate."
-        read -r
+        # Try to evaluate the project - this will fail if materialization is stale
+        if ! nix eval --no-warn-dirty .#legacyChecks.${system}.${ghcVersion}.git-hooks --apply 'x: "ok"' 2>/dev/null >/dev/null; then
+          echo "⚠️  WARNING: haskell.nix materialization may be out of date!"
+          echo "If you changed dependencies or flake inputs, please run:"
+          echo "  nix build --no-link 2>&1 | grep -o '/[/[:alnum:]]\+-generateMaterialized [/_[:alnum:]]\+$' | sh"
+          echo ""
+          echo "Press Enter to continue anyway, or Ctrl-C to abort and regenerate."
+          read -r
+        fi
       fi
-    fi
-  '';
+    '';
 
   # The cabal executable is named `tricorder`, so it can be consumed directly.
-  tricorder = projectFlake.packages."tricorder:exe:tricorder";
+  tricorder = default.flake.packages."tricorder:exe:tricorder";
 
   # Git hooks check (defined once, used in both checks and shell)
-  gitHooks = inputs.git-hooks.lib.${system}.run {
-    src = ../.;
-    hooks = lib.pipe tools [
-      (x: x // { hpack = hpack-dir; })
-      (lib.mapAttrs (
-        name: package: {
-          inherit package;
-          enable = true;
-        }
-      ))
-      # Add custom materialization check and exclude materialized files from nixfmt
-      (
-        x:
-        x
-        // {
-          check-materialization = {
+  gitHooks =
+    ghcVersion:
+    inputs.git-hooks.lib.${system}.run {
+      src = ../.;
+      hooks = lib.pipe tools [
+        (x: x // { hpack = hpack-dir; })
+        (lib.mapAttrs (
+          name: package: {
+            inherit package;
             enable = true;
-            entry = "${checkMaterialization}";
-            pass_filenames = false;
-          };
-          nixfmt = {
-            enable = true;
-            package = tools.nixfmt;
-            excludes = [ "nix/materialized/.*" ];
-          };
-          nix-hpack = {
-            enable = true;
-            files = "(^|/)package\\.nix$";
-            before = [ "check-materialization" ];
-            entry = "${nix-hpack}/bin/nix-hpack";
-            pass_filenames = false;
-          };
-        }
-      )
-    ];
-  };
+          }
+        ))
+        # Add custom materialization check and exclude materialized files from nixfmt
+        (
+          x:
+          x
+          // {
+            check-materialization = {
+              enable = true;
+              entry = "${checkMaterialization ghcVersion}";
+              pass_filenames = false;
+            };
+            nixfmt = {
+              enable = true;
+              package = tools.nixfmt;
+              excludes = [ "nix/materialized/.*" ];
+            };
+            nix-hpack = {
+              enable = true;
+              files = "(^|/)package\\.nix$";
+              before = [ "check-materialization" ];
+              entry = "${nix-hpack}/bin/nix-hpack";
+              pass_filenames = false;
+            };
+          }
+        )
+      ];
+    };
   nix-hpack = pkgs.callPackage ./package/nix-hpack.nix { inherit (tools) hpack; };
+
+  ghcVersionSets = lib.genAttrs ghcVersions (
+    ghcVersion:
+    let
+      project = import ./project.nix {
+        inherit inputs pkgs self;
+        compiler-nix-name = ghcVersion;
+      };
+      flake = project.flake { };
+      checks = flake.checks // {
+        git-hooks = gitHooks ghcVersion;
+        # Used by CI to build as little as possible in an attempt at checking
+        # materialization.
+        materialization-target = pkgs.runCommand "${ghcVersion}-materialization-target" { } ''
+          mkdir -p $out
+          touch $out/ok
+        '';
+        # Ensure the executable builds in CI
+        tricorder = flake.packages."tricorder:exe:tricorder";
+        # Ensure the overlay correctly exposes pkgs.tricorder
+        overlay =
+          pkgs.runCommand "check-overlay"
+            {
+              tricorder = (pkgs.extend self.overlays.default).tricorder;
+            }
+            ''
+              ls -la
+              test -x $tricorder/bin/tricorder
+              # Ensuring $out is a directory makes this check compatible with
+              # symlinkJoin.
+              mkdir -p $out
+              touch $out/ok
+            '';
+      };
+    in
+    {
+      inherit project flake;
+      legacyChecks = checks // {
+        all = pkgs.symlinkJoin {
+          name = "all-checks-${ghcVersion}";
+          paths = builtins.attrValues checks;
+        };
+      };
+    }
+  );
+
+  default = ghcVersionSets.${compiler-nix-name};
 in
 {
   # Expose packages built by haskell.nix
-  packages = projectFlake.packages // {
+  packages = default.flake.packages // {
     default = tricorder;
     tricorder = tricorder;
     inherit nix-hpack;
@@ -114,11 +159,9 @@ in
   # Development shell
   devShells.default = import ./shell.nix {
     pkgs = pkgs.extend (_: _: { inherit nix-hpack; });
-    inherit
-      project
-      gitHooks
-      tools
-      ;
+    gitHooks = gitHooks compiler-nix-name;
+    inherit tools;
+    inherit (default) project;
   };
 
   # Custom apps
@@ -153,20 +196,13 @@ in
     };
   };
 
-  # Checks
-  checks = projectFlake.checks // {
-    git-hooks = gitHooks;
-    # Ensure the executable builds in CI
-    tricorder = tricorder;
-    # Ensure the overlay correctly exposes pkgs.tricorder
-    overlay =
-      pkgs.runCommand "check-overlay"
-        {
-          tricorder = (pkgs.extend self.overlays.default).tricorder;
-        }
-        ''
-          test -x $tricorder/bin/tricorder
-          touch $out
-        '';
-  };
+  # Checks for all supported GHC versions. We only really need to run these
+  # checks in CI or when someone explicitly calls for them, so we're putting
+  # them here in `legacyChecks`, following the naming conventions of
+  # `legacyPackages`.
+  legacyChecks = lib.mapAttrs (_: { legacyChecks, ... }: legacyChecks) ghcVersionSets;
+
+  inherit ghcVersionSets;
+
+  checks = removeAttrs default.legacyChecks [ "allChecks" ];
 }
