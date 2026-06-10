@@ -25,6 +25,7 @@ let
 
   # Tools and binaries used by git-hooks and in the dev shell
   tools = {
+    inherit nix-hpack;
     inherit (pkgs)
       fourmolu
       hlint
@@ -69,7 +70,7 @@ let
     hooks = lib.pipe tools [
       (x: x // { hpack = hpack-dir; })
       (lib.mapAttrs (
-        _: package: {
+        name: package: {
           inherit package;
           enable = true;
         }
@@ -89,22 +90,31 @@ let
             package = tools.nixfmt-rfc-style;
             excludes = [ "nix/materialized/.*" ];
           };
+          nix-hpack = {
+            enable = true;
+            files = "(^|/)package\\.nix$";
+            before = [ "check-materialization" ];
+            entry = "${nix-hpack}/bin/nix-hpack";
+            pass_filenames = false;
+          };
         }
       )
     ];
   };
+  nix-hpack = pkgs.callPackage ./package/nix-hpack.nix { inherit (tools) hpack; };
 in
 {
   # Expose packages built by haskell.nix
   packages = projectFlake.packages // {
     default = tricorder;
     tricorder = tricorder;
+    inherit nix-hpack;
   };
 
   # Development shell
   devShells.default = import ./shell.nix {
+    pkgs = pkgs.extend (_: _: { inherit nix-hpack; });
     inherit
-      pkgs
       project
       gitHooks
       tools
@@ -141,7 +151,6 @@ in
         echo "Hlint refactoring complete!"
       ''}";
     };
-
   };
 
   # Checks

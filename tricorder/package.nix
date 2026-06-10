@@ -1,0 +1,137 @@
+let
+  inherit (import ../nix/package/dependencies.nix) constraints depList;
+  common = import ../nix/package/common.nix;
+in
+{
+  name = "tricorder";
+  version = "0.1.1.0";
+  synopsis = "Continuous Haskell build status, diagnostics, and tests via a shared daemon";
+  description = "tricorder rebuilds your Haskell project continuously and surfaces build status, diagnostics, test results, and documentation - for developers and LLM coding agents. Like ghcid and ghciwatch it reloads on every change, but builds run in a background daemon so multiple clients (an interactive TUI, a status CLI, an agent skill) share a single build state without triggering redundant rebuilds. It discovers components across multi-package cabal.project workspaces automatically and ships context-friendly output for agentic use via the CLI.";
+  github = "atelier-hub/tricorder";
+  category = "Development";
+  extra-doc-files = [ "README.md" ];
+
+  inherit (common)
+    author
+    maintainer
+    license
+    license-file
+    language
+    ghc-options
+    default-extensions
+    ;
+
+  dependencies = depList [
+    "effectful-core"
+    "effectful-plugin"
+  ];
+  internal-libraries = {
+    tricorder-internal = {
+      source-dirs = "src";
+      dependencies = [
+        {
+          name = "base";
+          version = constraints.base;
+          mixin = [ "hiding (Prelude)" ];
+        }
+      ]
+      ++ depList [
+        "atelier-prelude"
+        "atelier-core"
+        "Cabal-syntax"
+        "aeson"
+        "ansi-terminal"
+        "brick"
+        "bytestring"
+        "casing"
+        "containers"
+        "data-default"
+        "directory"
+        "effectful"
+        "effectful-th"
+        "filepath"
+        "hashable"
+        "process"
+        "template-haskell"
+        "megaparsec"
+        "mtl"
+        "network"
+        "optparse-applicative"
+        "relude"
+        "stm"
+        "text"
+        "time"
+        "time-units"
+        "vty"
+        "vty-crossplatform"
+        "yaml"
+      ];
+    };
+  };
+  executables = {
+    tricorder = {
+      main = "Main.hs";
+      source-dirs = "app";
+      ghc-options = [ "\"-with-rtsopts=-N -T\"" ];
+      dependencies = [
+        {
+          name = "base";
+          version = constraints.base;
+          mixin = [ "hiding (Prelude)" ];
+        }
+      ]
+      ++ [ "tricorder-internal" ]
+      ++ depList [ "atelier-prelude" ];
+    };
+    tricorder-daemon = {
+      main = "Main.hs";
+      source-dirs = "daemon";
+      ghc-options = [ "\"-with-rtsopts=-N -T\"" ];
+      dependencies = [
+        {
+          name = "base";
+          version = constraints.base;
+          mixin = [ "hiding (Prelude)" ];
+        }
+      ]
+      ++ [ "tricorder-internal" ]
+      ++ depList [ "atelier-prelude" ];
+    };
+  };
+  tests = {
+    tricorder-test = {
+      main = "Driver.hs";
+      source-dirs = "test";
+      ghc-options = [ "-Wno-prepositive-qualified-module" ];
+      build-tools = [ "tasty-discover:tasty-discover" ];
+      dependencies = [
+        {
+          name = "base";
+          version = constraints.base;
+          mixin = [ "hiding (Prelude)" ];
+        }
+      ]
+      ++ [ "tricorder-internal" ]
+      ++ depList [
+        "atelier-prelude"
+        "atelier-core"
+        "Cabal-syntax"
+        "aeson"
+        "containers"
+        "data-default"
+        "effectful"
+        "hspec"
+        "process"
+        "stm"
+        "tasty"
+        "tasty-discover"
+        "tasty-hspec"
+        "text"
+        "time"
+        "time-units"
+        "typed-process"
+        "unagi-chan"
+      ];
+    };
+  };
+}
