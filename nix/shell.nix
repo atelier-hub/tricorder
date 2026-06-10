@@ -11,7 +11,7 @@ let
   systemTools =
     builtins.attrValues tools
     ++ (with pkgs; [
-      nixfmt-rfc-style
+      nixfmt
       postgresql
       pre-commit
     ]);

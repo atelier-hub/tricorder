@@ -15,3 +15,7 @@ package atelier-db
   optimization: False
 package atelier-testing
   optimization: False
+
+constraints:
+  -- See https://github.com/circuithub/rel8/issues/402
+  semialign < 1.4
