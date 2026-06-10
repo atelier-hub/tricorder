@@ -11,7 +11,7 @@
     flags = {};
     package = {
       specVersion = "1.10";
-      identifier = { name = "time-manager"; version = "0.3.1.1"; };
+      identifier = { name = "time-manager"; version = "0.3.2"; };
       license = "MIT";
       copyright = "";
       maintainer = "kazu@iij.ad.jp";
@@ -45,9 +45,9 @@
     };
   } // {
     src = pkgs.lib.mkDefault (pkgs.fetchurl {
-      url = "http://hackage.haskell.org/package/time-manager-0.3.1.1.tar.gz";
-      sha256 = "ed85c1fcc44024c3c58f4713bf56defad7119e7afb09241bbf84b2cdb0a8e634";
+      url = "http://hackage.haskell.org/package/time-manager-0.3.2.tar.gz";
+      sha256 = "776dec1e000a9c306b1747495776c2400591a6b51b2cd58b835cd7a429ed3619";
     });
   }) // {
-    package-description-override = "cabal-version:      >=1.10\nname:               time-manager\nversion:            0.3.1.1\nlicense:            MIT\nlicense-file:       LICENSE\nmaintainer:         kazu@iij.ad.jp\nauthor:             Michael Snoyman and Kazu Yamamoto\nstability:          Stable\nhomepage:           http://github.com/yesodweb/wai\nsynopsis:           Scalable timer\ndescription:\n    Scalable timer functions provided by a timer manager\n    and thread management functions to prevent thread\n    leak by a thread manager.\n\ncategory:           System\nbuild-type:         Simple\nextra-source-files: ChangeLog.md\n                    README.md\n\nlibrary\n    exposed-modules:\n        System.TimeManager\n        System.ThreadManager\n    other-modules:\n        System.TimeManager.Internal\n\n    default-language:   Haskell2010\n    default-extensions: Strict StrictData\n    ghc-options:        -Wall\n    build-depends:\n        base >=4.12 && <5,\n        containers,\n        stm\n\ntest-suite spec\n    type:             exitcode-stdio-1.0\n    main-is:          test/Spec.hs\n    other-modules:\n        System.TimeManager,\n        System.TimeManager.Internal\n    build-depends:    base\n    default-language: Haskell2010\n    ghc-options:      -Wall -threaded\n    build-depends:\n        base >=4.12 && <5,\n        hspec,\n        HUnit\n";
+    package-description-override = "cabal-version:      >=1.10\nname:               time-manager\nversion:            0.3.2\nlicense:            MIT\nlicense-file:       LICENSE\nmaintainer:         kazu@iij.ad.jp\nauthor:             Michael Snoyman and Kazu Yamamoto\nstability:          Stable\nhomepage:           http://github.com/yesodweb/wai\nsynopsis:           Scalable timer\ndescription:\n    Scalable timer functions provided by a timer manager\n    and thread management functions to prevent thread\n    leak by a thread manager.\n\ncategory:           System\nbuild-type:         Simple\nextra-source-files: ChangeLog.md\n                    README.md\n\nlibrary\n    exposed-modules:\n        System.TimeManager\n        System.ThreadManager\n    other-modules:\n        System.TimeManager.Internal\n\n    default-language:   Haskell2010\n    default-extensions: Strict StrictData\n    ghc-options:        -Wall\n    build-depends:\n        base >=4.12 && <5,\n        containers,\n        stm\n\ntest-suite spec\n    type:             exitcode-stdio-1.0\n    main-is:          test/Spec.hs\n    other-modules:\n        System.TimeManager,\n        System.TimeManager.Internal\n    build-depends:    base\n    default-language: Haskell2010\n    ghc-options:      -Wall -threaded\n    build-depends:\n        base >=4.12 && <5,\n        hspec,\n        HUnit\n";
   }
