@@ -30,7 +30,7 @@ let
       fourmolu
       hlint
       hpack
-      nixfmt-rfc-style
+      nixfmt
       ;
   };
   hpack-dir = pkgs.callPackage "${inputs.git-hooks}/nix/hpack-dir" { inherit (tools) hpack; };
@@ -85,9 +85,9 @@ let
             entry = "${checkMaterialization}";
             pass_filenames = false;
           };
-          nixfmt-rfc-style = {
+          nixfmt = {
             enable = true;
-            package = tools.nixfmt-rfc-style;
+            package = tools.nixfmt;
             excludes = [ "nix/materialized/.*" ];
           };
           nix-hpack = {
