@@ -8,6 +8,7 @@ module Tricorder.Builder.Dispatch
     , fileMatchesAnyTarget
     , filterToWatchDirs
     , mergeDiagnostics
+    , preserveFailureVisibility
     ) where
 
 import Atelier.Effects.FileWatcher (FileEvent (..))
@@ -18,9 +19,13 @@ import Data.List qualified as List
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
-import Tricorder.BuildState (Diagnostic (..))
+import Tricorder.BuildState (Diagnostic (..), Severity (..))
 import Tricorder.Effects.GhciSession (LoadResult (..), LoadedModule (..))
-import Tricorder.Effects.GhciSession.GhciParser (pathSuffixesAsModuleName)
+import Tricorder.Effects.GhciSession.GhciParser
+    ( isLocationLess
+    , pathSuffixesAsModuleName
+    , unattributedFailure
+    )
 
 
 -- | The Builder's per-GHCi-session cache: what it last saw from GHCi plus its
@@ -57,9 +62,16 @@ type DiagnosticMap = Map FilePath [Diagnostic]
 -- by any new diagnostics produced for them in this cycle. Files absent from
 -- 'compiledFiles' were skipped by incremental compilation and retain their
 -- previous diagnostics unchanged.
+--
+-- Location-less diagnostics (see 'isLocationLess') are never keyed to a real
+-- source file, so they would never appear in 'compiledFiles' and would persist
+-- forever once raised. They describe the current load's outcome, so we clear
+-- them every cycle and let this cycle's 'diagnostics' re-add them if the
+-- failure is still present.
 mergeDiagnostics :: DiagnosticMap -> LoadResult -> DiagnosticMap
 mergeDiagnostics prev LoadResult {compiledFiles, diagnostics} =
-    let cleared = foldr Map.delete prev compiledFiles
+    let retained = Map.filterWithKey (\f _ -> not (isLocationLess f)) prev
+        cleared = foldr Map.delete retained compiledFiles
         newByFile = Map.fromListWith (++) [(d.file, [d]) | d <- diagnostics]
     in  Map.union newByFile cleared
 
@@ -141,10 +153,16 @@ dispatch knownTargets known fp event = case known of
 -- those with mangled filenames produced by the C preprocessor (e.g.
 -- @"In file included from ..."@) are dropped here, before they can enter the
 -- accumulation map where they would be impossible to evict.
+--
+-- Location-less diagnostics (see 'isLocationLess') are always kept: they carry
+-- no path to test against a watch dir, but they represent genuine build-level
+-- failures (e.g. a home-unit GHC plugin that can't load under
+-- @--enable-multi-repl@) that must not be dropped, or the build would silently
+-- read as clean.
 filterToWatchDirs :: FilePath -> [FilePath] -> [Diagnostic] -> [Diagnostic]
 filterToWatchDirs _ [] diags = diags
 filterToWatchDirs projectRoot watchDirs diags =
-    filter (isUnderAnyWatchDir . (.file)) diags
+    filter (\d -> isLocationLess d.file || isUnderAnyWatchDir d.file) diags
   where
     absWatchDirs = map toAbsWd watchDirs
     toAbsWd wd
@@ -158,3 +176,23 @@ filterToWatchDirs projectRoot watchDirs diags =
         | otherwise =
             let absFile = projectRoot </> drop 2 file
             in  any (\wd -> (wd ++ "/") `isPrefixOf` absFile || wd == absFile) absWatchDirs
+
+
+-- | Keep a failed build from ever reading as clean after watch-dir filtering.
+--
+-- 'filterToWatchDirs' drops diagnostics outside the watched directories. If a
+-- load failed but every error it produced lay outside those dirs (e.g. a
+-- compile error in a sibling home unit not under @watchDirs@), filtering would
+-- leave no diagnostics and the broken build would look green. Detecting that an
+-- error was present /before/ filtering but none survived, we re-attach the
+-- location-less synthetic failure (which filtering always keeps) so the failure
+-- still surfaces.
+--
+-- Takes the pre-filter diagnostics and the post-filter diagnostics; returns the
+-- post-filter list, with the synthetic failure appended only when needed.
+preserveFailureVisibility :: [Diagnostic] -> [Diagnostic] -> [Diagnostic]
+preserveFailureVisibility raw filtered
+    | any isError raw && not (any isError filtered) = filtered ++ [unattributedFailure]
+    | otherwise = filtered
+  where
+    isError d = d.severity == SError

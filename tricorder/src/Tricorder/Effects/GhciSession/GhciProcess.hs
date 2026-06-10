@@ -48,9 +48,8 @@ import Data.Text qualified as T
 import Tricorder.Effects.GhciSession.GhciParser
     ( GhciLoading (..)
     , LoadResult (..)
-    , collectResultCustom
+    , collectResult
     , parseProgressLine
-    , parseReload
     , parseShowModules
     , parseShowTargets
     , stripAnsi
@@ -514,14 +513,13 @@ collectGhciResult
     -> FilePath
     -> Eff es LoadResult
 collectGhciResult process lines' projectRoot = do
-    let loads = parseReload lines'
-        noProgress = \_ -> pure ()
+    let noProgress = \_ -> pure ()
     moduleLines <- execGhci process ":show modules" noProgress
     targetLines <- execGhci process ":show targets" noProgress
     pure
-        $ collectResultCustom
+        $ collectResult
             projectRoot
-            loads
+            lines'
             (parseShowModules moduleLines)
             (parseShowTargets targetLines)
 
