@@ -7,7 +7,7 @@
   , errorHandler
   , config
   , ... }:
-  ({
+  {
     flags = {};
     package = {
       specVersion = "2.0";
@@ -50,10 +50,8 @@
           (hsPkgs."uuid" or (errorHandler.buildDepError "uuid"))
         ];
         buildable = true;
-        modules = [ "Paths_atelier_testing" ];
+        modules = [ "Paths_atelier_testing" "Atelier/Testing/Database" ];
         hsSourceDirs = [ "src" ];
       };
     };
-  } // rec { src = pkgs.lib.mkDefault ../atelier-testing; }) // {
-    cabal-generator = "hpack";
-  }
+  } // rec { src = pkgs.lib.mkDefault ../atelier-testing; }

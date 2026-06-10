@@ -4,6 +4,7 @@
   yq-go,
   hpack,
   mktemp,
+  findutils,
 }:
 writeShellApplication {
   name = "nix-hpack";
@@ -12,6 +13,7 @@ writeShellApplication {
     yq-go
     hpack
     mktemp
+    findutils
   ];
   text = ''
     info() {
@@ -19,62 +21,53 @@ writeShellApplication {
     }
 
     usage() {
-      info "Usage: nix-hpack <source> [destination]"
+      info "Usage: nix-hpack [packages...]"
       info "Args:"
-      info "  source:      Path to a directory containing a 'package.nix' file, or to a"
-      info "               '.nix' file, to convert."
-      info "  destination: Optional. Destination for the generated '.cabal' file. If a"
-      info "               directory is specified, the cabal file retains its"
-      info "               package-specific file name."
-      info "               Defaults to the same directory as 'source'."
+      info "  packages:  Path to a package directory containing a 'package.nix' to"
+      info "             convert."
+      info "             Defaults to converting every package under the current working"
+      info "             directory."
     }
 
-    if [ "$#" -lt 1 ] || [ "$1" = "" ]; then
-      info "No package directory specified."
-      usage
-      exit 1
+    for arg in "$@"; do
+      case "$arg" in
+        --help|-h)
+          usage
+          exit 0
+          ;;
+      esac
+    done
+
+    packages=("$@")
+
+    if [ ''${#packages[@]} -eq 0 ]; then
+      # If no packages are specified, find all packages in the current
+      # directory.
+      mapfile -t packages < <(find . -type f -name "package.nix" -printf "%h\n")
     fi
 
-    if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-      usage
-      exit 0
-    fi
+    for package in "''${packages[@]}"; do
+      info "Converting $package"
+      source="$package/package.nix"
 
-    source_file="$1"
-    source_dir="$(dirname -- "$source_file")"
-    if [ -d "$source_file" ]; then
-      source_dir="$source_file"
-      source_file="$source_file/package.nix"
-      if [ ! -f "$source_file" ]; then
-        info "No package.nix file found in $source_dir"
+      if [ ! -f "$source" ]; then
+        info "No package.nix file found in $package"
         exit 1
       fi
-    fi
 
-    if [ ! -f "$source_file" ]; then
-      info "No nix file to convert to hpack yaml found at $source_dir"
-      exit 1
-    fi
+      temp_yaml="$package/package.yaml"
 
-    dest="''${2:-"$source_dir"}"
-    if [ "$dest" = "" ]; then
-      info "Specified empty destination.";
-      exit 1
-    fi
+      # nix-instantiate tries to initialize /nix/var/nix on startup, which fails
+      # in a sandbox. Repackageect to a writable tmpdir for pure --eval use.
+      nix_state=$(mktemp -d)
+      export NIX_STATE_package="$nix_state"
+      export NIX_LOG_package="$nix_state/log"
 
-    yaml_dest="$source_dir/package.yaml"
+      nix-instantiate --strict --json --eval "$source" \
+        | yq --prettyPrint --input-format json --output-format yaml >> "$temp_yaml"
 
-    # nix-instantiate tries to initialize /nix/var/nix on startup, which fails
-    # in a sandbox. Redirect to a writable tmpdir for pure --eval use.
-    nix_state=$(mktemp -d)
-    export NIX_STATE_DIR="$nix_state"
-    export NIX_LOG_DIR="$nix_state/log"
-
-    nix-instantiate --strict --json --eval "$source_file" \
-      | yq --prettyPrint --input-format json --output-format yaml >> "$yaml_dest"
-
-    hpack --silent "$yaml_dest" &>/dev/null
-    mv "$source_dir"/*.cabal "$dest" &>/dev/null || true
-    rm -rf "$yaml_dest" "$nix_state"
+      hpack --silent "$temp_yaml" &>/dev/null
+      rm -rf "$temp_yaml" "$nix_state"
+    done
   '';
 }

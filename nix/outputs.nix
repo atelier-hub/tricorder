@@ -94,12 +94,8 @@ let
             enable = true;
             files = "(^|/)package\\.nix$";
             before = [ "check-materialization" ];
-            entry = "${pkgs.writeShellScript "nix-hpack-dir" ''
-              # TODO: Un-hardcode these package directories.
-              for d in atelier-* tricorder; do
-                ${nix-hpack}/bin/nix-hpack "$d"
-              done
-            ''}";
+            entry = "${nix-hpack}/bin/nix-hpack";
+            pass_filenames = false;
           };
         }
       )
