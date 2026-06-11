@@ -2,12 +2,17 @@ module Unit.Tricorder.Effects.GhciSession.GhciParserSpec (spec_GhciParser) where
 
 import Test.Hspec
 
+import Tricorder.BuildState (Diagnostic (..), Severity (..))
 import Tricorder.Effects.GhciSession.GhciParser
     ( GhciLoad (..)
     , GhciLoading (..)
     , GhciMessage (..)
     , GhciSeverity (..)
+    , LoadOutcome (..)
+    , LoadResult (..)
     , Position (..)
+    , collectResult
+    , collectResultCustom
     , parseReload
     , parseShowModules
     , parseShowTargets
@@ -29,6 +34,12 @@ spec_GhciParser = do
 
     describe "parseShowTargets" testShowTargets
 
+    describe "collectResultCustom" do
+        describe "<no location info> plugin load failure" testPluginLoadFailure
+
+    describe "collectResult" do
+        describe "failed load with no located error" testUnattributedFailure
+
 
 --------------------------------------------------------------------------------
 -- parseReload: clean build
@@ -47,6 +58,7 @@ testCleanBuild = do
             `shouldBe` [ GLoading GhciLoading {index = 1, total = 3, moduleName = "Tricorder.BuildState", sourceFile = "src/Tricorder/BuildState.hs"}
                        , GLoading GhciLoading {index = 2, total = 3, moduleName = "Tricorder.Session", sourceFile = "src/Tricorder/Session.hs"}
                        , GLoading GhciLoading {index = 3, total = 3, moduleName = "Main", sourceFile = "app/Main.hs"}
+                       , GSummary LoadSucceeded
                        ]
 
     it "handles padded module index (e.g. [ 1 of 47])" do
@@ -54,10 +66,13 @@ testCleanBuild = do
                 [ "[ 1 of 47] Compiling Main              ( app/Main.hs, interpreted )"
                 , "Ok, 1 module loaded."
                 ]
-        parseReload input `shouldBe` [GLoading GhciLoading {index = 1, total = 47, moduleName = "Main", sourceFile = "app/Main.hs"}]
+        parseReload input
+            `shouldBe` [ GLoading GhciLoading {index = 1, total = 47, moduleName = "Main", sourceFile = "app/Main.hs"}
+                       , GSummary LoadSucceeded
+                       ]
 
-    describe "when only summary line" $ it "returns empty list" do
-        parseReload ["Ok, 0 modules loaded."] `shouldBe` []
+    describe "when only summary line" $ it "returns the summary outcome" do
+        parseReload ["Ok, 0 modules loaded."] `shouldBe` [GSummary LoadSucceeded]
 
 
 --------------------------------------------------------------------------------
@@ -142,7 +157,7 @@ testErrors = do
         parseReload input
             `shouldBe` [GMessage GhciMessage {severity = GError, file = "C:\\path\\file.hs", startPos = Position 10 5, endPos = Position 10 5, messageLines = ["C:\\path\\file.hs:10:5: error: Variable not in scope: foo"]}]
 
-    it "parses mixed Loading and Message items, discarding summary" do
+    it "parses mixed Loading, Message, and summary items" do
         let input =
                 [ "[1 of 2] Compiling Lib ( src/Lib.hs, interpreted )"
                 , "src/Lib.hs:5:1: error: Oops"
@@ -153,6 +168,7 @@ testErrors = do
             `shouldBe` [ GLoading GhciLoading {index = 1, total = 2, moduleName = "Lib", sourceFile = "src/Lib.hs"}
                        , GMessage GhciMessage {severity = GError, file = "src/Lib.hs", startPos = Position 5 1, endPos = Position 5 1, messageLines = ["src/Lib.hs:5:1: error: Oops"]}
                        , GLoading GhciLoading {index = 2, total = 2, moduleName = "Main", sourceFile = "app/Main.hs"}
+                       , GSummary LoadFailed
                        ]
 
 
@@ -180,11 +196,12 @@ testHideSourcePaths = do
                                     , "    Perhaps you meant: 'bar'"
                                     ]
                                 }
+                       , GSummary LoadFailed
                        ]
 
-    describe "when all modules are already up to date" $ it "returns empty list" do
+    describe "when all modules are already up to date" $ it "returns the summary outcome" do
         -- GHCi with -fhide-source-paths and nothing to recompile
-        parseReload ["Ok, 5 modules loaded."] `shouldBe` []
+        parseReload ["Ok, 5 modules loaded."] `shouldBe` [GSummary LoadSucceeded]
 
 
 --------------------------------------------------------------------------------
@@ -240,6 +257,7 @@ testLoadedConfig = do
         parseReload input
             `shouldBe` [ GLoadConfig ".ghci"
                        , GLoading GhciLoading {index = 1, total = 1, moduleName = "Main", sourceFile = "app/Main.hs"}
+                       , GSummary LoadSucceeded
                        ]
 
 
@@ -311,3 +329,93 @@ testShowTargets = do
 
     it "returns empty list for empty input" do
         parseShowTargets [] `shouldBe` []
+
+
+--------------------------------------------------------------------------------
+-- collectResultCustom: <no location info> plugin load failure
+--------------------------------------------------------------------------------
+
+-- | Regression test for the \"All good\" bug with home-unit GHC plugins.
+--
+-- Under @cabal repl --enable-multi-repl@ every unit is interpreted, so a
+-- package used as a GHC plugin in the same project is not available as a
+-- compiled plugin. The unit that depends on it fails to load, GHCi reports the
+-- failure with @\<no location info\>@ (it has no source span), and the load
+-- ends with @Failed, N modules loaded@. This output must still surface as an
+-- error diagnostic — otherwise the build is silently reported as clean.
+testPluginLoadFailure :: Spec
+testPluginLoadFailure = do
+    -- Shape of the GHCi output from `cabal repl --enable-multi-repl` when an
+    -- executable loads a home-unit GHC plugin: the plugin package's modules
+    -- compile, then the unit using the plugin fails with a location-less error.
+    let reloadOutput =
+            [ "[3 of 5] Compiling My.Plugin       ( src/My/Plugin.hs, interpreted )[plugin-pkg-1.0.0-inplace]"
+            , "<no location info>: error:"
+            , "    Could not load module \8216My.Plugin\8217."
+            , "It is a member of the hidden package \8216plugin-pkg-1.0.0\8217."
+            , "Perhaps you need to add \8216plugin-pkg\8217 to the build-depends in your .cabal file."
+            , "Use -v to see a list of the files searched for."
+            , ""
+            , "[5 of 5] Compiling Main            ( test/Tests.hs, interpreted )[app-pkg-0.1.0.0-inplace-test]"
+            , "Failed, 4 modules loaded."
+            ]
+        result = collectResultCustom "/project" (parseReload reloadOutput) [] []
+
+    it "surfaces the plugin load failure as an error diagnostic" do
+        map (.severity) result.diagnostics `shouldContain` [SError]
+
+    it "carries the plugin error message in the diagnostic title" do
+        map (.title) result.diagnostics
+            `shouldContain` ["Could not load module \8216My.Plugin\8217."]
+
+
+--------------------------------------------------------------------------------
+-- collectResult: failed load with no located error
+--------------------------------------------------------------------------------
+
+-- 'collectResult' is the safety net: GHCi can end a load with @Failed, …@
+-- without emitting any error that carries a source span. The build must never
+-- read as clean in that case, so a synthetic error diagnostic is added.
+testUnattributedFailure :: Spec
+testUnattributedFailure = do
+    describe "when the load failed but no error was located" $ it "adds a synthetic error" do
+        let reloadOutput =
+                [ "[1 of 2] Compiling Lib  ( src/Lib.hs, interpreted )"
+                , "[2 of 2] Compiling Main ( app/Main.hs, interpreted )"
+                , "Failed, 1 module loaded."
+                ]
+            result = collectResult "/project" reloadOutput [] []
+        map (.severity) result.diagnostics `shouldBe` [SError]
+
+    it "does not duplicate a failure that already produced a located error" do
+        let reloadOutput =
+                [ "[1 of 1] Compiling Lib ( src/Lib.hs, interpreted )"
+                , "src/Lib.hs:5:1: error: Oops"
+                , "Failed, 0 modules loaded."
+                ]
+            result = collectResult "/project" reloadOutput [] []
+        -- Only the real, located diagnostic — no synthetic one appended.
+        map (.file) result.diagnostics `shouldBe` ["src/Lib.hs"]
+
+    it "adds nothing for a successful load" do
+        let reloadOutput =
+                [ "[1 of 1] Compiling Main ( app/Main.hs, interpreted )"
+                , "Ok, 1 module loaded."
+                ]
+            result = collectResult "/project" reloadOutput [] []
+        result.diagnostics `shouldBe` []
+
+    describe "when 'Failed,' appears off the summary line" $ it "does not flag a clean build" do
+        -- The load outcome lives on GHCi's single summary line
+        -- ("Ok, …" / "Failed, …"). Output printed *during* the load — e.g. a
+        -- Template Haskell splice or top-level IO run while interpreting — can
+        -- contain a line that happens to begin with "Failed,". That must not be
+        -- mistaken for a failed load: the summary here is "Ok," so no synthetic
+        -- error belongs.
+        let reloadOutput =
+                [ "[1 of 1] Compiling Main ( app/Main.hs, interpreted )"
+                , "Failed, retrying with fallback" -- printed by a TH splice
+                , "Ok, 1 module loaded."
+                ]
+            result = collectResult "/project" reloadOutput [] []
+        result.diagnostics `shouldBe` []

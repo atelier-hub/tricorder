@@ -62,9 +62,10 @@ import Tricorder.Builder.Dispatch
     , fileMatchesAnyTarget
     , filterToWatchDirs
     , mergeDiagnostics
+    , preserveFailureVisibility
     )
 import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..), runGhciSessionScripted)
-import Tricorder.Effects.GhciSession.GhciParser (extractTitle, resolveKnownTargets)
+import Tricorder.Effects.GhciSession.GhciParser (collectResult, extractTitle, resolveKnownTargets)
 import Tricorder.Effects.TestRunner (TestRunner (..), runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
 
@@ -753,6 +754,37 @@ testMergeDiagnostics = do
         let merged = mergeDiagnostics Map.empty result
         Map.lookup warnMsg.file merged `shouldBe` Just [warnMsg]
 
+    describe "when the cycle reports none" $ it "clears a stale location-less diagnostic" do
+        -- <no location info> is never in compiledFiles, so without special
+        -- handling it would persist forever. A cycle with no location-less
+        -- diagnostic must evict it.
+        let noLoc = errMsg {file = "<no location info>"}
+            prev = Map.fromList [(noLoc.file, [noLoc])]
+            result =
+                LoadResult
+                    { moduleCount = 1
+                    , compiledFiles = Set.singleton errMsg.file
+                    , loadedModules = Map.empty
+                    , targetNames = []
+                    , diagnostics = []
+                    }
+        let merged = mergeDiagnostics prev result
+        Map.lookup noLoc.file merged `shouldBe` Nothing
+
+    it "refreshes a location-less diagnostic that is still present" do
+        let noLoc = errMsg {file = "<no location info>"}
+            prev = Map.fromList [(noLoc.file, [noLoc])]
+            result =
+                LoadResult
+                    { moduleCount = 1
+                    , compiledFiles = Set.empty
+                    , loadedModules = Map.empty
+                    , targetNames = []
+                    , diagnostics = [noLoc]
+                    }
+        let merged = mergeDiagnostics prev result
+        Map.lookup noLoc.file merged `shouldBe` Just [noLoc]
+
 
 --------------------------------------------------------------------------------
 -- filterToWatchDirs tests
@@ -793,6 +825,37 @@ testFilterToWatchDirs = do
         let d = errMsg {file = "./src/Foo.hs"}
             nixD = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
         filterToWatchDirs root ["."] [d, nixD] `shouldBe` [d]
+
+    describe "when diagnostic has no path it" $ it "keeps location-less <no location info> errors" do
+        -- A home-unit GHC plugin that can't load under --enable-multi-repl
+        -- produces a <no location info> error. It has no path to test against a
+        -- watch dir, but must survive or the failed build reads as clean.
+        let d = errMsg {file = "<no location info>"}
+        filterToWatchDirs root watchDirs [d] `shouldBe` [d]
+
+    it "does not treat a real <-prefixed path as a location-less marker" do
+        -- isLocationLess requires a closing '>'. A real (if exotic) path that
+        -- merely starts with '<' is an ordinary out-of-watch file and must be
+        -- dropped, not kept as a build-level marker.
+        let d = errMsg {file = "<generated>/Foo.hs"}
+        filterToWatchDirs root watchDirs [d] `shouldBe` []
+
+    describe "when its only error is out of watch dirs" $ it "a failed load does not read as clean" do
+        -- collectResult only injects its synthetic failure when no SError is
+        -- present. Here GHCi Failed with a single *located* error in a file
+        -- outside the watch dirs, so collectResult adds no synthetic — and then
+        -- filterToWatchDirs drops the out-of-watch error, leaving nothing. The
+        -- Builder pipeline composes preserveFailureVisibility after filtering to
+        -- re-attach the failure, so a failed build never survives with zero
+        -- diagnostics.
+        let reloadOutput =
+                [ "/other/Dep.hs:5:1: error: boom"
+                , "Failed, 0 modules loaded."
+                ]
+            result = collectResult root reloadOutput [] []
+            filtered = filterToWatchDirs root watchDirs result.diagnostics
+        preserveFailureVisibility result.diagnostics filtered
+            `shouldSatisfy` (not . null)
 
 
 --------------------------------------------------------------------------------

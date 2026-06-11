@@ -57,6 +57,7 @@ import Tricorder.Builder.Dispatch
     , emptyBuilderState
     , filterToWatchDirs
     , mergeDiagnostics
+    , preserveFailureVisibility
     )
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
@@ -491,7 +492,8 @@ compileLoadResultsIntoBuildResults session newLoadResult = do
     let filteredResult =
             loadResult
                 { GhciSession.diagnostics =
-                    filterToWatchDirs projectRoot watchDirs loadResult.diagnostics
+                    preserveFailureVisibility loadResult.diagnostics
+                        $ filterToWatchDirs projectRoot watchDirs loadResult.diagnostics
                 }
 
     newAccumulated <- state \s ->

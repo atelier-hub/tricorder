@@ -3,10 +3,14 @@ module Tricorder.Effects.GhciSession.GhciParser
     , GhciLoading (..)
     , GhciMessage (..)
     , GhciSeverity (..)
+    , LoadOutcome (..)
     , LoadResult (..)
     , LoadedModule (..)
     , Position (..)
+    , collectResult
     , collectResultCustom
+    , isLocationLess
+    , reloadFailed
     , parseProgressLine
     , parseReload
     , parseShowModules
@@ -17,6 +21,7 @@ module Tricorder.Effects.GhciSession.GhciParser
     , extractTitle
     , toAbsolute
     , toRelative
+    , unattributedFailure
     ) where
 
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
@@ -74,11 +79,18 @@ data GhciMessage = GhciMessage
     deriving stock (Eq, Show)
 
 
+-- | The terminal summary GHCi emits to close a load: @Ok, N modules loaded.@
+-- on success or @Failed, …@ on failure.
+data LoadOutcome = LoadSucceeded | LoadFailed
+    deriving stock (Eq, Show)
+
+
 -- | A structured item from GHCi's reload output.
 data GhciLoad
     = GLoading GhciLoading
     | GMessage GhciMessage
     | GLoadConfig FilePath
+    | GSummary LoadOutcome
     deriving stock (Eq, Show)
 
 
@@ -268,9 +280,13 @@ reloadItem =
           do
             (_, stripped) <- satisfyStripped ("[" `T.isPrefixOf`)
             pure (runTP loadingLineP stripped)
-        , -- Pattern: summary lines "Ok, ..." / "Failed, ..." — discard
-          fmap (const Nothing)
-            $ satisfyStripped (\s -> "Ok, " `T.isPrefixOf` s || "Failed, " `T.isPrefixOf` s)
+        , -- Pattern: terminal summary line "Ok, ..." / "Failed, ..."
+          fmap Just $ do
+            (_, stripped) <-
+                satisfyStripped (\s -> "Ok, " `T.isPrefixOf` s || "Failed, " `T.isPrefixOf` s)
+            pure
+                $ GSummary
+                $ if "Failed, " `T.isPrefixOf` stripped then LoadFailed else LoadSucceeded
         , -- Pattern: "<no location info>: error:"
           fmap Just $ do
             (origLine, _) <- satisfyStripped ("<no location info>: error:" `T.isPrefixOf`)
@@ -488,6 +504,70 @@ collectResultCustom projectRoot loads modules targets =
             }
 
 
+-- | Assemble a 'LoadResult' from the raw reload output plus the @:show
+-- modules@ / @:show targets@ output.
+--
+-- This is 'collectResultCustom' wrapped with a safety net: if GHCi's reload
+-- ended in a @Failed,@ summary but no error diagnostic was captured (e.g. a
+-- location-less failure we don't otherwise attribute to a file), a synthetic
+-- error diagnostic is appended so the build can never be reported as clean
+-- while GHCi considers it failed.
+collectResult :: FilePath -> [Text] -> [(Text, FilePath)] -> [Text] -> LoadResult
+collectResult projectRoot reloadLines modules targets =
+    let loads = parseReload reloadLines
+        base = collectResultCustom projectRoot loads modules targets
+        hasError = any (\d -> d.severity == SError) base.diagnostics
+    in  if reloadFailed loads && not hasError then
+            base {diagnostics = base.diagnostics ++ [unattributedFailure]}
+        else
+            base
+
+
+-- | Synthetic diagnostic for a failed load with no located error. Without a
+-- source span it cannot point anywhere, but it stops the build reading as
+-- clean and tells the user where to look.
+unattributedFailure :: Diagnostic
+unattributedFailure =
+    BuildState.Diagnostic
+        { severity = SError
+        , file = "<no location info>"
+        , line = 0
+        , col = 0
+        , endLine = 0
+        , endCol = 0
+        , title = "GHCi reported a failed load with no located error"
+        , text = "GHCi reported a failed load with no located error.\nRun `tricorder log` to see the full GHCi output.\n"
+        }
+
+
+-- | Whether GHCi's load ended in failure, decided from the 'GSummary' items
+-- 'parseReload' produces — the single place that classifies GHCi's terminal
+-- @Ok, …@ / @Failed, …@ summary line.
+--
+-- GHCi emits the real summary last, after all compilation output. Output
+-- produced /during/ the load (a Template Haskell splice, top-level IO run while
+-- interpreting) can contain an earlier line that looks like a summary, so only
+-- the /last/ 'GSummary' reflects the true outcome.
+reloadFailed :: [GhciLoad] -> Bool
+reloadFailed loads =
+    case [outcome | GSummary outcome <- loads] of
+        [] -> False
+        outcomes -> List.last outcomes == LoadFailed
+
+
+-- | Whether a diagnostic file is a GHCi location-less pseudo-file — a fully
+-- @\<…\>@-bracketed marker such as @\<no location info\>@ or @\<interactive\>@
+-- rather than a real source path. These carry no source span but can still
+-- represent genuine build-level failures, so callers treat them specially
+-- (kept rather than dropped, cleared every cycle rather than retained).
+--
+-- We require both the opening @\<@ and a closing @\>@ so a real (if exotic)
+-- path that merely starts with @\<@, e.g. @\<generated\>/Foo.hs@, is not
+-- mistaken for a marker.
+isLocationLess :: FilePath -> Bool
+isLocationLess f = "<" `List.isPrefixOf` f && ">" `List.isSuffixOf` f
+
+
 -- | Path↔module-name map for the next cycle: this round's @:show modules@
 -- plus carryover from @prev@ for targets that failed mid-session and so
 -- dropped out. Never-compiled targets are absent here (no path↔name
@@ -514,7 +594,12 @@ resolveKnownTargets prev lr =
 toDiagnostics :: (FilePath -> FilePath) -> [GhciLoad] -> [BuildState.Diagnostic]
 toDiagnostics rel loads = mapMaybe toMsg loads
   where
-    toMsg (GMessage m) | '<' : _ <- m.file = Nothing
+    -- Location-less messages (e.g. @<no location info>@, @<interactive>@) carry
+    -- no source span. We keep the *errors* — a @<no location info>@ error is a
+    -- genuine load failure (e.g. a home-unit GHC plugin that can't be loaded in
+    -- @--enable-multi-repl@) and must not be silently dropped — but discard
+    -- location-less warnings, which are just noise without a file to attach to.
+    toMsg (GMessage m) | isLocationLess m.file, m.severity /= GError = Nothing
     toMsg (GMessage m) =
         Just
             BuildState.Diagnostic

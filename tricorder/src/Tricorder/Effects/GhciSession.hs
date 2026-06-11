@@ -15,6 +15,7 @@ module Tricorder.Effects.GhciSession
 
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.File (File)
+import Atelier.Effects.Log (Log)
 import Atelier.Effects.Process (Process)
 import Atelier.Effects.Timeout (Timeout)
 import Data.Default (def)
@@ -105,6 +106,7 @@ runGhciSession
        , Conc :> es
        , Concurrent :> es
        , File :> es
+       , Log :> es
        , Process :> es
        , Timeout :> es
        )
