@@ -18,6 +18,7 @@ module Tricorder.Effects.GhciSession.GhciProcess
 
 import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.File (BufferMode (..), File, Handle)
+import Atelier.Effects.Log (Log)
 import Atelier.Effects.Process
     ( Process
     , RunningProcess
@@ -42,6 +43,7 @@ import Effectful.Exception (bracket, finally, throwIO, trySync)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.File qualified as File
+import Atelier.Effects.Log qualified as Log
 import Atelier.Effects.Process qualified as Process
 import Data.Text qualified as T
 
@@ -53,6 +55,7 @@ import Tricorder.Effects.GhciSession.GhciParser
     , parseShowModules
     , parseShowTargets
     , stripAnsi
+    , unattributedFailure
     )
 
 
@@ -507,7 +510,7 @@ startupExitedMessage ex =
 -- Progress is emitted live by 'drainUntil' as lines arrive, so no replay
 -- callback is needed here — this function only assembles the final result.
 collectGhciResult
-    :: (Conc :> es, Concurrent :> es, File :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, Log :> es)
     => GhciProcess
     -> [Text]
     -> FilePath
@@ -516,18 +519,27 @@ collectGhciResult process lines' projectRoot = do
     let noProgress = \_ -> pure ()
     moduleLines <- execGhci process ":show modules" noProgress
     targetLines <- execGhci process ":show targets" noProgress
-    pure
-        $ collectResult
-            projectRoot
-            lines'
-            (parseShowModules moduleLines)
-            (parseShowTargets targetLines)
+    let result =
+            collectResult
+                projectRoot
+                lines'
+                (parseShowModules moduleLines)
+                (parseShowTargets targetLines)
+    -- A failed load with no located error produces only the synthetic
+    -- 'unattributedFailure'. The parsed diagnostics tell the user nothing in
+    -- that case, so log the raw GHCi output — it's the only way to see what
+    -- actually went wrong, and the synthetic diagnostic points here.
+    when (any (== unattributedFailure) result.diagnostics)
+        $ Log.info
+        $ "GHCi reported a failed load with no located error. Full GHCi output:\n"
+            <> T.unlines lines'
+    pure result
 
 
 -- | Execute @:reload@ and return the assembled 'LoadResult'. Progress events
 -- fire live via @onProgress@ as each @[N of M] Compiling …@ line is read.
 reloadGhci
-    :: (Conc :> es, Concurrent :> es, File :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, Log :> es)
     => GhciProcess
     -> FilePath
     -> (GhciLoading -> Eff es ())
@@ -540,7 +552,7 @@ reloadGhci process projectRoot onProgress = do
 -- | Execute @:add@ for the given file and return the assembled 'LoadResult'.
 -- Progress events fire live via @onProgress@ as compilation proceeds.
 addGhci
-    :: (Conc :> es, Concurrent :> es, File :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, Log :> es)
     => GhciProcess
     -> FilePath -- the file to :add
     -> FilePath -- projectRoot
@@ -555,7 +567,7 @@ addGhci process filePath projectRoot onProgress = do
 -- 'LoadResult'. Progress events fire live via @onProgress@ as compilation
 -- proceeds.
 unaddGhci
-    :: (Conc :> es, Concurrent :> es, File :> es)
+    :: (Conc :> es, Concurrent :> es, File :> es, Log :> es)
     => GhciProcess
     -> Text -- the module name to :unadd
     -> FilePath -- projectRoot

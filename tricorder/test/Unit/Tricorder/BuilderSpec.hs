@@ -754,7 +754,7 @@ testMergeDiagnostics = do
         let merged = mergeDiagnostics Map.empty result
         Map.lookup warnMsg.file merged `shouldBe` Just [warnMsg]
 
-    it "clears a stale location-less diagnostic when the cycle reports none" do
+    describe "when the cycle reports none" $ it "clears a stale location-less diagnostic" do
         -- <no location info> is never in compiledFiles, so without special
         -- handling it would persist forever. A cycle with no location-less
         -- diagnostic must evict it.
@@ -826,7 +826,7 @@ testFilterToWatchDirs = do
             nixD = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
         filterToWatchDirs root ["."] [d, nixD] `shouldBe` [d]
 
-    it "keeps location-less <no location info> errors despite no path" do
+    describe "when diagnostic has no path it" $ it "keeps location-less <no location info> errors" do
         -- A home-unit GHC plugin that can't load under --enable-multi-repl
         -- produces a <no location info> error. It has no path to test against a
         -- watch dir, but must survive or the failed build reads as clean.
@@ -840,7 +840,7 @@ testFilterToWatchDirs = do
         let d = errMsg {file = "<generated>/Foo.hs"}
         filterToWatchDirs root watchDirs [d] `shouldBe` []
 
-    it "a failed load does not read as clean when its only error is out of watch dirs" do
+    describe "when its only error is out of watch dirs" $ it "a failed load does not read as clean" do
         -- collectResult only injects its synthetic failure when no SError is
         -- present. Here GHCi Failed with a single *located* error in a file
         -- outside the watch dirs, so collectResult adds no synthetic — and then

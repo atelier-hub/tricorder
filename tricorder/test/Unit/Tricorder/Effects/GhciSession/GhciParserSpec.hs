@@ -378,7 +378,7 @@ testPluginLoadFailure = do
 -- read as clean in that case, so a synthetic error diagnostic is added.
 testUnattributedFailure :: Spec
 testUnattributedFailure = do
-    it "adds a synthetic error when the load failed but no error was located" do
+    describe "when the load failed but no error was located" $ it "adds a synthetic error" do
         let reloadOutput =
                 [ "[1 of 2] Compiling Lib  ( src/Lib.hs, interpreted )"
                 , "[2 of 2] Compiling Main ( app/Main.hs, interpreted )"
@@ -405,7 +405,7 @@ testUnattributedFailure = do
             result = collectResult "/project" reloadOutput [] []
         result.diagnostics `shouldBe` []
 
-    it "does not flag a clean build when 'Failed,' appears off the summary line" do
+    describe "when 'Failed,' appears off the summary line" $ it "does not flag a clean build" do
         -- The load outcome lives on GHCi's single summary line
         -- ("Ok, …" / "Failed, …"). Output printed *during* the load — e.g. a
         -- Template Haskell splice or top-level IO run while interpreting — can
