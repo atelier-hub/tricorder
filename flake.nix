@@ -44,17 +44,40 @@
 
   outputs =
     { self, ... }@inputs:
+    let
+      defaultGhcVersion = "ghc9102";
+      ghcVersions = [
+        defaultGhcVersion
+        "ghc98"
+        "ghc912"
+        "ghc914"
+      ];
+      lib = inputs.nixpkgs.lib;
+    in
     inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (
       system:
-      import ./nix/outputs.nix {
-        inherit inputs system self;
+      let
+        projects = lib.genAttrs ghcVersions (
+          compiler-nix-name:
+          import ./nix/outputs.nix {
+            inherit
+              inputs
+              system
+              self
+              compiler-nix-name
+              ;
+          }
+        );
+      in
+      projects.${defaultGhcVersion}
+      // {
+        legacyChecks = lib.mergeAttrsList (
+          map ({ legacyChecks, ... }: legacyChecks) (builtins.attrValues projects)
+        );
       }
     )
     // {
-      overlays.default = final: _: {
-        tricorder = self.packages.${final.stdenv.system}.default;
-      };
-
+      overlays = import ./nix/overlays.nix self.packages;
       homeManagerModules.default = import ./nix/home-module.nix;
       nixosModules.default = import ./nix/nixos-module.nix;
     };

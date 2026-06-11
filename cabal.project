@@ -19,3 +19,22 @@ package atelier-testing
 constraints:
   -- See https://github.com/circuithub/rel8/issues/402
   semialign < 1.4
+
+if impl(ghc >= 9.14)
+  allow-newer:
+    -- `lens-family 2.1.3`, a transitive dependency of
+    -- `hs-opentelemetry-exporter-otlp`, has `< 0.8` as its upper bound on its
+    -- `containers` version constraint. GHC 9.14 depends on
+    -- `containers 0.8`, we have no choice but to make it so that newer
+    -- `containers` versions are allowed.
+    containers
+
+    -- `rel8 1.7.0.0` has an upper bound on `base` of `<4.22`, and GHC 9.14
+    -- ships with version `4.22`, so we have to allow-newer on `base`.
+    , base
+
+    -- `postgresql-simple 0.7.0.1`, a transitive dependency of `rel8`, has
+    -- upper bound for `template-haskell` of `<2.24`, but GHC 9.14 ships with
+    -- `template-haskell 4.22`.
+    , template-haskell
+
