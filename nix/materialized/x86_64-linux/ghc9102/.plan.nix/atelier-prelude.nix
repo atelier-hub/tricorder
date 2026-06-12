@@ -7,7 +7,7 @@
   , errorHandler
   , config
   , ... }:
-  {
+  ({
     flags = {};
     package = {
       specVersion = "1.18";
@@ -38,8 +38,10 @@
           (hsPkgs."relude" or (errorHandler.buildDepError "relude"))
         ];
         buildable = true;
-        modules = [ "Paths_atelier_prelude" "Prelude" ];
+        modules = [ "Paths_atelier_prelude" ];
         hsSourceDirs = [ "src" ];
       };
     };
-  } // rec { src = pkgs.lib.mkDefault ../atelier-prelude; }
+  } // rec { src = pkgs.lib.mkDefault ../atelier-prelude; }) // {
+    cabal-generator = "hpack";
+  }

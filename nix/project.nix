@@ -4,12 +4,22 @@
   compiler-nix-name,
   self,
 }:
+let
+  nix-hpack = pkgs.callPackage ./package/nix-hpack.nix { };
+  src = pkgs.runCommand "src" { } ''
+    mkdir -p src
+    cp -r ${./..}/* src
+    chmod -R +w src
+    ls -la src
+    (cd src && ${nix-hpack}/bin/nix-hpack --keep)
+    mv src $out
+  '';
+in
 pkgs.haskell-nix.cabalProject' {
-  src = ../.;
-  inherit compiler-nix-name;
+  inherit src compiler-nix-name;
 
   # Enable materialization for deterministic builds and better CI caching
-  materialized = ./materialized + "/${pkgs.stdenv.hostPlatform.system}/${compiler-nix-name}";
+  materialized = ./materialized/${pkgs.stdenv.hostPlatform.system}/${compiler-nix-name};
   checkMaterialization = true;
 
   # Add tmp-postgres from flake input
