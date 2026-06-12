@@ -106,6 +106,7 @@
             "Tricorder/UI/Event"
             "Tricorder/UI/Keys"
             "Tricorder/UI/Misc"
+            "Tricorder/UI/Route"
             "Tricorder/UI/State"
             "Tricorder/UI/View"
             "Tricorder/Version"

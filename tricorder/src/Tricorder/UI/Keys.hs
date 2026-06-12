@@ -5,6 +5,7 @@ module Tricorder.UI.Keys
     , dispatcher
     , viewKeybindings
     , mkKeyConfig
+    , keybindForRoute
     ) where
 
 import Atelier.Effects.Console (Console)
@@ -37,6 +38,7 @@ import Brick.Keybindings
     , onEvent
     , parseBindingList
     )
+import Brick.Keybindings.KeyConfig (firstActiveBinding)
 import Brick.Keybindings.Pretty (ppBinding)
 import Brick.Widgets.Core (hBox)
 import Control.Monad.State (gets, modify)
@@ -54,26 +56,29 @@ import Data.Set qualified as Set
 import Data.Text qualified as T
 
 import Tricorder.UI.Misc (warn)
+import Tricorder.UI.Route (Route)
 import Tricorder.UI.State
-    ( ActiveView (..)
-    , State (..)
+    ( State (..)
     , Viewports (..)
-    , currentView
-    , cycleTestView
-    , popView
-    , pushView
+    , currentRoute
+    , cycleTestFilter
+    , popRoute
+    , pushRoute
+    , viewToViewport
     )
+
+import Tricorder.UI.Route qualified as Route
 
 
 -- When adding a new event here, also list it in the README under "Custom Key Bindings".
 data KeyEvent
     = ToggleDaemonInfoView
-    | Quit
+    | ToggleHelp
+    | CycleTestView
     | ExitView
     | ScrollUp
     | ScrollDown
-    | ToggleHelp
-    | CycleTestView
+    | Quit
     deriving stock (Bounded, Enum, Eq, Ord, Show)
 
 
@@ -93,24 +98,24 @@ keys :: KeyEvents KeyEvent
 keys =
     keyEvents
         [ ("toggle daemon info", ToggleDaemonInfoView)
-        , ("quit", Quit)
+        , ("toggle help", ToggleHelp)
+        , ("cycle test view", CycleTestView)
         , ("exit view", ExitView)
         , ("scroll up", ScrollUp)
         , ("scroll down", ScrollDown)
-        , ("toggle help", ToggleHelp)
-        , ("cycle test view", CycleTestView)
+        , ("quit", Quit)
         ]
 
 
 bindings :: [(KeyEvent, [Binding])]
 bindings =
     [ (ToggleDaemonInfoView, [bind 'g'])
-    , (Quit, [bind 'q', ctrl 'c'])
+    , (ToggleHelp, [bind 'h'])
+    , (CycleTestView, [bind 't'])
     , (ExitView, [binding KEsc []])
     , (ScrollUp, [binding KUp []])
     , (ScrollDown, [binding KDown []])
-    , (ToggleHelp, [bind 'h'])
-    , (CycleTestView, [bind 't'])
+    , (Quit, [bind 'q', ctrl 'c'])
     ]
 
 
@@ -164,43 +169,41 @@ dispatcher cfg =
             cfg
             [ onEvent ToggleDaemonInfoView "Toggle daemon info view" do
                 modify \s ->
-                    if currentView s == Just ViewDaemonInfo then
-                        popView s
+                    if currentRoute s == Route.DaemonInfo then
+                        popRoute s
                     else
-                        pushView ViewDaemonInfo s
-            , onEvent Quit "Exit" do
-                halt
-            , onEvent ExitView "Exit or go back" do
-                stack <- gets (.viewStack)
-                if null stack then halt else modify popView
-            , onEvent ScrollUp "Scroll up" do
-                av <- gets currentView
-                unless (av == Just ViewHelp) do
-                    let vp = case av of
-                            Just (ViewTestResults _) -> TestViewport
-                            _ -> DiagnosticViewport
-                    vScrollBy (viewportScroll vp) (-1)
-            , onEvent ScrollDown "Scroll down" do
-                av <- gets currentView
-                unless (av == Just ViewHelp) do
-                    let vp = case av of
-                            Just (ViewTestResults _) -> TestViewport
-                            _ -> DiagnosticViewport
-                    vScrollBy (viewportScroll vp) 1
+                        pushRoute Route.DaemonInfo s
             , onEvent ToggleHelp "Toggle help" do
                 modify \s ->
-                    if currentView s == Just ViewHelp then
-                        popView s
+                    if currentRoute s == Route.Help then
+                        popRoute s
                     else
-                        pushView ViewHelp s
+                        pushRoute Route.Help s
             , onEvent CycleTestView "Cycle test results view" do
-                modify \s -> case currentView s of
-                    Just (ViewTestResults tv) ->
-                        if tv == maxBound then
-                            popView s
+                modify \s -> case currentRoute s of
+                    Route.Tests ->
+                        if s.testFilter == maxBound then
+                            popRoute s {testFilter = minBound}
                         else
-                            pushView (ViewTestResults (cycleTestView tv)) (popView s)
-                    _ -> pushView (ViewTestResults minBound) s
+                            s {testFilter = cycleTestFilter s.testFilter}
+                    _ -> pushRoute Route.Tests s
+            , onEvent ExitView "Exit or go back" do
+                gets (.routeHistory) >>= \case
+                    (_ :| []) -> halt
+                    _ -> modify popRoute
+            , onEvent ScrollUp "Scroll up" do
+                mvp <- gets (viewToViewport . currentRoute)
+                case mvp of
+                    Just vp -> vScrollBy (viewportScroll vp) (-1)
+                    Nothing -> pure ()
+            , onEvent ScrollDown "Scroll down" do
+                mvp <- gets (viewToViewport . currentRoute)
+                case mvp of
+                    Just vp ->
+                        vScrollBy (viewportScroll vp) 1
+                    Nothing -> pure ()
+            , onEvent Quit "Exit" do
+                halt
             ]
   where
     stringify =
@@ -218,13 +221,21 @@ viewKeybindings kc =
 
 
 viewEventAndTriggers :: (Ord k, Show k) => KeyConfig k -> Text -> [EventTrigger k] -> Widget n
-viewEventAndTriggers kc eventName trigger =
+viewEventAndTriggers kc eventName triggers =
     hBox
         [ warn $ txt $ eventName <> ": "
-        , txt $ showBindings $ mconcat $ getBindings <$> trigger
+        , txt $ showBindings $ mconcat $ getBindings <$> triggers
         ]
   where
     showBindings = T.intercalate ", " . fmap ppBinding . sort . toList
     getBindings = \case
         ByKey k -> Set.singleton k
         ByEvent e -> Set.fromList $ allActiveBindings kc e
+
+
+keybindForRoute :: KeyConfig KeyEvent -> Route -> Maybe Binding
+keybindForRoute kc = \case
+    Route.Main -> Nothing
+    Route.DaemonInfo -> firstActiveBinding kc ToggleDaemonInfoView
+    Route.Help -> firstActiveBinding kc ToggleHelp
+    Route.Tests -> firstActiveBinding kc CycleTestView
