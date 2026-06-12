@@ -7,7 +7,7 @@
   , errorHandler
   , config
   , ... }:
-  {
+  ({
     flags = {};
     package = {
       specVersion = "2.0";
@@ -52,13 +52,13 @@
           (hsPkgs."time" or (errorHandler.buildDepError "time"))
         ];
         buildable = true;
-        modules = [
-          "Paths_atelier_db"
-          "Atelier/Effects/DB"
-          "Atelier/Effects/DB/Config"
-          "Atelier/Effects/DB/Rel8"
-        ];
+        modules = [ "Paths_atelier_db" ];
         hsSourceDirs = [ "src" ];
+      };
+    };
+  } // rec { src = pkgs.lib.mkDefault ../atelier-db; }) // {
+    cabal-generator = "hpack";
+  }[ "src" ];
       };
     };
   } // rec { src = pkgs.lib.mkDefault ../atelier-db; }
