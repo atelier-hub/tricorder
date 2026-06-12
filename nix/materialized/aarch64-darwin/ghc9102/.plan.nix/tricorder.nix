@@ -7,7 +7,7 @@
   , errorHandler
   , config
   , ... }:
-  {
+  ({
     flags = {};
     package = {
       specVersion = "2.0";
@@ -68,49 +68,7 @@
             (hsPkgs."yaml" or (errorHandler.buildDepError "yaml"))
           ];
           buildable = true;
-          modules = [
-            "Paths_tricorder"
-            "Tricorder"
-            "Tricorder/Arguments"
-            "Tricorder/Builder"
-            "Tricorder/Builder/Dispatch"
-            "Tricorder/BuildState"
-            "Tricorder/CLI"
-            "Tricorder/CLI/Main"
-            "Tricorder/CLI/Render"
-            "Tricorder/Config"
-            "Tricorder/Daemon"
-            "Tricorder/Daemon/Main"
-            "Tricorder/Effects/Brick"
-            "Tricorder/Effects/BrickChan"
-            "Tricorder/Effects/BuildStore"
-            "Tricorder/Effects/GhciSession"
-            "Tricorder/Effects/GhciSession/GhciParser"
-            "Tricorder/Effects/GhciSession/GhciProcess"
-            "Tricorder/Effects/GhcPkg"
-            "Tricorder/Effects/Logging"
-            "Tricorder/Effects/SessionStore"
-            "Tricorder/Effects/TestRunner"
-            "Tricorder/Effects/UnixSocket"
-            "Tricorder/Events/FileChanged"
-            "Tricorder/GhcPkg/Types"
-            "Tricorder/Observability"
-            "Tricorder/Runtime"
-            "Tricorder/Session"
-            "Tricorder/Socket/Client"
-            "Tricorder/Socket/Protocol"
-            "Tricorder/Socket/Server"
-            "Tricorder/SourceLookup"
-            "Tricorder/TestOutput"
-            "Tricorder/UI"
-            "Tricorder/UI/Event"
-            "Tricorder/UI/Keys"
-            "Tricorder/UI/Misc"
-            "Tricorder/UI/State"
-            "Tricorder/UI/View"
-            "Tricorder/Version"
-            "Tricorder/Watcher"
-          ];
+          modules = [ "Paths_tricorder" ];
           hsSourceDirs = [ "src" ];
         };
       };
@@ -155,6 +113,32 @@
             (hsPkgs."effectful" or (errorHandler.buildDepError "effectful"))
             (hsPkgs."effectful-core" or (errorHandler.buildDepError "effectful-core"))
             (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))
+            (hsPkgs."hspec" or (errorHandler.buildDepError "hspec"))
+            (hsPkgs."process" or (errorHandler.buildDepError "process"))
+            (hsPkgs."stm" or (errorHandler.buildDepError "stm"))
+            (hsPkgs."tasty" or (errorHandler.buildDepError "tasty"))
+            (hsPkgs."tasty-discover" or (errorHandler.buildDepError "tasty-discover"))
+            (hsPkgs."tasty-hspec" or (errorHandler.buildDepError "tasty-hspec"))
+            (hsPkgs."text" or (errorHandler.buildDepError "text"))
+            (hsPkgs."time" or (errorHandler.buildDepError "time"))
+            (hsPkgs."time-units" or (errorHandler.buildDepError "time-units"))
+            (hsPkgs."tricorder".components.sublibs.tricorder-internal or (errorHandler.buildDepError "tricorder:tricorder-internal"))
+            (hsPkgs."typed-process" or (errorHandler.buildDepError "typed-process"))
+            (hsPkgs."unagi-chan" or (errorHandler.buildDepError "unagi-chan"))
+          ];
+          build-tools = [
+            (hsPkgs.pkgsBuildBuild.tasty-discover.components.exes.tasty-discover or (pkgs.pkgsBuildBuild.tasty-discover or (errorHandler.buildToolDepError "tasty-discover:tasty-discover")))
+          ];
+          buildable = true;
+          modules = [ "Paths_tricorder" ];
+          hsSourceDirs = [ "test" ];
+          mainPath = [ "Driver.hs" ];
+        };
+      };
+    };
+  } // rec { src = pkgs.lib.mkDefault ../tricorder; }) // {
+    cabal-generator = "hpack";
+  }pError "effectful-plugin"))
             (hsPkgs."hspec" or (errorHandler.buildDepError "hspec"))
             (hsPkgs."process" or (errorHandler.buildDepError "process"))
             (hsPkgs."stm" or (errorHandler.buildDepError "stm"))
