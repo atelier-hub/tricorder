@@ -7,7 +7,7 @@
   , errorHandler
   , config
   , ... }:
-  {
+  ({
     flags = {};
     package = {
       specVersion = "2.0";
@@ -75,54 +75,7 @@
           (hsPkgs."warp" or (errorHandler.buildDepError "warp"))
         ];
         buildable = true;
-        modules = [
-          "Paths_atelier_core"
-          "Atelier/Component"
-          "Atelier/Config"
-          "Atelier/Effects/Arguments"
-          "Atelier/Effects/Await"
-          "Atelier/Effects/Cache"
-          "Atelier/Effects/Cache/Config"
-          "Atelier/Effects/Cache/Singleflight"
-          "Atelier/Effects/Chan"
-          "Atelier/Effects/Clock"
-          "Atelier/Effects/Conc"
-          "Atelier/Effects/Conc/Traced"
-          "Atelier/Effects/Console"
-          "Atelier/Effects/Debounce"
-          "Atelier/Effects/Delay"
-          "Atelier/Effects/Env"
-          "Atelier/Effects/Exit"
-          "Atelier/Effects/File"
-          "Atelier/Effects/FileSystem"
-          "Atelier/Effects/FileWatcher"
-          "Atelier/Effects/Input"
-          "Atelier/Effects/Internal/Coroutine"
-          "Atelier/Effects/Iterator"
-          "Atelier/Effects/Log"
-          "Atelier/Effects/Monitoring/Metrics"
-          "Atelier/Effects/Monitoring/Metrics/Registry"
-          "Atelier/Effects/Monitoring/Metrics/Server"
-          "Atelier/Effects/Monitoring/Tracing"
-          "Atelier/Effects/Monitoring/Tracing/Provider"
-          "Atelier/Effects/Posix/Daemons"
-          "Atelier/Effects/Posix/IO"
-          "Atelier/Effects/Process"
-          "Atelier/Effects/Publishing"
-          "Atelier/Effects/Tally"
-          "Atelier/Effects/Timeout"
-          "Atelier/Effects/UUID"
-          "Atelier/Effects/Yield"
-          "Atelier/Exception"
-          "Atelier/Time"
-          "Atelier/Types/Base64"
-          "Atelier/Types/HttpApiDataReadShow"
-          "Atelier/Types/JsonReadShow"
-          "Atelier/Types/QuietSnake"
-          "Atelier/Types/Semaphore"
-          "Atelier/Types/Semaphore/STM"
-          "Atelier/Types/WithDefaults"
-        ];
+        modules = [ "Paths_atelier_core" ];
         hsSourceDirs = [ "src" ];
       };
       tests = {
@@ -133,6 +86,35 @@
             (hsPkgs."atelier-core" or (errorHandler.buildDepError "atelier-core"))
             (hsPkgs."atelier-prelude" or (errorHandler.buildDepError "atelier-prelude"))
             (hsPkgs."base" or (errorHandler.buildDepError "base"))
+            (hsPkgs."bytestring" or (errorHandler.buildDepError "bytestring"))
+            (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
+            (hsPkgs."data-default" or (errorHandler.buildDepError "data-default"))
+            (hsPkgs."effectful" or (errorHandler.buildDepError "effectful"))
+            (hsPkgs."effectful-core" or (errorHandler.buildDepError "effectful-core"))
+            (hsPkgs."effectful-plugin" or (errorHandler.buildDepError "effectful-plugin"))
+            (hsPkgs."hedgehog" or (errorHandler.buildDepError "hedgehog"))
+            (hsPkgs."hs-opentelemetry-api" or (errorHandler.buildDepError "hs-opentelemetry-api"))
+            (hsPkgs."hspec" or (errorHandler.buildDepError "hspec"))
+            (hsPkgs."hspec-hedgehog" or (errorHandler.buildDepError "hspec-hedgehog"))
+            (hsPkgs."stm" or (errorHandler.buildDepError "stm"))
+            (hsPkgs."stm-containers" or (errorHandler.buildDepError "stm-containers"))
+            (hsPkgs."tasty" or (errorHandler.buildDepError "tasty"))
+            (hsPkgs."tasty-hspec" or (errorHandler.buildDepError "tasty-hspec"))
+            (hsPkgs."time" or (errorHandler.buildDepError "time"))
+          ];
+          build-tools = [
+            (hsPkgs.pkgsBuildBuild.tasty-discover.components.exes.tasty-discover or (pkgs.pkgsBuildBuild.tasty-discover or (errorHandler.buildToolDepError "tasty-discover:tasty-discover")))
+          ];
+          buildable = true;
+          modules = [ "Paths_atelier_core" ];
+          hsSourceDirs = [ "test" ];
+          mainPath = [ "Driver.hs" ];
+        };
+      };
+    };
+  } // rec { src = pkgs.lib.mkDefault ../atelier-core; }) // {
+    cabal-generator = "hpack";
+  }base"))
             (hsPkgs."bytestring" or (errorHandler.buildDepError "bytestring"))
             (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
             (hsPkgs."data-default" or (errorHandler.buildDepError "data-default"))
