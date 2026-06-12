@@ -7,18 +7,11 @@ import Atelier.Effects.Conc (Conc)
 import Atelier.Effects.Console (Console)
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.File (File)
-import Brick
-    ( App (..)
-    , attrMap
-    , attrName
-    , neverShowCursor
-    )
+import Brick (App (..), neverShowCursor)
 import Brick.Keybindings (KeyConfig)
 import Effectful.Reader.Static (Reader, ask)
 
 import Atelier.Effects.Conc qualified as Conc
-import Graphics.Vty.Attributes qualified as Attr
-import Graphics.Vty.Attributes.Color qualified as Color
 
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
@@ -28,7 +21,7 @@ import Tricorder.Socket.Client (queryWatch)
 import Tricorder.UI.Event (Event (..), handleEvent)
 import Tricorder.UI.Keys (KeyEvent, dispatcher)
 import Tricorder.UI.State (State (..), Viewports (..))
-import Tricorder.UI.View (view)
+import Tricorder.UI.View (mkAttrMap, view)
 
 import Tricorder.Effects.Brick qualified as Brick
 import Tricorder.Effects.BrickChan qualified as BrickChan
@@ -74,16 +67,6 @@ watchApp kc =
         { appDraw = view kc
         , appHandleEvent = handleEvent $ dispatcher kc
         , appStartEvent = pure ()
-        , appAttrMap =
-            const
-                ( attrMap
-                    Attr.defAttr
-                    [ (attrName "ok", Attr.withForeColor Attr.defAttr Color.green)
-                    , (attrName "warning", Attr.withForeColor Attr.defAttr Color.yellow)
-                    , (attrName "error", Attr.withForeColor Attr.defAttr Color.red)
-                    , (attrName "emphasis", Attr.withStyle Attr.defAttr Attr.bold)
-                    , (attrName "subtle", Attr.withForeColor Attr.defAttr $ Color.rgbColor @Int 148 148 148)
-                    ]
-                )
+        , appAttrMap = mkAttrMap
         , appChooseCursor = neverShowCursor
         }
