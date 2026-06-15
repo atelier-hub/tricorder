@@ -58,7 +58,4 @@
     };
   } // rec { src = pkgs.lib.mkDefault ../atelier-db; }) // {
     cabal-generator = "hpack";
-  }[ "src" ];
-      };
-    };
-  } // rec { src = pkgs.lib.mkDefault ../atelier-db; }
+  }
