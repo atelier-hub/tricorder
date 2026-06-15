@@ -138,46 +138,4 @@
     };
   } // rec { src = pkgs.lib.mkDefault ../tricorder; }) // {
     cabal-generator = "hpack";
-  }pError "effectful-plugin"))
-            (hsPkgs."hspec" or (errorHandler.buildDepError "hspec"))
-            (hsPkgs."process" or (errorHandler.buildDepError "process"))
-            (hsPkgs."stm" or (errorHandler.buildDepError "stm"))
-            (hsPkgs."tasty" or (errorHandler.buildDepError "tasty"))
-            (hsPkgs."tasty-discover" or (errorHandler.buildDepError "tasty-discover"))
-            (hsPkgs."tasty-hspec" or (errorHandler.buildDepError "tasty-hspec"))
-            (hsPkgs."text" or (errorHandler.buildDepError "text"))
-            (hsPkgs."time" or (errorHandler.buildDepError "time"))
-            (hsPkgs."time-units" or (errorHandler.buildDepError "time-units"))
-            (hsPkgs."tricorder".components.sublibs.tricorder-internal or (errorHandler.buildDepError "tricorder:tricorder-internal"))
-            (hsPkgs."typed-process" or (errorHandler.buildDepError "typed-process"))
-            (hsPkgs."unagi-chan" or (errorHandler.buildDepError "unagi-chan"))
-          ];
-          build-tools = [
-            (hsPkgs.pkgsBuildBuild.tasty-discover.components.exes.tasty-discover or (pkgs.pkgsBuildBuild.tasty-discover or (errorHandler.buildToolDepError "tasty-discover:tasty-discover")))
-          ];
-          buildable = true;
-          modules = [
-            "Unit/Tricorder/BuilderSpec"
-            "Unit/Tricorder/BuildStateSpec"
-            "Unit/Tricorder/BuildStoreSpec"
-            "Unit/Tricorder/CLI/RenderSpec"
-            "Unit/Tricorder/Effects/GhciSession/GhciParserSpec"
-            "Unit/Tricorder/Effects/GhciSession/GhciProcessSpec"
-            "Unit/Tricorder/Effects/GhciSessionSpec"
-            "Unit/Tricorder/Effects/SessionStoreSpec"
-            "Unit/Tricorder/GhcPkgSpec"
-            "Unit/Tricorder/SessionSpec"
-            "Unit/Tricorder/SocketSpec"
-            "Unit/Tricorder/SourceLookupSpec"
-            "Unit/Tricorder/SourceSpec"
-            "Unit/Tricorder/TestOutputSpec"
-            "Unit/Tricorder/TestRunnerSpec"
-            "Unit/Tricorder/WatcherSpec"
-            "Paths_tricorder"
-          ];
-          hsSourceDirs = [ "test" ];
-          mainPath = [ "Driver.hs" ];
-        };
-      };
-    };
-  } // rec { src = pkgs.lib.mkDefault ../tricorder; }
+  }
