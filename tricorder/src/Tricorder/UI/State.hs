@@ -7,15 +7,13 @@ module Tricorder.UI.State
     , currentRoute
     , viewToViewport
     , cycleTestFilter
-    , pushRoute
-    , popRoute
+    , navigate
     ) where
 
 import Atelier.Effects.Clock (Clock, TimeZone)
 import Prelude hiding (init)
 
 import Atelier.Effects.Clock qualified as Clock
-import Data.List.NonEmpty qualified as NonEmpty
 
 import Tricorder.BuildState (BuildState (..))
 import Tricorder.UI.Route (Route)
@@ -33,7 +31,7 @@ data Viewports
 data State = State
     { buildState :: Processed Text BuildState
     , timeZone :: TimeZone
-    , routeHistory :: NonEmpty Route
+    , route :: Route
     , testFilter :: TestFilter
     }
 
@@ -53,7 +51,7 @@ data Processed e a
 
 
 currentRoute :: State -> Route
-currentRoute = NonEmpty.head . (.routeHistory)
+currentRoute = (.route)
 
 
 viewToViewport :: Route -> Maybe Viewports
@@ -63,17 +61,8 @@ viewToViewport = \case
     _ -> Nothing
 
 
-pushRoute :: Route -> State -> State
-pushRoute v s = s {routeHistory = v :| toList s.routeHistory}
-
-
-popRoute :: State -> State
-popRoute s =
-    s
-        { routeHistory = case s.routeHistory of
-            _ :| [] -> Route.Main :| []
-            _ :| (x : xs) -> x :| xs
-        }
+navigate :: Route -> State -> State
+navigate route s = s {route}
 
 
 init :: (Clock :> es) => Eff es State
@@ -83,6 +72,6 @@ init = do
         State
             { buildState = Waiting
             , timeZone = tz
-            , routeHistory = Route.Main :| []
+            , route = Route.Main
             , testFilter = minBound
             }

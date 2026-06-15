@@ -62,8 +62,7 @@ import Tricorder.UI.State
     , Viewports (..)
     , currentRoute
     , cycleTestFilter
-    , popRoute
-    , pushRoute
+    , navigate
     , viewToViewport
     )
 
@@ -170,27 +169,27 @@ dispatcher cfg =
             [ onEvent ToggleDaemonInfoView "Toggle daemon info view" do
                 modify \s ->
                     if currentRoute s == Route.DaemonInfo then
-                        popRoute s
+                        navigate Route.Main s
                     else
-                        pushRoute Route.DaemonInfo s
+                        navigate Route.DaemonInfo s
             , onEvent ToggleHelp "Toggle help" do
                 modify \s ->
                     if currentRoute s == Route.Help then
-                        popRoute s
+                        navigate Route.Main s
                     else
-                        pushRoute Route.Help s
+                        navigate Route.Help s
             , onEvent CycleTestView "Cycle test results view" do
                 modify \s -> case currentRoute s of
                     Route.Tests ->
                         if s.testFilter == maxBound then
-                            popRoute s {testFilter = minBound}
+                            navigate Route.Main s {testFilter = minBound}
                         else
                             s {testFilter = cycleTestFilter s.testFilter}
-                    _ -> pushRoute Route.Tests s
+                    _ -> navigate Route.Tests s
             , onEvent ExitView "Exit or go back" do
-                gets (.routeHistory) >>= \case
-                    (_ :| []) -> halt
-                    _ -> modify popRoute
+                gets (.route) >>= \case
+                    Route.Main -> halt
+                    _ -> modify $ navigate Route.Main
             , onEvent ScrollUp "Scroll up" do
                 mvp <- gets (viewToViewport . currentRoute)
                 case mvp of
