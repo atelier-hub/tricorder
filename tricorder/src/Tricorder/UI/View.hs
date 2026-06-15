@@ -1,22 +1,23 @@
-module Tricorder.UI.View (view) where
+module Tricorder.UI.View (mkAttrMap, view) where
 
 import Atelier.Effects.Clock (TimeZone)
 import Atelier.Time (Millisecond, toMicroseconds)
 import Brick
-    ( AttrName
+    ( AttrMap
+    , AttrName
     , VScrollBarOrientation (..)
     , ViewportType (..)
     , Widget
+    , attrMap
     , attrName
     , vBox
     , viewport
     )
-import Brick.Keybindings (KeyConfig, KeyHandler (..), keyDispatcherToList)
+import Brick.Keybindings (KeyConfig, KeyHandler (..), keyDispatcherToList, ppBinding)
 import Brick.Widgets.Core
     ( Padding (..)
     , emptyWidget
     , hBox
-    , padBottom
     , padLeft
     , txt
     , txtWrap
@@ -29,6 +30,8 @@ import Data.Time (UTCTime, defaultTimeLocale, formatTime, utcToLocalTime)
 import System.FilePath (isAbsolute)
 
 import Data.Text qualified as T
+import Graphics.Vty.Attributes qualified as Attr
+import Graphics.Vty.Attributes.Color qualified as Color
 
 import Tricorder.BuildState
     ( BuildPhase (..)
@@ -45,26 +48,85 @@ import Tricorder.BuildState
     , TestRunError (..)
     )
 import Tricorder.TestOutput (stripGhciNoise)
-import Tricorder.UI.Keys (KeyEvent, viewKeybindings)
+import Tricorder.UI.Keys (KeyEvent, keybindForRoute, viewKeybindings)
 import Tricorder.UI.Misc (emphasis, err, hBoxSpaced, ok, subtle, vBoxSpaced, warn)
-import Tricorder.UI.State (ActiveView (..), Processed (..), State (..), TestView (..), Viewports (..), currentView)
+import Tricorder.UI.Route (Route)
+import Tricorder.UI.State (Processed (..), State (..), TestFilter (..), Viewports (..), currentRoute)
 
 import Tricorder.UI.Keys qualified as Keys
+import Tricorder.UI.Route qualified as Route
 import Tricorder.Version qualified as Version
+
+
+mkAttrMap :: State -> AttrMap
+mkAttrMap =
+    const
+        ( attrMap
+            Attr.defAttr
+            [ (attrName "ok", Attr.withForeColor Attr.defAttr Color.green)
+            , (attrName "warning", Attr.withForeColor Attr.defAttr Color.yellow)
+            , (attrName "error", Attr.withForeColor Attr.defAttr Color.red)
+            , (attrName "emphasis", Attr.withStyle Attr.defAttr Attr.bold)
+            , (attrName "subtle", Attr.withForeColor Attr.defAttr $ Color.rgbColor @Int 148 148 148)
+            ]
+        )
 
 
 view :: KeyConfig KeyEvent -> State -> [Widget Viewports]
 view kc ws =
-    [ case currentView ws of
-        Just ViewHelp ->
-            viewHelp kc
-        Just ViewDaemonInfo ->
-            withHint $ withBuildState ws (viewDaemonInfoPanel ws.timeZone)
-        Just (ViewTestResults tv) ->
-            withHint $ withBuildState ws (viewTestResultsPanel ws.timeZone tv)
-        Nothing ->
-            withHint $ withBuildState ws (viewDefaultPanel ws.timeZone)
+    [ vBoxSpaced
+        1
+        [ vBox
+            [ viewAppHeader ws
+            , viewTabs kc ws
+            ]
+        , case currentRoute ws of
+            Route.Help ->
+                viewHelp kc
+            Route.DaemonInfo ->
+                viewDaemonInfo ws
+            Route.Tests ->
+                viewTests ws
+            Route.Main ->
+                viewMain ws
+        ]
     ]
+
+
+viewTabs :: KeyConfig KeyEvent -> State -> Widget n
+viewTabs kc ws =
+    hBoxSpaced 1
+        $ intersperse (subtle $ txt "-")
+        $ viewRouteTab kc ws <$> universe @Route
+
+
+viewRouteTab :: KeyConfig KeyEvent -> State -> Route -> Widget n
+viewRouteTab kc ws route =
+    style $ txt $ Route.name route <> keyBind
+  where
+    style = if route == currentRoute ws then id else subtle
+    showBinding = (" " <>) . ("[" <>) . (<> "]") . ppBinding
+    keyBind = maybe "" showBinding $ keybindForRoute kc route
+
+
+viewDaemonInfo :: State -> Widget Viewports
+viewDaemonInfo ws =
+    withBuildState ws (viewExpandedDaemonInfo . (.daemonInfo))
+
+
+viewTests :: State -> Widget Viewports
+viewTests ws =
+    withBuildState ws (viewTestResultsPanel ws)
+
+
+viewMain :: State -> Widget Viewports
+viewMain ws = withBuildState ws (viewDefaultPanel ws.timeZone)
+
+
+viewHelp :: KeyConfig KeyEvent -> Widget n
+viewHelp kc = viewKeybindings kc handlers
+  where
+    handlers = (.khHandler) . snd <$> keyDispatcherToList (Keys.dispatcher kc)
 
 
 withBuildState :: State -> (BuildState -> Widget Viewports) -> Widget Viewports
@@ -78,44 +140,39 @@ withBuildState ws render =
             render bs
 
 
-withHint :: Widget n -> Widget n
-withHint content = vBox [padBottom Max content, viewHint]
+viewAppHeader :: State -> Widget n
+viewAppHeader ws =
+    ok
+        $ emphasis
+        $ txt
+        $ "Tricorder"
+            <> maybe
+                ""
+                (" - " <>)
+                (viewHeading ws)
 
 
-viewHelp :: KeyConfig KeyEvent -> Widget n
-viewHelp kc =
-    vBox
-        [ padBottom Max $ vBoxSpaced 1 [ok $ txt "Keymap:", viewKeybindings kc handlers]
-        , subtle $ txt "Press 'h' to go back"
-        ]
-  where
-    handlers = (.khHandler) . snd <$> keyDispatcherToList (Keys.dispatcher kc)
+viewHeading :: State -> Maybe Text
+viewHeading ws = case currentRoute ws of
+    Route.Tests -> case ws.testFilter of
+        TestFilterAll -> Just "Tests"
+        TestFilterFailedOnly -> Just "Tests - Failed only"
+    Route.Help -> Just "Help"
+    Route.DaemonInfo -> Just "Daemon info"
+    Route.Main -> Nothing
 
 
 viewDefaultPanel :: TimeZone -> BuildState -> Widget Viewports
 viewDefaultPanel tz bs = viewBuildPhase tz bs.phase
 
 
-viewDaemonInfoPanel :: TimeZone -> BuildState -> Widget Viewports
-viewDaemonInfoPanel tz bs =
+viewTestResultsPanel :: State -> BuildState -> Widget Viewports
+viewTestResultsPanel ws bs =
     vBoxSpaced
         1
-        [ viewBuildPhaseLine tz bs.phase
-        , viewExpandedDaemonInfo bs.daemonInfo
+        [ viewBuildPhaseLine ws.timeZone bs.phase
+        , viewTestPanel ws.testFilter (phaseTestRuns bs.phase)
         ]
-
-
-viewTestResultsPanel :: TimeZone -> TestView -> BuildState -> Widget Viewports
-viewTestResultsPanel tz tv bs =
-    vBoxSpaced
-        1
-        [ viewBuildPhaseLine tz bs.phase
-        , viewTestPanel tv (phaseTestRuns bs.phase)
-        ]
-
-
-viewHint :: Widget n
-viewHint = subtle $ txt "Press 'h' for help"
 
 
 viewExpandedDaemonInfo :: DaemonInfo -> Widget n
@@ -363,32 +420,32 @@ phaseTestRuns (Done r) = r.testRuns
 phaseTestRuns _ = []
 
 
-viewTestPanel :: TestView -> [TestRun] -> Widget Viewports
+viewTestPanel :: TestFilter -> [TestRun] -> Widget Viewports
 viewTestPanel _ [] = subtle $ txt "No test results."
-viewTestPanel tv runs = scrollableRuns tv runs
+viewTestPanel tvf runs = scrollableRuns tvf runs
 
 
-scrollableRuns :: TestView -> [TestRun] -> Widget Viewports
-scrollableRuns tv runs =
-    vScrollViewport TestViewport (viewTestRunDetail tv <$> runs)
+scrollableRuns :: TestFilter -> [TestRun] -> Widget Viewports
+scrollableRuns tvf runs =
+    vScrollViewport TestViewport (viewTestRunDetail tvf <$> runs)
 
 
-viewTestRunDetail :: TestView -> TestRun -> Widget n
+viewTestRunDetail :: TestFilter -> TestRun -> Widget n
 viewTestRunDetail _ (TestRunning t Nothing) = hBox [txt t, txt "  ", warn $ txt "running..."]
 viewTestRunDetail _ (TestRunning t (Just p)) =
     hBox [txt t, txt "  ", warn $ txt $ "running... (" <> show p.compiled <> "/" <> show p.total <> ")"]
 viewTestRunDetail _ (TestRunErrored e) = hBoxSpaced 1 [txt e.target, err $ txt "error:", txt e.message]
-viewTestRunDetail tv (TestRunCompleted c) =
+viewTestRunDetail tvf (TestRunCompleted c) =
     vBox
         [ hBox [txt c.target, txt "  ", viewCompletionStatus c]
-        , viewTestOutput tv c
+        , viewTestOutput tvf c
         ]
 
 
-viewTestOutput :: TestView -> TestRunCompletion -> Widget n
-viewTestOutput TestViewFull c =
+viewTestOutput :: TestFilter -> TestRunCompletion -> Widget n
+viewTestOutput TestFilterAll c =
     padLeft (Pad 2) $ vBox $ txt <$> stripGhciNoise (T.lines c.output)
-viewTestOutput TestViewFailOnly c
+viewTestOutput TestFilterFailedOnly c
     | not (any isCaseFailed c.testCases) && c.passed = emptyWidget
     | null c.testCases =
         padLeft (Pad 2)

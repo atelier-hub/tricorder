@@ -2,13 +2,12 @@ module Tricorder.UI.State
     ( Viewports (..)
     , State (..)
     , Processed (..)
+    , TestFilter (..)
     , init
-    , ActiveView (..)
-    , TestView (..)
-    , currentView
-    , pushView
-    , popView
-    , cycleTestView
+    , currentRoute
+    , viewToViewport
+    , cycleTestFilter
+    , navigate
     ) where
 
 import Atelier.Effects.Clock (Clock, TimeZone)
@@ -17,6 +16,9 @@ import Prelude hiding (init)
 import Atelier.Effects.Clock qualified as Clock
 
 import Tricorder.BuildState (BuildState (..))
+import Tricorder.UI.Route (Route)
+
+import Tricorder.UI.Route qualified as Route
 
 
 data Viewports
@@ -29,8 +31,17 @@ data Viewports
 data State = State
     { buildState :: Processed Text BuildState
     , timeZone :: TimeZone
-    , viewStack :: [ActiveView]
+    , route :: Route
+    , testFilter :: TestFilter
     }
+
+
+data TestFilter = TestFilterAll | TestFilterFailedOnly
+    deriving stock (Bounded, Enum, Eq)
+
+
+cycleTestFilter :: TestFilter -> TestFilter
+cycleTestFilter x = if x == maxBound then minBound else succ x
 
 
 data Processed e a
@@ -39,31 +50,19 @@ data Processed e a
     | Success a
 
 
-data ActiveView
-    = ViewHelp
-    | ViewDaemonInfo
-    | ViewTestResults TestView
-    deriving stock (Eq)
+currentRoute :: State -> Route
+currentRoute = (.route)
 
 
-data TestView = TestViewFailOnly | TestViewFull
-    deriving stock (Bounded, Enum, Eq)
+viewToViewport :: Route -> Maybe Viewports
+viewToViewport = \case
+    Route.Tests -> Just TestViewport
+    Route.Main -> Just DiagnosticViewport
+    _ -> Nothing
 
 
-currentView :: State -> Maybe ActiveView
-currentView = viaNonEmpty head . (.viewStack)
-
-
-pushView :: ActiveView -> State -> State
-pushView v s = s {viewStack = v : s.viewStack}
-
-
-popView :: State -> State
-popView s = s {viewStack = drop 1 s.viewStack}
-
-
-cycleTestView :: TestView -> TestView
-cycleTestView v = if v == maxBound then minBound else succ v
+navigate :: Route -> State -> State
+navigate route s = s {route}
 
 
 init :: (Clock :> es) => Eff es State
@@ -73,5 +72,6 @@ init = do
         State
             { buildState = Waiting
             , timeZone = tz
-            , viewStack = []
+            , route = Route.Main
+            , testFilter = minBound
             }
