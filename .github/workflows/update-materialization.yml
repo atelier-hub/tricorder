@@ -86,6 +86,7 @@ jobs:
           git diff --name-only
           if ! git diff --quiet; then
             echo "Materialization changed" >&2
+            mv 'nix/materialized/${{ matrix.system }}/${{ matrix.ghc-version }}' 'rematerialized/${{ matrix.system }}/${{ matrix.ghc-version }}'
             echo "upload=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -93,7 +94,7 @@ jobs:
         if: ${{ steps.check-for-change.outputs.upload == 'true' }}
         with:
           name: materialization-${{ matrix.system }}-${{ matrix.ghc-version }}
-          path: nix/materialized
+          path: rematerialized
           include-hidden-files: true
 
   commit:
