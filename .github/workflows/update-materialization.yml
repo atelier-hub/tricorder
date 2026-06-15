@@ -93,7 +93,11 @@ jobs:
         if: ${{ steps.check-for-change.outputs.upload == 'true' }}
         with:
           name: materialization-${{ matrix.system }}-${{ matrix.ghc-version }}
-          path: nix/materialized
+          # Include the README.md to make `upload-artifact` base the artifact
+          # in the root of the repo.
+          path: |
+            nix/materialized/${{ matrix.system }}/${{ matrix.ghc-version }}
+            README.md
           include-hidden-files: true
 
   commit:
