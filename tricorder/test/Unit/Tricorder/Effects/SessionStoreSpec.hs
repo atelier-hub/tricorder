@@ -24,7 +24,7 @@ import Tricorder.Effects.SessionStore
     , runSessionStoreConst
     , withSession
     )
-import Tricorder.Session (Session (..))
+import Tricorder.Session (Command (..), Session (..))
 
 import Tricorder.Effects.SessionStore qualified as SessionStore
 
@@ -151,11 +151,11 @@ runSessionStoreMutable ref = interpret_ \case
 --------------------------------------------------------------------------------
 
 session1 :: Session
-session1 = def {command = "session-1"}
+session1 = def {command = Command "session-1"}
 
 
 session2 :: Session
-session2 = def {command = "session-2"}
+session2 = def {command = Command "session-2"}
 
 
 epoch :: UTCTime

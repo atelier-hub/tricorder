@@ -1,6 +1,12 @@
 module Tricorder.Session
     ( Session (..)
     , Config (..)
+    , Command (..)
+    , Targets (..)
+    , TestTargets (..)
+    , WatchDirs (..)
+    , ReplBuildDir (..)
+    , TestTimeout (..)
     , loadSession
     , resolveCommand
     , resolveTargets
@@ -16,7 +22,7 @@ import Atelier.Effects.FileSystem (FileSystem, doesFileExist, listDirectory, rea
 import Atelier.Effects.Log (Log)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 import Atelier.Types.WithDefaults (WithDefaults (..))
-import Data.Aeson (FromJSON)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
 import Data.List (nub)
 import Distribution.Fields (Field (..), FieldLine (..), Name (..), readFields)
@@ -50,24 +56,24 @@ import Tricorder.Runtime (ProjectRoot (..))
 
 
 data Session = Session
-    { command :: Text
-    , targets :: [Text]
-    , testTargets :: [Text]
-    , watchDirs :: [FilePath]
-    , replBuildDir :: FilePath
-    , testTimeout :: Int
+    { command :: Command
+    , targets :: Targets
+    , testTargets :: TestTargets
+    , watchDirs :: WatchDirs
+    , replBuildDir :: ReplBuildDir
+    , testTimeout :: TestTimeout
     }
 
 
 instance Default Session where
     def =
         Session
-            { command = ""
-            , targets = []
-            , testTargets = []
-            , watchDirs = []
-            , replBuildDir = "/tmp"
-            , testTimeout = 10
+            { command = Command ""
+            , targets = Targets []
+            , testTargets = TestTargets []
+            , watchDirs = WatchDirs []
+            , replBuildDir = ReplBuildDir "/tmp"
+            , testTimeout = TestTimeout 10
             }
 
 
@@ -95,15 +101,45 @@ instance Default Config where
             }
 
 
+newtype Command = Command {getCommand :: Text}
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON, ToJSON) via Text
+
+
+newtype Targets = Targets {getTargets :: [Text]}
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON, ToJSON) via [Text]
+
+
+newtype TestTargets = TestTargets {getTestTargets :: [Text]}
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON, ToJSON) via [Text]
+
+
+newtype WatchDirs = WatchDirs {getWatchDirs :: [FilePath]}
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON, ToJSON) via [FilePath]
+
+
+newtype ReplBuildDir = ReplBuildDir {getReplBuildDir :: FilePath}
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON, ToJSON) via FilePath
+
+
+newtype TestTimeout = TestTimeout {getTestTimeout :: Int}
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON, ToJSON) via Int
+
+
 -- | Resolve the GHCi command, using config if set or autodetecting otherwise.
 --
 -- The @testTargets@ are the discovered @test:@ components; they are appended to
 -- the auto-detected @all@ target (see 'detectCommand'). They are ignored when
 -- the user has pinned an explicit @command@ or explicit @targets@ in config.
-resolveCommand :: (FileSystem :> es) => ProjectRoot -> Config -> [Text] -> [Text] -> Eff es Text
+resolveCommand :: (FileSystem :> es) => ProjectRoot -> Config -> Targets -> TestTargets -> Eff es Command
 resolveCommand projectRoot cfg targets testTargets =
     case cfg.command of
-        Just cmd -> pure cmd
+        Just cmd -> pure $ Command cmd
         Nothing -> detectCommand targets testTargets cfg.replBuildDir projectRoot
 
 
@@ -120,8 +156,8 @@ resolveCommand projectRoot cfg targets testTargets =
 -- "not loaded" and the session dies — which a naive discovery-order enumeration
 -- triggers but @all@ avoids. Appending already-included test targets is a no-op
 -- (cabal deduplicates).
-detectCommand :: (FileSystem :> es) => [Text] -> [Text] -> FilePath -> ProjectRoot -> Eff es Text
-detectCommand targets testTargets replBuildDir (ProjectRoot projectRoot) = do
+detectCommand :: (FileSystem :> es) => Targets -> TestTargets -> FilePath -> ProjectRoot -> Eff es Command
+detectCommand (Targets targets) (TestTargets testTargets) replBuildDir (ProjectRoot projectRoot) = do
     hasCabalProject <- doesFileExist (projectRoot </> "cabal.project")
     cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
     hasStack <- doesFileExist (projectRoot </> "stack.yaml")
@@ -132,9 +168,9 @@ detectCommand targets testTargets replBuildDir (ProjectRoot projectRoot) = do
     pure
         if
             | hasCabalProject || not (null cabalFiles) ->
-                "cabal repl --enable-multi-repl " <> buildDirFlag <> targetStr
-            | hasStack -> "stack ghci " <> targetStr
-            | otherwise -> "cabal repl " <> buildDirFlag <> targetStr
+                Command $ "cabal repl --enable-multi-repl " <> buildDirFlag <> targetStr
+            | hasStack -> Command $ "stack ghci " <> targetStr
+            | otherwise -> Command $ "cabal repl " <> buildDirFlag <> targetStr
 
 
 -- | Resolve the directories to watch.
@@ -143,18 +179,18 @@ detectCommand targets testTargets replBuildDir (ProjectRoot projectRoot) = do
 -- 1. @watch_dirs@ from config, if non-empty (used as-is relative to project root)
 -- 2. @hs-source-dirs@ inferred from cabal targets, if targets are set
 -- 3. Falls back to @["."]@ (project root) if neither is available
-resolveWatchDirs :: (FileSystem :> es) => ProjectRoot -> [FilePath] -> Config -> [Text] -> Eff es [FilePath]
+resolveWatchDirs :: (FileSystem :> es) => ProjectRoot -> [FilePath] -> Config -> Targets -> Eff es WatchDirs
 resolveWatchDirs projectRoot cabalFiles cfg targets =
     case cfg.watchDirs of
-        dirs@(_ : _) -> pure $ map (coerce projectRoot </>) dirs
+        dirs@(_ : _) -> pure $ WatchDirs $ map (coerce projectRoot </>) dirs
         [] -> resolveWatchDirsFromTargets cabalFiles targets
 
 
-resolveWatchDirsFromTargets :: (FileSystem :> es) => [FilePath] -> [Text] -> Eff es [FilePath]
-resolveWatchDirsFromTargets _ [] = pure ["."]
-resolveWatchDirsFromTargets cabalFiles targets = do
+resolveWatchDirsFromTargets :: (FileSystem :> es) => [FilePath] -> Targets -> Eff es WatchDirs
+resolveWatchDirsFromTargets _ (Targets []) = pure $ WatchDirs ["."]
+resolveWatchDirsFromTargets cabalFiles (Targets targets) = do
     dirs <- nub . concat <$> traverse watchDirsForCabal cabalFiles
-    pure $ if null dirs then ["."] else dirs
+    pure $ WatchDirs $ if null dirs then ["."] else dirs
   where
     -- @hs-source-dirs@ are relative to the package's own directory, so scope
     -- them to the directory holding that package's @.cabal@. In a
@@ -197,10 +233,10 @@ sourceDirsForTarget gpd target =
 -- | Infer the effective targets to build and watch.
 -- Returns the configured targets as-is, or auto-detects all components across
 -- every discovered package when no targets are configured.
-resolveTargets :: (FileSystem :> es) => [FilePath] -> [Text] -> Eff es [Text]
-resolveTargets _ targets@(_ : _) = pure targets
+resolveTargets :: (FileSystem :> es) => [FilePath] -> [Text] -> Eff es Targets
+resolveTargets _ targets@(_ : _) = pure $ Targets targets
 resolveTargets cabalFiles [] =
-    concat <$> traverse targetsFromCabal cabalFiles
+    Targets . concat <$> traverse targetsFromCabal cabalFiles
   where
     targetsFromCabal path = do
         contents <- readFileBs path
@@ -283,10 +319,10 @@ allComponentTargets gpd =
 --
 -- When 'testTargets' is set in config, those suites are used directly.
 -- Otherwise, all @test:@ components in 'targets' are inferred.
-resolveTestTargets :: Config -> [Text] -> [Text]
+resolveTestTargets :: Config -> Targets -> TestTargets
 resolveTestTargets cfg targets = case cfg.testTargets of
-    Just explicit -> explicit
-    Nothing -> filter ("test:" `T.isPrefixOf`) targets
+    Just explicit -> TestTargets explicit
+    Nothing -> TestTargets $ filter ("test:" `T.isPrefixOf`) targets.getTargets
 
 
 loadSession
@@ -311,6 +347,6 @@ loadSession = do
             , command
             , watchDirs
             , testTargets
-            , replBuildDir = cfgFile.replBuildDir
-            , testTimeout = cfgFile.testTimeout
+            , replBuildDir = ReplBuildDir cfgFile.replBuildDir
+            , testTimeout = TestTimeout cfgFile.testTimeout
             }

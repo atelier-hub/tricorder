@@ -68,6 +68,7 @@ import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModu
 import Tricorder.Effects.GhciSession.GhciParser (collectResult, extractTitle, resolveKnownTargets)
 import Tricorder.Effects.TestRunner (TestRunner (..), runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
+import Tricorder.Session (Command (..), Targets (..), TestTargets (..), WatchDirs (..))
 
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
@@ -447,27 +448,27 @@ testCompileLoadResultsIntoBuildResults = do
                 runPureEff
                     . runReader (ProjectRoot "/")
                     . runState (emptyBuilderState {diagnosticMap = acc})
-                    $ compileLoadResultsIntoBuildResults (def {Builder.watchDirs = ["/src"]}) nlr
+                    $ compileLoadResultsIntoBuildResults (def {Builder.watchDirs = WatchDirs ["/src"]}) nlr
         in  (builderState.diagnosticMap, buildResult)
 
 
 testRequestTestRunsForNewBuildResults :: Spec
 testRequestTestRunsForNewBuildResults = do
     describe "when there are no test targets" $ it "should skip testing" do
-        phases <- runTest [] [] expected
+        phases <- runTest (TestTargets []) [] expected
         length phases `shouldBe` 1
         phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Done expected]
 
     describe "when there are errors" $ it "should skip testing" do
         let expected' = expected {BuildState.diagnostics = [errMsg]}
-        phases <- runTest ["test:foo"] [] expected'
+        phases <- runTest (TestTargets ["test:foo"]) [] expected'
         length phases `shouldBe` 1
         phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Done expected']
 
     it "should emit EnteringNewPhase events for each test target" do
         phases <-
             runTest
-                ["test:foo", "test:bar"]
+                (TestTargets ["test:foo", "test:bar"])
                 [ Right $ mkTestRun "test:foo"
                 , Right $ mkTestRun "test:bar"
                 ]
@@ -510,10 +511,10 @@ testRequestTestRunsForNewBuildResults = do
                 . runTestRunnerAbortAfterFirst (mkTestRun "test:foo")
                 $ requestTestRunsForNewBuildResults
                     BuildConfig
-                        { command = ""
-                        , targets = []
-                        , testTargets = ["test:foo", "test:bar"]
-                        , watchDirs = []
+                        { command = Command ""
+                        , targets = Targets []
+                        , testTargets = TestTargets ["test:foo", "test:bar"]
+                        , watchDirs = WatchDirs []
                         }
                     expected
         -- The critical assertion: no Done phase, because the run was
@@ -535,7 +536,12 @@ testRequestTestRunsForNewBuildResults = do
             . runBuildStoreCapture
             . runTestRunnerScripted script
             $ requestTestRunsForNewBuildResults
-                BuildConfig {command = "", targets = [], testTargets, watchDirs = []}
+                BuildConfig
+                    { command = Command ""
+                    , targets = Targets []
+                    , testTargets
+                    , watchDirs = WatchDirs []
+                    }
                 partial
 
     mkPhase = EnteringNewPhase (BuildId 1)
@@ -793,7 +799,7 @@ testMergeDiagnostics = do
 testFilterToWatchDirs :: Spec
 testFilterToWatchDirs = do
     let root = "/project"
-        watchDirs = ["/project/src"]
+        watchDirs = WatchDirs ["/project/src"]
 
     it "keeps diagnostics under a watched directory" do
         -- ./src/Foo.hs is what toRelative produces for an absolute project file
@@ -815,16 +821,16 @@ testFilterToWatchDirs = do
         -- A mangled path joined onto projectRoot would incorrectly start with
         -- projectRoot+"/", so this case requires an explicit guard.
         let d = errMsg {file = "In file included from src/Foo.hs"}
-        filterToWatchDirs root ["."] [d] `shouldBe` []
+        filterToWatchDirs root (WatchDirs ["."]) [d] `shouldBe` []
 
     it "passes everything through when watchDirs is empty" do
         let d = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
-        filterToWatchDirs root [] [d] `shouldBe` [d]
+        filterToWatchDirs root (WatchDirs []) [d] `shouldBe` [d]
 
     it "works with the '.' fallback watch dir (whole project root)" do
         let d = errMsg {file = "./src/Foo.hs"}
             nixD = errMsg {file = "/nix/store/abc123/ghcautoconf.h"}
-        filterToWatchDirs root ["."] [d, nixD] `shouldBe` [d]
+        filterToWatchDirs root (WatchDirs ["."]) [d, nixD] `shouldBe` [d]
 
     describe "when diagnostic has no path it" $ it "keeps location-less <no location info> errors" do
         -- A home-unit GHC plugin that can't load under --enable-multi-repl

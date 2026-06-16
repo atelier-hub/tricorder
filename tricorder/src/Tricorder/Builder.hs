@@ -66,7 +66,7 @@ import Tricorder.Effects.GhciSession.GhciProcess (GhciProcessError (..))
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Session (..))
+import Tricorder.Session (Command (..), Session (..), Targets, TestTargets (..), WatchDirs)
 
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.GhciSession qualified as GhciSession
@@ -103,10 +103,10 @@ component =
 
 -- | A subset of 'Session' with just the properties that 'Builder' cares about.
 data BuildConfig = BuildConfig
-    { command :: Text
-    , targets :: [Text]
-    , testTargets :: [Text]
-    , watchDirs :: [FilePath]
+    { command :: Command
+    , targets :: Targets
+    , testTargets :: TestTargets
+    , watchDirs :: WatchDirs
     }
     deriving stock (Eq)
 
@@ -187,7 +187,7 @@ loadBuildConfig = do
                 , testTargets = session.testTargets
                 , watchDirs = session.watchDirs
                 }
-    Log.info $ "Builder.component: resolved command = " <> config.command
+    Log.info $ "Builder.component: resolved command = " <> coerce config.command
     pure config
 
 
@@ -278,7 +278,7 @@ runGhciSessions hooks config = forever do
     hooks.onStart
     root@(ProjectRoot rootPath) <- ask
     BuildId n <- get
-    Log.info $ "Starting GHCi session #" <> show n <> ": " <> config.command
+    Log.info $ "Starting GHCi session #" <> show n <> ": " <> coerce config.command
 
     startTime <- Clock.currentTime
     result <- trySync $ GhciSession.withGhci config.command root \initialLoad controls -> do
@@ -546,17 +546,17 @@ runTestsIfClean
     -> BuildResult
     -> Eff es (Maybe [TestRun])
 runTestsIfClean (BuildConfig {testTargets}) bid partialResult
-    | null testTargets || any (\d -> d.severity == SError) partialResult.diagnostics = pure (Just [])
+    | null testTargets.getTestTargets || any (\d -> d.severity == SError) partialResult.diagnostics = pure (Just [])
     | otherwise = do
         TestRunner.resetAbort
         setNewPhase
             $ EnteringNewPhase bid
-            $ Testing partialResult {testRuns = map (`TestRunning` Nothing) testTargets}
+            $ Testing partialResult {testRuns = map (`TestRunning` Nothing) testTargets.getTestTargets}
 
-        Log.info $ "Running " <> show (length testTargets) <> " test suite(s)"
+        Log.info $ "Running " <> show (length testTargets.getTestTargets) <> " test suite(s)"
 
-        let initial = (\t -> (t, TestRunning t Nothing)) <$> testTargets
-        runLoop initial testTargets
+        let initial = (\t -> (t, TestRunning t Nothing)) <$> testTargets.getTestTargets
+        runLoop initial testTargets.getTestTargets
   where
     runLoop acc [] = pure (Just (snd <$> acc))
     runLoop acc (target : rest) = do

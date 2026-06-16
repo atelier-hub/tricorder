@@ -38,7 +38,7 @@ import System.FilePath (makeRelative)
 
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (LogPath (..), ProjectRoot (..), SocketPath (..))
-import Tricorder.Session (Session (..))
+import Tricorder.Session (Session (..), Targets (..), WatchDirs (..))
 
 import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.Observability qualified as Observability
@@ -77,8 +77,8 @@ loadDaemonInfo = do
     LogPath logFile <- ask
     pure
         $ DaemonInfo
-            { targets = session.targets
-            , watchDirs = map (makeRelative projectRoot) session.watchDirs
+            { targets = session.targets.getTargets
+            , watchDirs = map (makeRelative projectRoot) session.watchDirs.getWatchDirs
             , sockPath
             , logFile
             , metricsPort = if obsCfg.metrics.enabled then Just obsCfg.metrics.port else Nothing

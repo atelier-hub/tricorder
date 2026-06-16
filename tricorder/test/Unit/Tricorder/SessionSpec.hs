@@ -13,16 +13,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session
-    ( Config (..)
-    , allComponentTargets
-    , discoverCabalFiles
-    , resolveCommand
-    , resolveTargets
-    , resolveTestTargets
-    , resolveWatchDirs
-    , sourceDirsForTarget
-    )
+import Tricorder.Session (Command (..), Config (..), Targets (..), TestTargets (..), WatchDirs (..), allComponentTargets, discoverCabalFiles, resolveCommand, resolveTargets, resolveTestTargets, resolveWatchDirs, sourceDirsForTarget)
 
 
 spec_Session :: Spec
@@ -116,7 +107,7 @@ testResolveTargets = do
         it "returns configured targets as-is without reading any cabal file" do
             -- The cabal file is absent from the mock FS, so any attempt to read
             -- it would error; passing the test proves the early return.
-            let actual =
+            let Targets actual =
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
@@ -125,7 +116,7 @@ testResolveTargets = do
 
     describe "when no targets are configured" do
         it "auto-detects all components from the cabal file" do
-            let actual =
+            let Targets actual =
                     runPureEff
                         . evalState (Map.singleton "/myapp.cabal" cabalFixture)
                         . runFileSystemState
@@ -134,7 +125,7 @@ testResolveTargets = do
                 `shouldBe` ["lib:myapp", "lib:myapp-utils", "exe:myapp-exe", "test:myapp-test"]
 
         it "surfaces test-suite components so they can be run after a build" do
-            let actual =
+            let Targets actual =
                     runPureEff
                         . evalState (Map.singleton "/myapp.cabal" cabalFixture)
                         . runFileSystemState
@@ -142,7 +133,7 @@ testResolveTargets = do
             actual `shouldContain` ["test:myapp-test"]
 
         it "returns no targets when there are no cabal files" do
-            let actual =
+            let Targets actual =
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
@@ -150,7 +141,7 @@ testResolveTargets = do
             actual `shouldBe` []
 
         it "aggregates components across every package (regression: was 0)" do
-            let actual =
+            let Targets actual =
                     runPureEff
                         . evalState multiPackageFs
                         . runFileSystemState
@@ -165,41 +156,41 @@ testResolveWatchDirs :: Spec
 testResolveWatchDirs = do
     describe "when watch_dirs is set in config" do
         it "uses config dirs relative to project root" do
-            let actual =
+            let WatchDirs actual =
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveWatchDirs pr [] def {watchDirs = ["src", "test"]} []
+                        $ resolveWatchDirs pr [] def {watchDirs = ["src", "test"]} (Targets [])
             actual `shouldBe` ["/src", "/test"]
 
     describe "when watch_dirs is not set" do
         it "falls back to [\".\"] when targets list is empty" do
-            let actual =
+            let WatchDirs actual =
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveWatchDirs pr [] def []
+                        $ resolveWatchDirs pr [] def (Targets [])
             actual `shouldBe` ["."]
 
         it "infers source dirs from resolved targets" do
-            let actual =
+            let WatchDirs actual =
                     runPureEff
                         . evalState (Map.singleton "/myapp.cabal" cabalFixture)
                         . runFileSystemState
-                        $ resolveWatchDirs pr ["/myapp.cabal"] def ["lib:myapp", "test:myapp-test"]
+                        $ resolveWatchDirs pr ["/myapp.cabal"] def (Targets ["lib:myapp", "test:myapp-test"])
             actual `shouldBe` ["/src", "/test"]
 
         it "falls back to [\".\"] when there are no cabal files" do
-            let actual =
+            let WatchDirs actual =
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveWatchDirs pr [] def ["lib:myapp"]
+                        $ resolveWatchDirs pr [] def (Targets ["lib:myapp"])
             actual `shouldBe` ["."]
 
     describe "when the project is a multi-package cabal.project" do
         it "infers per-package source dirs, scoped to each package's directory" do
-            let actual =
+            let WatchDirs actual =
                     runPureEff
                         . evalState multiPackageFs
                         . runFileSystemState
@@ -207,7 +198,7 @@ testResolveWatchDirs = do
                             pr
                             ["/pkg-a/pkg-a.cabal", "/pkg-b/pkg-b.cabal"]
                             def
-                            ["lib:pkg-a", "test:pkg-a-test", "lib:pkg-b", "test:pkg-b-test"]
+                            (Targets ["lib:pkg-a", "test:pkg-a-test", "lib:pkg-b", "test:pkg-b-test"])
             actual
                 `shouldBe` ["/pkg-a/src", "/pkg-a/test", "/pkg-b/src", "/pkg-b/test"]
   where
@@ -218,96 +209,96 @@ testResolveTestTargets :: Spec
 testResolveTestTargets = do
     it "infers test: components from targets when testTargets is absent" do
         let cfg = def :: Config
-        resolveTestTargets cfg ["lib:mylib", "test:mylib-test"] `shouldBe` ["test:mylib-test"]
+        resolveTestTargets cfg (Targets ["lib:mylib", "test:mylib-test"]) `shouldBe` TestTargets ["test:mylib-test"]
 
     it "returns empty list when no test: components in targets" do
         let cfg = def :: Config
-        resolveTestTargets cfg ["lib:mylib", "exe:myapp"] `shouldBe` []
+        resolveTestTargets cfg (Targets ["lib:mylib", "exe:myapp"]) `shouldBe` TestTargets []
 
     it "uses explicit testTargets list when set" do
         let cfg = def {testTargets = Just ["test:b-test"]} :: Config
-        resolveTestTargets cfg ["lib:a", "test:a-test", "test:b-test"] `shouldBe` ["test:b-test"]
+        resolveTestTargets cfg (Targets ["lib:a", "test:a-test", "test:b-test"]) `shouldBe` TestTargets ["test:b-test"]
 
     it "returns empty list when testTargets is explicitly empty" do
         let cfg = def {testTargets = Just []} :: Config
-        resolveTestTargets cfg ["lib:a", "test:a-test"] `shouldBe` []
+        resolveTestTargets cfg (Targets ["lib:a", "test:a-test"]) `shouldBe` TestTargets []
 
     it "infers multiple test: components" do
         let cfg = def :: Config
-        resolveTestTargets cfg ["lib:a", "test:a-test", "test:b-test"] `shouldBe` ["test:a-test", "test:b-test"]
+        resolveTestTargets cfg (Targets ["lib:a", "test:a-test", "test:b-test"]) `shouldBe` TestTargets ["test:a-test", "test:b-test"]
 
 
 testResolveCommand :: Spec
 testResolveCommand = do
     describe "when config has a command" do
         it "should use specified command" do
-            let actual =
+            let Command actual =
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveCommand pr def {command = Just "foo"} [] testTargets
+                        $ resolveCommand pr def {command = Just "foo"} (Targets []) testTargets
             actual `shouldBe` "foo"
 
     describe "when config has explicit targets" do
         it "should spell them out verbatim, ignoring discovered test targets" do
-            let actual =
+            let Command actual =
                     runPureEff
                         . evalState (Map.singleton "/cabal.project" "")
                         . runFileSystemState
-                        $ resolveCommand pr cfg ["lib:foo"] testTargets
+                        $ resolveCommand pr cfg (Targets ["lib:foo"]) testTargets
             actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild lib:foo"
 
     describe "when config does not have a command or targets" do
         describe "and there is a cabal.project file" do
             it "should use cabal 'all' plus the discovered test targets" do
-                let actual =
+                let Command actual =
                         runPureEff
                             . evalState (Map.singleton "/cabal.project" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg [] testTargets
+                            $ resolveCommand pr cfg (Targets []) testTargets
                 actual
                     `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all test:foo"
 
         describe "and there is at least one *.cabal file" do
             it "should use cabal 'all' plus the discovered test targets" do
-                let actual =
+                let Command actual =
                         runPureEff
                             . evalState (Map.singleton "/foo.cabal" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg [] testTargets
+                            $ resolveCommand pr cfg (Targets []) testTargets
                 actual
                     `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all test:foo"
 
         describe "and there is a stack.yaml file" do
             it "should use stack ghci with 'all' plus test targets" do
-                let actual =
+                let Command actual =
                         runPureEff
                             . evalState (Map.singleton "/stack.yaml" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg [] testTargets
+                            $ resolveCommand pr cfg (Targets []) testTargets
                 actual `shouldBe` "stack ghci all test:foo"
 
         describe "but there are no project files" do
             it "should use default cabal repl with 'all' plus test targets" do
-                let actual =
+                let Command actual =
                         runPureEff
                             . evalState mempty
                             . runFileSystemState
-                            $ resolveCommand pr cfg [] testTargets
+                            $ resolveCommand pr cfg (Targets []) testTargets
                 actual `shouldBe` "cabal repl --builddir /replbuild all test:foo"
 
         describe "and no test targets are discovered" do
             it "should fall back to plain 'all'" do
-                let actual =
+                let Command actual =
                         runPureEff
                             . evalState (Map.singleton "/cabal.project" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg [] []
+                            $ resolveCommand pr cfg (Targets []) (TestTargets [])
                 actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all"
   where
     pr = ProjectRoot "/"
     cfg = def {replBuildDir = "/replbuild"}
-    testTargets = ["test:foo"]
+    testTargets = TestTargets ["test:foo"]
 
 
 --------------------------------------------------------------------------------
