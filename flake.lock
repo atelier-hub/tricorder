@@ -16,6 +16,22 @@
         "type": "github"
       }
     },
+    "atelier": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1781620646,
+        "narHash": "sha256-O8+Ho/NWNO7DBRKo7bazZChURE0TklZx8nWtcFfq+PI=",
+        "owner": "atelier-hub",
+        "repo": "atelier",
+        "rev": "43288ba070dbed12a35b160d3753674ff5002997",
+        "type": "github"
+      },
+      "original": {
+        "owner": "atelier-hub",
+        "repo": "atelier",
+        "type": "github"
+      }
+    },
     "cabal-34": {
       "flake": false,
       "locked": {
@@ -682,6 +698,7 @@
     },
     "root": {
       "inputs": {
+        "atelier": "atelier",
         "flake-utils": "flake-utils",
         "git-hooks": "git-hooks",
         "hackage": "hackage",
@@ -690,8 +707,7 @@
           "haskell-nix",
           "nixpkgs"
         ],
-        "nixpkgs-nixos-unstable": "nixpkgs-nixos-unstable",
-        "tmp-postgres": "tmp-postgres"
+        "nixpkgs-nixos-unstable": "nixpkgs-nixos-unstable"
       }
     },
     "stackage": {
@@ -722,22 +738,6 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
-        "type": "github"
-      }
-    },
-    "tmp-postgres": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1691516008,
-        "narHash": "sha256-dE1OQN7I4Lxy6RBdLCvm75Z9D/Hu+9G4ejV2pEtvL1A=",
-        "owner": "jfischoff",
-        "repo": "tmp-postgres",
-        "rev": "7f2467a6d6d5f6db7eed59919a6773fe006cf22b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "jfischoff",
-        "repo": "tmp-postgres",
         "type": "github"
       }
     }

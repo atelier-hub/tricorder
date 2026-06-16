@@ -28,13 +28,18 @@ pkgs.haskell-nix.cabalProject' {
   materialized = ./materialized/${pkgs.stdenv.hostPlatform.system}/${compiler-nix-name};
   checkMaterialization = true;
 
-  # Add tmp-postgres from flake input
+  # Resolve the atelier source-repository-package against the flake input, so the
+  # revision tracks flake.lock and no manual --sha256 is required.
+  inputMap = {
+    "https://github.com/atelier-hub/atelier" = inputs.atelier;
+  };
+
   cabalProjectLocal = ''
     source-repository-package
       type: git
-      location: https://github.com/jfischoff/tmp-postgres
-      tag: ${inputs.tmp-postgres.rev}
-      --sha256: 0l1gdx5s8ximgawd3yzfy47pv5pgwqmjqp8hx5rbrq68vr04wkbl
+      location: https://github.com/atelier-hub/atelier
+      tag: ${inputs.atelier.rev}
+      subdir: atelier-prelude atelier-core
   '';
 
   # Package-specific configuration
@@ -44,17 +49,7 @@ pkgs.haskell-nix.cabalProject' {
       doHaddock = true;
 
       packages = {
-        # Disable tests for tmp-postgres
-        tmp-postgres.doCheck = false;
-
         # Treat warnings as errors in Nix builds (CI), but not in local dev.
-        # Applied to every first-party package.
-        atelier-prelude.ghcOptions = [ "-Werror" ];
-        atelier-core.ghcOptions = [ "-Werror" ];
-        atelier-db.ghcOptions = [ "-Werror" ];
-        atelier-testing.ghcOptions = [ "-Werror" ];
-
-        # Configure tricorder package
         tricorder = {
           ghcOptions = [ "-Werror" ];
           # Embed the flake's git revision so the released binary carries the

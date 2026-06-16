@@ -36,8 +36,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    tmp-postgres = {
-      url = "github:jfischoff/tmp-postgres";
+    atelier = {
+      url = "github:atelier-hub/atelier";
       flake = false;
     };
   };

@@ -169,7 +169,7 @@ in
       program = "${pkgs.writeShellScript "hlint-fix-app" ''
         echo "Running hlint --refactor on all Haskell files..."
         export PATH="${pkgs.haskell-nix.tool compiler-nix-name "apply-refact" "latest"}/bin:$PATH"
-        find atelier-prelude atelier-core atelier-db atelier-testing tricorder -name "*.hs" -exec ${
+        find tricorder -name "*.hs" -exec ${
           pkgs.haskell-nix.tool compiler-nix-name "hlint" "latest"
         }/bin/hlint --refactor --refactor-options="-i" {} \;
         echo "Hlint refactoring complete!"
