@@ -104,11 +104,11 @@ instance Default Config where
 -- The @testTargets@ are the discovered @test:@ components; they are appended to
 -- the auto-detected @all@ target (see 'detectCommand'). They are ignored when
 -- the user has pinned an explicit @command@ or explicit @targets@ in config.
-resolveCommand :: (FileSystem :> es) => ProjectRoot -> Config -> [Text] -> Eff es Text
-resolveCommand projectRoot cfg testTargets =
+resolveCommand :: (FileSystem :> es) => ProjectRoot -> Config -> [Text] -> [Text] -> Eff es Text
+resolveCommand projectRoot cfg targets testTargets =
     case cfg.command of
         Just cmd -> pure cmd
-        Nothing -> detectCommand cfg.targets testTargets cfg.replBuildDir projectRoot
+        Nothing -> detectCommand targets testTargets cfg.replBuildDir projectRoot
 
 
 -- | Build the autodetected GHCi command.
@@ -307,7 +307,7 @@ loadSession = do
     cabalFiles <- discoverCabalFiles projectRoot
     effectiveTargets <- resolveTargets cabalFiles cfgFile.targets
     let testTargets = resolveTestTargets cfgFile effectiveTargets
-    command <- resolveCommand projectRoot cfgFile testTargets
+    command <- resolveCommand projectRoot cfgFile effectiveTargets testTargets
     watchDirs <- resolveWatchDirs projectRoot cabalFiles cfgFile effectiveTargets
     pure
         $ Session

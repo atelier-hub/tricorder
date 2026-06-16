@@ -245,7 +245,7 @@ testResolveCommand = do
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveCommand pr def {command = Just "foo"} testTargets
+                        $ resolveCommand pr def {command = Just "foo"} [] testTargets
             actual `shouldBe` "foo"
 
     describe "when config has explicit targets" do
@@ -254,7 +254,7 @@ testResolveCommand = do
                     runPureEff
                         . evalState (Map.singleton "/cabal.project" "")
                         . runFileSystemState
-                        $ resolveCommand pr cfg {targets = ["lib:foo"]} testTargets
+                        $ resolveCommand pr cfg ["lib:foo"] testTargets
             actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild lib:foo"
 
     describe "when config does not have a command or targets" do
@@ -264,7 +264,7 @@ testResolveCommand = do
                         runPureEff
                             . evalState (Map.singleton "/cabal.project" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg testTargets
+                            $ resolveCommand pr cfg [] testTargets
                 actual
                     `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all test:foo"
 
@@ -274,7 +274,7 @@ testResolveCommand = do
                         runPureEff
                             . evalState (Map.singleton "/foo.cabal" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg testTargets
+                            $ resolveCommand pr cfg [] testTargets
                 actual
                     `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all test:foo"
 
@@ -284,7 +284,7 @@ testResolveCommand = do
                         runPureEff
                             . evalState (Map.singleton "/stack.yaml" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg testTargets
+                            $ resolveCommand pr cfg [] testTargets
                 actual `shouldBe` "stack ghci all test:foo"
 
         describe "but there are no project files" do
@@ -293,7 +293,7 @@ testResolveCommand = do
                         runPureEff
                             . evalState mempty
                             . runFileSystemState
-                            $ resolveCommand pr cfg testTargets
+                            $ resolveCommand pr cfg [] testTargets
                 actual `shouldBe` "cabal repl --builddir /replbuild all test:foo"
 
         describe "and no test targets are discovered" do
@@ -302,7 +302,7 @@ testResolveCommand = do
                         runPureEff
                             . evalState (Map.singleton "/cabal.project" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg []
+                            $ resolveCommand pr cfg [] []
                 actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all"
   where
     pr = ProjectRoot "/"
