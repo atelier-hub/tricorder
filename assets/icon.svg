@@ -1,48 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
 
-  <!-- Rounded icon background -->
+  <!-- Background -->
   <rect width="256" height="256" rx="40" ry="40" fill="#1e2840"/>
 
-  <!-- ==== TRICORDER BODY ==== -->
+  <!-- Body -->
   <rect x="56" y="40" width="144" height="178" rx="10" ry="10" fill="#1c1812"/>
 
-  <!-- ==== UPPER SENSOR PANEL ==== -->
-  <!-- Gold-trimmed border -->
-  <rect x="64" y="48" width="128" height="88" rx="6" fill="#0e0c08" stroke="#c09a18" stroke-width="3"/>
+  <!-- Circular scanner (gold bezel + dark green screen) -->
+  <circle cx="128" cy="90" r="36" fill="#060e04" stroke="#c09a18" stroke-width="5"/>
 
-  <!-- ==== CIRCULAR SCANNER DISPLAY ==== -->
-  <!-- Outer gold bezel -->
-  <circle cx="128" cy="92" r="33" fill="#0a0806" stroke="#c09a18" stroke-width="4"/>
-  <!-- Scanner screen -->
-  <circle cx="128" cy="92" r="28" fill="#060e04"/>
   <!-- Scan sweep wedge -->
-  <polygon points="128,92 128,64 155,76" fill="#4a8020" opacity="0.6"/>
-  <!-- Single inner ring -->
-  <circle cx="128" cy="92" r="17" fill="none" stroke="#2a5812" stroke-width="2"/>
+  <polygon points="128,90 128,54 159,72" fill="#4a8020" opacity="0.65"/>
+
   <!-- Center pip -->
-  <circle cx="128" cy="92" r="5" fill="#6aaa28"/>
+  <circle cx="128" cy="90" r="6" fill="#72b82a"/>
 
-  <!-- ==== GOLD DIVIDING STRIPE ==== -->
-  <rect x="56" y="138" width="144" height="7" rx="2" fill="#c09018"/>
+  <!-- Gold dividing stripe -->
+  <rect x="56" y="140" width="144" height="7" rx="2" fill="#c09018"/>
 
-  <!-- ==== STATUS LIGHTS ==== -->
-  <circle cx="88" cy="157" r="8" fill="#c87a10"/>
-  <circle cx="128" cy="157" r="8" fill="#c87a10"/>
-  <circle cx="168" cy="157" r="8" fill="#a01414"/>
-  <!-- Inner glows -->
-  <circle cx="88" cy="157" r="4" fill="#f5b030"/>
-  <circle cx="128" cy="157" r="4" fill="#f5b030"/>
-  <circle cx="168" cy="157" r="4" fill="#f03030"/>
-
-  <!-- ==== CONTROL BUTTONS (2 rows × 3 cols) ==== -->
-  <!-- Row 1 -->
-  <rect x="66" y="172" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
-  <rect x="110" y="172" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
-  <rect x="154" y="172" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
-  <!-- Row 2 -->
-  <rect x="66" y="192" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
-  <rect x="110" y="192" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
-  <rect x="154" y="192" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
+  <!-- Status dots: two amber, one red -->
+  <circle cx="88" cy="165" r="10" fill="#d08018"/>
+  <circle cx="128" cy="165" r="10" fill="#d08018"/>
+  <circle cx="168" cy="165" r="10" fill="#b01818"/>
 
 </svg>
