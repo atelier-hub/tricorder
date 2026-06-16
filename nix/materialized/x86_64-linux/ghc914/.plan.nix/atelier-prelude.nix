@@ -7,7 +7,7 @@
   , errorHandler
   , config
   , ... }:
-  ({
+  {
     flags = {};
     package = {
       specVersion = "1.18";
@@ -16,7 +16,7 @@
       copyright = "";
       maintainer = "christian.georgii@tweag.io";
       author = "Christian Georgii";
-      homepage = "https://github.com/atelier-hub/tricorder/tree/main/atelier-prelude";
+      homepage = "https://github.com/atelier-hub/atelier/tree/main/atelier-prelude";
       url = "";
       synopsis = "Custom relude-based prelude with Effectful conventions";
       description = "A custom prelude based on relude, adapted for Effectful — part of the atelier toolkit.";
@@ -38,10 +38,19 @@
           (hsPkgs."relude" or (errorHandler.buildDepError "relude"))
         ];
         buildable = true;
-        modules = [ "Paths_atelier_prelude" ];
+        modules = [ "Paths_atelier_prelude" "Prelude" ];
         hsSourceDirs = [ "src" ];
       };
     };
-  } // rec { src = pkgs.lib.mkDefault ../atelier-prelude; }) // {
-    cabal-generator = "hpack";
+  } // {
+    src = pkgs.lib.mkDefault (pkgs.fetchgit {
+      url = "0";
+      rev = "minimal";
+      sha256 = "";
+    }) // {
+      url = "0";
+      rev = "minimal";
+      sha256 = "";
+    };
+    postUnpack = "sourceRoot+=/atelier-prelude; echo source root reset to $sourceRoot";
   }

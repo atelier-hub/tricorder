@@ -7,7 +7,7 @@
   , errorHandler
   , config
   , ... }:
-  ({
+  {
     flags = {};
     package = {
       specVersion = "2.0";
@@ -16,7 +16,7 @@
       copyright = "";
       maintainer = "christian.georgii@tweag.io";
       author = "Christian Georgii";
-      homepage = "https://github.com/atelier-hub/tricorder#readme";
+      homepage = "https://github.com/atelier-hub/atelier#readme";
       url = "";
       synopsis = "Foundational Effectful-based effects and utilities";
       description = "Core effects and utilities for effect-based applications, built on Effectful — part of the atelier toolkit.";
@@ -75,7 +75,54 @@
           (hsPkgs."warp" or (errorHandler.buildDepError "warp"))
         ];
         buildable = true;
-        modules = [ "Paths_atelier_core" ];
+        modules = [
+          "Paths_atelier_core"
+          "Atelier/Component"
+          "Atelier/Config"
+          "Atelier/Effects/Arguments"
+          "Atelier/Effects/Await"
+          "Atelier/Effects/Cache"
+          "Atelier/Effects/Cache/Config"
+          "Atelier/Effects/Cache/Singleflight"
+          "Atelier/Effects/Chan"
+          "Atelier/Effects/Clock"
+          "Atelier/Effects/Conc"
+          "Atelier/Effects/Conc/Traced"
+          "Atelier/Effects/Console"
+          "Atelier/Effects/Debounce"
+          "Atelier/Effects/Delay"
+          "Atelier/Effects/Env"
+          "Atelier/Effects/Exit"
+          "Atelier/Effects/File"
+          "Atelier/Effects/FileSystem"
+          "Atelier/Effects/FileWatcher"
+          "Atelier/Effects/Input"
+          "Atelier/Effects/Internal/Coroutine"
+          "Atelier/Effects/Iterator"
+          "Atelier/Effects/Log"
+          "Atelier/Effects/Monitoring/Metrics"
+          "Atelier/Effects/Monitoring/Metrics/Registry"
+          "Atelier/Effects/Monitoring/Metrics/Server"
+          "Atelier/Effects/Monitoring/Tracing"
+          "Atelier/Effects/Monitoring/Tracing/Provider"
+          "Atelier/Effects/Posix/Daemons"
+          "Atelier/Effects/Posix/IO"
+          "Atelier/Effects/Process"
+          "Atelier/Effects/Publishing"
+          "Atelier/Effects/Tally"
+          "Atelier/Effects/Timeout"
+          "Atelier/Effects/UUID"
+          "Atelier/Effects/Yield"
+          "Atelier/Exception"
+          "Atelier/Time"
+          "Atelier/Types/Base64"
+          "Atelier/Types/HttpApiDataReadShow"
+          "Atelier/Types/JsonReadShow"
+          "Atelier/Types/QuietSnake"
+          "Atelier/Types/Semaphore"
+          "Atelier/Types/Semaphore/STM"
+          "Atelier/Types/WithDefaults"
+        ];
         hsSourceDirs = [ "src" ];
       };
       tests = {
@@ -106,12 +153,43 @@
             (hsPkgs.pkgsBuildBuild.tasty-discover.components.exes.tasty-discover or (pkgs.pkgsBuildBuild.tasty-discover or (errorHandler.buildToolDepError "tasty-discover:tasty-discover")))
           ];
           buildable = true;
-          modules = [ "Paths_atelier_core" ];
+          modules = [
+            "Unit/Atelier/ConfigSpec"
+            "Unit/Atelier/Effects/AwaitSpec"
+            "Unit/Atelier/Effects/Cache/SingleflightSpec"
+            "Unit/Atelier/Effects/CacheSpec"
+            "Unit/Atelier/Effects/ChanSpec"
+            "Unit/Atelier/Effects/Conc/TeardownStressSpec"
+            "Unit/Atelier/Effects/Conc/TracedSpec"
+            "Unit/Atelier/Effects/ConcSpec"
+            "Unit/Atelier/Effects/ConsoleSpec"
+            "Unit/Atelier/Effects/DebounceSpec"
+            "Unit/Atelier/Effects/FileSystemSpec"
+            "Unit/Atelier/Effects/FileWatcherSpec"
+            "Unit/Atelier/Effects/IteratorSpec"
+            "Unit/Atelier/Effects/LogSpec"
+            "Unit/Atelier/Effects/PublishingSpec"
+            "Unit/Atelier/Effects/TallySpec"
+            "Unit/Atelier/Effects/YieldSpec"
+            "Unit/Atelier/Types/Semaphore/STMSpec"
+            "Unit/Atelier/Types/SemaphoreSpec"
+            "Unit/Atelier/Types/WithDefaultsSpec"
+            "Paths_atelier_core"
+          ];
           hsSourceDirs = [ "test" ];
           mainPath = [ "Driver.hs" ];
         };
       };
     };
-  } // rec { src = pkgs.lib.mkDefault ../atelier-core; }) // {
-    cabal-generator = "hpack";
+  } // {
+    src = pkgs.lib.mkDefault (pkgs.fetchgit {
+      url = "0";
+      rev = "minimal";
+      sha256 = "";
+    }) // {
+      url = "0";
+      rev = "minimal";
+      sha256 = "";
+    };
+    postUnpack = "sourceRoot+=/atelier-core; echo source root reset to $sourceRoot";
   }
