@@ -132,7 +132,58 @@ The skill uses `tricorder status` and `tricorder status --wait`. Add them to you
 
 Once enabled, Claude Code will automatically check GHCi build status and diagnostics when working on Haskell code in projects running the tricorder daemon.
 
-## Custom Key Bindings
+## Configuring
+
+Tricorder is designed to work for most codebases and users out-of-the-box
+without any extra configuration. Despite this, sometimes there is a need to
+change the behavior of Tricorder for a given repo.
+
+Tricorder uses the same configuration file for both the daemon running the
+build in the background as well as the CLI used to interact with the daemon:
+`.tricorder.yaml` in your repository of choice.
+
+### Daemon configuration
+
+The Tricorder daemon is configured using the following options under the
+`session` map in `.tricorder.yaml`:
+
+```yaml
+session:
+  command: cabal repl --enable-multi-repl
+  targets: [lib:foo, exe:bar]
+  watch_dirs: [foo/src]
+  test_targets: [test:foo]
+  repl_build_dir: /tmp
+  test_timeout: 10
+```
+
+- `command`: Build command to use to enter the cabal repl. If not specified,
+  Tricorder will attempt to check whether `stack` is used, and also whether it
+  is running in a multi-package repository. Specify this option if you think
+  Tricorder is incorrect in the command it picks.
+- `targets`: Build components to compile in the `cabal repl`. If not specified,
+  Tricorder will build all components detected in the `.cabal` file for the
+  repository.
+- `watch_dirs`: Directories to watch. When a file is changed in a watched
+  directory, Tricorder will attempt to rebuild all targets. If not specified,
+  Tricorder will add all `hs-source-dirs` for the configured or detected
+  targets as `watch_dirs`.
+- `test_targets`: Targets to treat as test suites. If not specified, all
+  targets in `targets` starting with `test:` are treated as `test_targets`.
+  Specify `test_targets: []` to disable running tests with Tricorder.
+- `repl_build_dir`: Directory to keep compiled files from the repl. Defaults to
+  `dist-newstyle/tricorder` in the repository.
+- `test_timeout`: Number of seconds each test target is granted before it is
+  considered "timed out". Defaults to `10` seconds. Set to `0` to disable the
+  timeout.
+
+### CLI configuration
+
+The CLI can be configured through some options in `.tricorder.yaml`, but is
+mostly configured through the commandline itself. See `tricorder --help` for
+information on commandline options you can pass to Tricorder.
+
+#### Custom Key Bindings
 
 You can specify custom key bindings for `tricorder ui`'s TUI in your
 `.tricorder.yaml` file.
@@ -149,14 +200,16 @@ strings of key bindings, each key binding in the string separated by a comma.
 
 The following event names are recognized:
 
-- `toggle_daemon_info_view`: Toggle displaying daemon info.
-- `quit`: Exit the TUI.
-- `exit_view`: Exit the current view or go back.
+- `toggle_daemon_info_view`: Toggle displaying the daemon info tab.
+- `toggle_help`: Toggle displaying the help tab. This tab shows available key
+  bindings, including your custom key bindings.
+- `cycle_test_view`: Toggle the tests tab and cycle through test results views.
+  Cycle past the end to go back to the dashboard.
+- `exit_view`: Exit the current view, going back to the dashboard. If you are
+  at the dashboard already, this exits the TUI.
 - `scroll_up`: Scroll up in the diagnostic list.
 - `scroll_down`: Scroll down in the diagnostic list.
-- `toggle_help`: Toggle displaying the available key bindings. This includes
-  your custom key bindings.
-- `cycle_test_view`: Cycle through test results views.
+- `quit`: Exit the TUI.
 
 Key binds are specified in the format `<modifiers>-<key>`, where `<modifiers>`
 is an optional `-`-separated list of modifier keys, and `<key>` is any
@@ -202,7 +255,7 @@ The following non-modifier keys are recognized:
 - `tab`
 - All letter, symbol and number keys.
 
-### Example
+##### Example
 
 ```yaml
 keybindings:

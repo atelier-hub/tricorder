@@ -54,7 +54,6 @@ data Session = Session
     , targets :: [Text]
     , testTargets :: [Text]
     , watchDirs :: [FilePath]
-    , outputFile :: Maybe FilePath
     , replBuildDir :: FilePath
     , testTimeout :: Int
     }
@@ -67,7 +66,6 @@ instance Default Session where
             , targets = []
             , testTargets = []
             , watchDirs = []
-            , outputFile = Nothing
             , replBuildDir = "/tmp"
             , testTimeout = 10
             }
@@ -78,7 +76,6 @@ data Config = Config
     , targets :: [Text]
     , watchDirs :: [FilePath]
     , testTargets :: Maybe [Text]
-    , outputFile :: Maybe FilePath
     , replBuildDir :: FilePath
     , testTimeout :: Int
     }
@@ -93,7 +90,6 @@ instance Default Config where
             , targets = []
             , watchDirs = []
             , testTargets = Nothing
-            , outputFile = Just "build.json"
             , replBuildDir = "dist-newstyle/tricorder"
             , testTimeout = 10
             }
@@ -315,7 +311,6 @@ loadSession = do
             , command
             , watchDirs
             , testTargets
-            , outputFile = cfgFile.outputFile
             , replBuildDir = cfgFile.replBuildDir
             , testTimeout = cfgFile.testTimeout
             }

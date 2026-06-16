@@ -66,7 +66,7 @@ withSubSession
 It takes a projection from `Session` to a smaller record, an initial session, and the
 function to restart on change. Internally it maintains a `State subSession` and only
 signals a restart when the projected value actually changes — a reload that touches
-`testTimeout` or `outputFile` does not interrupt a running GHCi session.
+`testTimeout` does not interrupt a running GHCi session.
 
 `withSubSession` passes a `Reloader` handle to the managed function:
 
@@ -105,7 +105,6 @@ Two concrete projections use this primitive:
 5. `withSubSession` inside `withWatcherSession` observes the same `SessionStoreReloaded`
    event. It compares the new `WatcherSession` projection; if `watchDirs` changed, it
    signals `watchFiles` to restart and re-register filesystem watches.
-
 
 ### listenOnce and race
 
