@@ -55,7 +55,7 @@ import Tricorder.Effects.GhciSession.GhciParser (GhciLoading (..))
 import Tricorder.Effects.GhciSession.GhciProcess (GhciProcess, execGhci, terminateGhciProcess, withGhciProcess)
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Session (..))
+import Tricorder.Session (Command (..), Session (..), TestTimeout (..))
 import Tricorder.TestOutput (parseHspecDuration, parseHspecOutput)
 
 import Tricorder.Effects.SessionStore qualified as SessionStore
@@ -136,7 +136,7 @@ runTestRunnerIO act = do
                     $ bracket_
                         (pure ())
                         (atomically (writeTVar currentProcRef Nothing))
-                    $ withGhciProcess def ("cabal repl " <> target) projectRoot onProgress onReady \ghci _ ->
+                    $ withGhciProcess def (Command $ "cabal repl " <> target) projectRoot onProgress onReady \ghci _ ->
                         atomically (readTVar abortedRef) >>= \case
                             -- An interrupt may have landed during the
                             -- @cabal repl@ load. The returned value is
@@ -144,8 +144,8 @@ runTestRunnerIO act = do
                             -- 'abortedRef'.
                             True -> pure (Right [])
                             False -> case testTimeout of
-                                secs | secs <= 0 -> Right <$> execGhci ghci ":main" noProgress
-                                secs ->
+                                TestTimeout secs | secs <= 0 -> Right <$> execGhci ghci ":main" noProgress
+                                TestTimeout secs ->
                                     timeout (fromIntegral secs :: Second) (execGhci ghci ":main" noProgress) >>= \case
                                         Nothing -> pure (Left secs)
                                         Just ls -> pure (Right ls)

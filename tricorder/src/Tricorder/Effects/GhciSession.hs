@@ -47,6 +47,7 @@ import Tricorder.Effects.GhciSession.GhciParser
     )
 import Tricorder.Effects.GhciSession.GhciProcess (addGhci, collectGhciResult, interruptGhci, reloadGhci, unaddGhci, withGhciProcess)
 import Tricorder.Runtime (ProjectRoot (..))
+import Tricorder.Session (Command)
 
 
 data GhciSession :: Effect where
@@ -54,7 +55,7 @@ data GhciSession :: Effect where
     -- The handler is also provided an action to reload the GHCi session,
     -- returning new messages with module counts. The GHCi session is closed
     -- when the handler returns.
-    WithGhci :: Text -> ProjectRoot -> (LoadResult -> Controls m -> m a) -> GhciSession m a
+    WithGhci :: Command -> ProjectRoot -> (LoadResult -> Controls m -> m a) -> GhciSession m a
 
 
 data Controls m = Controls
