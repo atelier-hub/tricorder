@@ -1,4 +1,12 @@
+<div class="title-block" style="text-align: center;" align="center">
+
 # Tricorder
+
+<p>
+  <img title="tricorder logo" src="assets/icon_128x128.png">
+</p>
+
+</div>
 
 `tricorder` aims to empower users developing programs with Haskell and LLM coding agents. It does so by providing operations to surface the right information required at a given stage: documentation, build status, diagnostics, etc.
 

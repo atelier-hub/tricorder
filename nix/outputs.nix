@@ -175,6 +175,22 @@ in
         echo "Hlint refactoring complete!"
       ''}";
     };
+
+    convert-icon = {
+      type = "app";
+      program = "${lib.getExe (
+        pkgs.writeShellApplication {
+          name = "convert-icon";
+          text = ''
+            sizes=(64x64 128x128 256x256)
+            for size in "''${sizes[@]}"; do
+              ${pkgs.imagemagick}/bin/magick -background transparent -size "$size" assets/icon.svg "assets/icon_$size.png"
+              echo "Converted icon to $size" >&2
+            done
+          '';
+        }
+      )}";
+    };
   };
 
   legacyChecks.${compiler-nix-name} = {
