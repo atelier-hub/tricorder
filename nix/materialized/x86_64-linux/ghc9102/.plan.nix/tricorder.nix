@@ -136,6 +136,4 @@
         };
       };
     };
-  } // rec { src = pkgs.lib.mkDefault ../tricorder; }) // {
-    cabal-generator = "hpack";
-  }
+  } // rec { src = pkgs.lib.mkDefault ../.; }) // { cabal-generator = "hpack"; }
