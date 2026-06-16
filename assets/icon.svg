@@ -1,90 +1,48 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
 
-  <!-- Rounded icon background (deep space blue) -->
+  <!-- Rounded icon background -->
   <rect width="256" height="256" rx="40" ry="40" fill="#1e2840"/>
 
   <!-- ==== TRICORDER BODY ==== -->
   <rect x="56" y="40" width="144" height="178" rx="10" ry="10" fill="#1c1812"/>
-  <!-- Left edge highlight -->
-  <rect x="57" y="50" width="5" height="162" rx="2" fill="#2c2820" opacity="0.8"/>
-  <!-- Top edge highlight -->
-  <rect x="62" y="41" width="132" height="5" rx="2" fill="#2c2820" opacity="0.6"/>
-  <!-- Right edge shadow -->
-  <rect x="195" y="50" width="4" height="162" rx="2" fill="#0a0806" opacity="0.8"/>
-
-  <!-- ==== STRAP ATTACHMENT PEGS (sides) ==== -->
-  <rect x="43" y="66" width="15" height="20" rx="3" fill="#141210"/>
-  <rect x="43" y="112" width="15" height="20" rx="3" fill="#141210"/>
-  <rect x="198" y="66" width="15" height="20" rx="3" fill="#141210"/>
-  <rect x="198" y="112" width="15" height="20" rx="3" fill="#141210"/>
 
   <!-- ==== UPPER SENSOR PANEL ==== -->
   <!-- Gold-trimmed border -->
-  <rect x="64" y="48" width="128" height="88" rx="6" fill="#0e0c08" stroke="#a07810" stroke-width="2"/>
+  <rect x="64" y="48" width="128" height="88" rx="6" fill="#0e0c08" stroke="#c09a18" stroke-width="3"/>
 
   <!-- ==== CIRCULAR SCANNER DISPLAY ==== -->
   <!-- Outer gold bezel -->
-  <circle cx="128" cy="92" r="33" fill="#0a0806" stroke="#b08a14" stroke-width="3.5"/>
-  <!-- Scanner screen (dark phosphor green) -->
-  <circle cx="128" cy="92" r="28" fill="#070d05"/>
-  <!-- Scan sweep wedge (active sector) -->
-  <polygon points="128,92 128,64 153,76" fill="#3c6c16" opacity="0.5"/>
-  <!-- Concentric scan rings -->
-  <circle cx="128" cy="92" r="23" fill="none" stroke="#1e3c0e" stroke-width="1.5"/>
-  <circle cx="128" cy="92" r="17" fill="none" stroke="#285014" stroke-width="1.5"/>
-  <circle cx="128" cy="92" r="11" fill="none" stroke="#326418" stroke-width="1"/>
-  <!-- Crosshair lines -->
-  <line x1="128" y1="64" x2="128" y2="120" stroke="#1c300e" stroke-width="1"/>
-  <line x1="95" y1="92" x2="161" y2="92" stroke="#1c300e" stroke-width="1"/>
-  <!-- Sweep arm -->
-  <line x1="128" y1="92" x2="153" y2="76" stroke="#68b028" stroke-width="1.5" opacity="0.9"/>
-  <!-- Sweep tip dot -->
-  <circle cx="153" cy="76" r="2.5" fill="#80cc38"/>
+  <circle cx="128" cy="92" r="33" fill="#0a0806" stroke="#c09a18" stroke-width="4"/>
+  <!-- Scanner screen -->
+  <circle cx="128" cy="92" r="28" fill="#060e04"/>
+  <!-- Scan sweep wedge -->
+  <polygon points="128,92 128,64 155,76" fill="#4a8020" opacity="0.6"/>
+  <!-- Single inner ring -->
+  <circle cx="128" cy="92" r="17" fill="none" stroke="#2a5812" stroke-width="2"/>
   <!-- Center pip -->
-  <circle cx="128" cy="92" r="3" fill="#58901e"/>
+  <circle cx="128" cy="92" r="5" fill="#6aaa28"/>
 
   <!-- ==== GOLD DIVIDING STRIPE ==== -->
-  <rect x="56" y="138" width="144" height="5" rx="1" fill="#8c6a0c"/>
-  <rect x="56" y="139" width="144" height="2" rx="1" fill="#c09018" opacity="0.6"/>
+  <rect x="56" y="138" width="144" height="7" rx="2" fill="#c09018"/>
 
-  <!-- ==== LOWER CONTROL PANEL ==== -->
-  <!-- Status indicator lights -->
-  <circle cx="89" cy="153" r="6" fill="#b07010"/>
-  <circle cx="105" cy="153" r="6" fill="#b07010"/>
-  <circle cx="121" cy="153" r="6" fill="#9a1212"/>
-  <!-- Light inner glows -->
-  <circle cx="89" cy="153" r="3" fill="#f0a830"/>
-  <circle cx="105" cy="153" r="3" fill="#f0a830"/>
-  <circle cx="121" cy="153" r="3" fill="#e83030"/>
+  <!-- ==== STATUS LIGHTS ==== -->
+  <circle cx="88" cy="157" r="8" fill="#c87a10"/>
+  <circle cx="128" cy="157" r="8" fill="#c87a10"/>
+  <circle cx="168" cy="157" r="8" fill="#a01414"/>
+  <!-- Inner glows -->
+  <circle cx="88" cy="157" r="4" fill="#f5b030"/>
+  <circle cx="128" cy="157" r="4" fill="#f5b030"/>
+  <circle cx="168" cy="157" r="4" fill="#f03030"/>
 
-  <!-- Small toggle buttons (right of lights) -->
-  <rect x="135" y="147" width="14" height="11" rx="2" fill="#1c1c14" stroke="#584808" stroke-width="1"/>
-  <rect x="152" y="147" width="14" height="11" rx="2" fill="#1c1c14" stroke="#584808" stroke-width="1"/>
-  <rect x="169" y="147" width="14" height="11" rx="2" fill="#1c1c14" stroke="#584808" stroke-width="1"/>
-
-  <!-- ==== MAIN BUTTON GRID ==== -->
-  <!-- Control area bezel -->
-  <rect x="64" y="163" width="128" height="48" rx="4" fill="#0c0a06" stroke="#604808" stroke-width="1"/>
-
-  <!-- 5 × 3 button grid (spacing: x start=72, step=23; y start=167, step=13) -->
+  <!-- ==== CONTROL BUTTONS (2 rows × 3 cols) ==== -->
   <!-- Row 1 -->
-  <rect x="72" y="167" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="95" y="167" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="118" y="167" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="141" y="167" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="164" y="167" width="20" height="10" rx="2" fill="#1c1a10"/>
+  <rect x="66" y="172" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
+  <rect x="110" y="172" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
+  <rect x="154" y="172" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
   <!-- Row 2 -->
-  <rect x="72" y="180" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="95" y="180" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="118" y="180" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="141" y="180" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="164" y="180" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <!-- Row 3 -->
-  <rect x="72" y="193" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="95" y="193" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="118" y="193" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="141" y="193" width="20" height="10" rx="2" fill="#1c1a10"/>
-  <rect x="164" y="193" width="20" height="10" rx="2" fill="#1c1a10"/>
+  <rect x="66" y="192" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
+  <rect x="110" y="192" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
+  <rect x="154" y="192" width="36" height="14" rx="3" fill="#1c1a10" stroke="#6a5010" stroke-width="1.5"/>
 
 </svg>
