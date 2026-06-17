@@ -1,7 +1,9 @@
 module Tricorder.Watcher
     ( component
     , WatchedFile (..)
+    , WatcherSession (..)
     , isCabalFile
+    , makeWatches
     , markWatchedFiles
     ) where
 
@@ -23,6 +25,8 @@ import Atelier.Effects.Publishing (Pub, Sub, publish)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (takeExtension, takeFileName)
+import Text.Regex.TDFA (ExecOption (..), blankCompOpt, blankExecOpt, match)
+import Text.Regex.TDFA.TDFA (patternToRegex)
 
 import Atelier.Effects.Publishing qualified as Sub
 
@@ -34,7 +38,7 @@ import Tricorder.BuildState
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Session (..))
+import Tricorder.Session (Pattern, Session (..))
 
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.SessionStore qualified as SessionStore
@@ -91,6 +95,7 @@ data WatchedFile = WatchedFile
 
 data WatcherSession = WatcherSession
     { watchDirs :: [FilePath]
+    , watchExclusionPatterns :: [Pattern]
     }
     deriving stock (Eq)
 
@@ -106,7 +111,11 @@ withWatcherSession
     -> (SessionStore.Reloader es -> WatcherSession -> Eff es Void)
     -> Eff es Void
 withWatcherSession =
-    SessionStore.withSubSession $ WatcherSession . (.watchDirs)
+    SessionStore.withSubSession $ \session ->
+        WatcherSession
+            { watchDirs = session.watchDirs
+            , watchExclusionPatterns = session.watchExclusionPatterns
+            }
 
 
 watchFiles
@@ -125,12 +134,31 @@ watchFiles = do
     initialSession <- SessionStore.get
     withWatcherSession initialSession $ \_ session -> do
         projectRoot <- ask
-        let watches = sourceWatches session.watchDirs <> cabalWatches projectRoot
+        let watches = makeWatches projectRoot session
         watchFilePathsDebounced watches \filePath fileEvent -> publish (WatchedFile filePath fileEvent)
 
 
-sourceWatches :: [FilePath] -> [Watch]
-sourceWatches = map (\d -> dirExt d ".hs" `excluding` containing "dist-newstyle")
+makeWatches :: ProjectRoot -> WatcherSession -> [Watch]
+makeWatches projectRoot session =
+    sourceWatches session.watchExclusionPatterns session.watchDirs
+        <> cabalWatches projectRoot
+
+
+sourceWatches :: [Pattern] -> [FilePath] -> [Watch]
+sourceWatches exclusionPatterns =
+    map \d ->
+        dirExt d ".hs"
+            `excluding` containing "dist-newstyle"
+            `excluding` exclusionMatches exclusionPatterns
+
+
+exclusionMatches :: [Pattern] -> FilePath -> Bool
+exclusionMatches exclusionPatterns fp = any matchPattern exclusionPatterns
+  where
+    matchPattern p =
+        match
+            (patternToRegex p blankCompOpt blankExecOpt {captureGroups = False})
+            fp
 
 
 cabalWatches :: ProjectRoot -> [Watch]
