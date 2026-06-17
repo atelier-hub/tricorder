@@ -168,6 +168,10 @@ session:
   directory, Tricorder will attempt to rebuild all targets. If not specified,
   Tricorder will add all `hs-source-dirs` for the configured or detected
   targets as `watch_dirs`.
+- `watch_exclusion_patterns`: POSIX-compliant regular expressions to match
+  files you do _not_ want to watch in `watch_dirs`. Tricorder will always
+  ignore files in `dist-newstyle`. Defaults to no patterns, meaning all files
+  (except those in `dist-newstyle`) will be watched.
 - `test_targets`: Targets to treat as test suites. If not specified, all
   targets in `targets` starting with `test:` are treated as `test_targets`.
   Specify `test_targets: []` to disable running tests with Tricorder.
