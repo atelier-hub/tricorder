@@ -56,7 +56,6 @@ in
       "filepath"
       "fsnotify"
       "hs-opentelemetry-api"
-      "hs-opentelemetry-exporter-otlp"
       "hs-opentelemetry-sdk"
       "http-api-data"
       "http-types"

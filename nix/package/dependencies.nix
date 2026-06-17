@@ -34,7 +34,6 @@ let
     hasql-transaction = ">=1.2 && <1.3";
     hedgehog = ">=1.7 && <1.8";
     hs-opentelemetry-api = ">=0.3 && <0.4";
-    hs-opentelemetry-exporter-otlp = ">=0.1 && <0.2";
     hs-opentelemetry-sdk = ">=0.1 && <0.2";
     hspec = ">=2.11 && <2.12";
     hspec-hedgehog = ">=0.3 && <0.4";
