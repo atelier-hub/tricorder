@@ -51,7 +51,6 @@
           (hsPkgs."filepath" or (errorHandler.buildDepError "filepath"))
           (hsPkgs."fsnotify" or (errorHandler.buildDepError "fsnotify"))
           (hsPkgs."hs-opentelemetry-api" or (errorHandler.buildDepError "hs-opentelemetry-api"))
-          (hsPkgs."hs-opentelemetry-exporter-otlp" or (errorHandler.buildDepError "hs-opentelemetry-exporter-otlp"))
           (hsPkgs."hs-opentelemetry-sdk" or (errorHandler.buildDepError "hs-opentelemetry-sdk"))
           (hsPkgs."http-api-data" or (errorHandler.buildDepError "http-api-data"))
           (hsPkgs."http-types" or (errorHandler.buildDepError "http-types"))
