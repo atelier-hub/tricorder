@@ -47,6 +47,7 @@ let
     process = ">=1.6 && <1.7";
     prometheus-client = ">=1.1 && <1.2";
     prometheus-metrics-ghc = ">=1.0 && <1.1";
+    regex-tdfa = ">=1.3.2.5 && <1.4";
     rel8 = ">=1.7 && <1.8";
     relude = ">=1.2 && <1.3";
     stm = ">=2.5 && <2.6";
