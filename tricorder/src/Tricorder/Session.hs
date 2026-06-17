@@ -1,6 +1,7 @@
 module Tricorder.Session
     ( Session (..)
     , Config (..)
+    , Pattern
     , loadSession
     , resolveCommand
     , resolveTargets
@@ -39,12 +40,16 @@ import Distribution.Types.PackageName (unPackageName)
 import Distribution.Types.TestSuite (testBuildInfo)
 import Distribution.Types.UnqualComponentName (mkUnqualComponentName, unUnqualComponentName)
 import Distribution.Utils.Path (getSymbolicPath)
+import Effectful.Exception (throwIO)
 import Effectful.Reader.Static (Reader, ask)
 import System.FilePath (normalise, takeDirectory, takeExtension, (</>))
+import System.IO.Error (userError)
+import Text.Regex.TDFA.ReadRegex (parseRegex)
 
 import Atelier.Effects.Log qualified as Log
 import Data.ByteString.Char8 qualified as BC
 import Data.Text qualified as T
+import Text.Regex.TDFA.Pattern qualified as Regex
 
 import Tricorder.Runtime (ProjectRoot (..))
 
@@ -54,9 +59,13 @@ data Session = Session
     , targets :: [Text]
     , testTargets :: [Text]
     , watchDirs :: [FilePath]
+    , watchExclusionPatterns :: [Pattern]
     , replBuildDir :: FilePath
     , testTimeout :: Int
     }
+
+
+type Pattern = (Regex.Pattern, (Regex.GroupIndex, Regex.DoPa))
 
 
 instance Default Session where
@@ -66,6 +75,7 @@ instance Default Session where
             , targets = []
             , testTargets = []
             , watchDirs = []
+            , watchExclusionPatterns = []
             , replBuildDir = "/tmp"
             , testTimeout = 10
             }
@@ -75,6 +85,7 @@ data Config = Config
     { command :: Maybe Text
     , targets :: [Text]
     , watchDirs :: [FilePath]
+    , watchExclusionPatterns :: [Text]
     , testTargets :: Maybe [Text]
     , replBuildDir :: FilePath
     , testTimeout :: Int
@@ -89,6 +100,7 @@ instance Default Config where
             { command = Nothing
             , targets = []
             , watchDirs = []
+            , watchExclusionPatterns = []
             , testTargets = Nothing
             , replBuildDir = "dist-newstyle/tricorder"
             , testTimeout = 10
@@ -289,6 +301,16 @@ resolveTestTargets cfg targets = case cfg.testTargets of
     Nothing -> filter ("test:" `T.isPrefixOf`) targets
 
 
+resolveWatchExclusionPatterns :: [Text] -> Eff es [Pattern]
+resolveWatchExclusionPatterns rawPatterns = do
+    either (throwIO . userError . show) pure
+        $ traverse
+            ( parseRegex
+                . toString
+            )
+            rawPatterns
+
+
 loadSession
     :: ( FileSystem :> es
        , Log :> es
@@ -305,11 +327,13 @@ loadSession = do
     let testTargets = resolveTestTargets cfgFile effectiveTargets
     command <- resolveCommand projectRoot cfgFile effectiveTargets testTargets
     watchDirs <- resolveWatchDirs projectRoot cabalFiles cfgFile effectiveTargets
+    watchExclusionPatterns <- resolveWatchExclusionPatterns cfgFile.watchExclusionPatterns
     pure
         $ Session
             { targets = effectiveTargets
             , command
             , watchDirs
+            , watchExclusionPatterns
             , testTargets
             , replBuildDir = cfgFile.replBuildDir
             , testTimeout = cfgFile.testTimeout
