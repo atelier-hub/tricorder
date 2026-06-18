@@ -1,9 +1,25 @@
+let
+  default-ghc-version = "9.10.2";
+  additional-ghc-versions = [
+    "9.8"
+    "9.12"
+  ];
+  ghc-versions = [ default-ghc-version ] ++ additional-ghc-versions;
+in
 {
   author = "Christian Georgii";
   maintainer = "christian.georgii@tweag.io";
   license = "MIT";
   license-file = "LICENSE";
   language = "GHC2021";
+
+  inherit
+    default-ghc-version
+    additional-ghc-versions
+    ghc-versions
+    ;
+
+  tested-with = map (v: "GHC == ${v}") ghc-versions;
 
   # Missed-specialisation warnings fire on imported overloaded functions (e.g.
   # realToFrac, Data.Fixed instances, prometheus exporters) that we can't annotate
