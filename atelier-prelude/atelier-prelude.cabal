@@ -1,6 +1,6 @@
 cabal-version: 1.18
 
--- This file has been generated from package.yaml by hpack version 0.38.2.
+-- This file has been generated from package.yaml by hpack version 0.38.3.
 --
 -- see: https://github.com/sol/hpack
 
@@ -16,6 +16,10 @@ maintainer:     christian.georgii@tweag.io
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
+tested-with:
+    GHC == 9.10.2
+  , GHC == 9.8
+  , GHC == 9.12
 extra-doc-files:
     CHANGELOG.md
     README.md

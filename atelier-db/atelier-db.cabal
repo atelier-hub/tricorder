@@ -16,6 +16,10 @@ maintainer:     christian.georgii@tweag.io
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
+tested-with:
+    GHC == 9.10.2
+  , GHC == 9.8
+  , GHC == 9.12
 extra-doc-files:
     CHANGELOG.md
     README.md
