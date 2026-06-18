@@ -1,5 +1,8 @@
 let
-  dep = name: "${name} ${constraints.${name}}";
+  dep = name: {
+    inherit name;
+    version = constraints.${name};
+  };
   depList = map dep;
   constraints = {
     base = ">=4.19 && < 4.23";

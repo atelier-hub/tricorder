@@ -22,6 +22,7 @@ in
     license-file
     language
     default-extensions
+    tested-with
     ;
 
   ghc-options = [

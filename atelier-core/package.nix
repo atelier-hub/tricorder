@@ -23,6 +23,7 @@ in
     language
     ghc-options
     default-extensions
+    tested-with
     ;
 
   dependencies = depList [
