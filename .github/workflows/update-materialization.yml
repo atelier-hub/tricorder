@@ -24,7 +24,6 @@ jobs:
         ghc-version:
           - ghc9102
           - ghc912
-          - ghc914
           - ghc98
         include:
           - os: macos-14
