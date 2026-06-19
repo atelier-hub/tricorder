@@ -1,7 +1,7 @@
 module Unit.Tricorder.WatcherSpec (spec_Watcher) where
 
 import Atelier.Effects.Delay (runDelay)
-import Atelier.Effects.FileWatcher (FileEvent (..))
+import Atelier.Effects.FileWatcher (FileEvent (..), matchesAny)
 import Atelier.Effects.Publishing (runPubWriter)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
@@ -10,6 +10,7 @@ import Effectful.Reader.Static (runReader)
 import Effectful.State.Static.Shared (execState, put)
 import Effectful.Writer.Static.Shared (runWriter)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldMatchList)
+import Text.Regex.TDFA.ReadRegex (parseRegex)
 
 import Tricorder.BuildState
     ( CabalChangeDetected (..)
@@ -18,12 +19,15 @@ import Tricorder.BuildState
     , SourceChangeDetected (..)
     )
 import Tricorder.Effects.BuildStore (BuildStore (..))
-import Tricorder.Watcher (WatchedFile (..), markWatchedFiles)
+import Tricorder.Runtime (ProjectRoot (..))
+import Tricorder.Session (WatchDirs (..), WatchExclusionPatterns (WatchExclusionPatterns))
+import Tricorder.Watcher (WatchedFile (..), WatcherSession (..), makeWatches, markWatchedFiles)
 
 
 spec_Watcher :: Spec
 spec_Watcher = do
     describe "markWatchedFiles" testMarkWatchedFiles
+    describe "makeWatches" testMakeWatches
 
 
 testMarkWatchedFiles :: Spec
@@ -56,6 +60,58 @@ testMarkWatchedFiles = do
     mockBuildStore = reinterpret_ (execState Nothing) \case
         MarkDirty ck -> put $ Just ck
         _ -> error "Not implemented"
+
+
+testMakeWatches :: Spec
+testMakeWatches = do
+    describe "source watches" do
+        it "matches .hs files in configured watch dirs" do
+            let watches = makeWatches (ProjectRoot "/proj") (watcherSession ["/proj/src"] [])
+            matchesAny watches "/proj/src/Foo.hs" `shouldBe` True
+
+        it "does not match non-.hs files" do
+            let watches = makeWatches (ProjectRoot "/proj") (watcherSession ["/proj/src"] [])
+            matchesAny watches "/proj/src/Foo.txt" `shouldBe` False
+
+        it "excludes paths containing dist-newstyle" do
+            let watches = makeWatches (ProjectRoot "/proj") (watcherSession ["/proj/src"] [])
+            matchesAny watches "/proj/src/dist-newstyle/Foo.hs" `shouldBe` False
+
+        it "excludes paths matching an exclusion pattern" do
+            let pat = parsePattern "vendor"
+                watches = makeWatches (ProjectRoot "/proj") (watcherSession ["/proj/src"] [pat])
+            matchesAny watches "/proj/src/vendor/Foo.hs" `shouldBe` False
+            matchesAny watches "/proj/src/Foo.hs" `shouldBe` True
+
+        it "matches .hs files across multiple watch dirs" do
+            let watches = makeWatches (ProjectRoot "/proj") (watcherSession ["/proj/src", "/proj/test"] [])
+            matchesAny watches "/proj/src/Foo.hs" `shouldBe` True
+            matchesAny watches "/proj/test/FooSpec.hs" `shouldBe` True
+
+    describe "cabal watches" do
+        it "matches .cabal files under project root" do
+            let watches = makeWatches (ProjectRoot "/proj") emptyWatcherSession
+            matchesAny watches "/proj/foo.cabal" `shouldBe` True
+
+        it "matches cabal.project under project root" do
+            let watches = makeWatches (ProjectRoot "/proj") emptyWatcherSession
+            matchesAny watches "/proj/cabal.project" `shouldBe` True
+
+        it "matches package.yaml under project root" do
+            let watches = makeWatches (ProjectRoot "/proj") emptyWatcherSession
+            matchesAny watches "/proj/package.yaml" `shouldBe` True
+
+        it "does not match non-cabal files" do
+            let watches = makeWatches (ProjectRoot "/proj") emptyWatcherSession
+            matchesAny watches "/proj/README.md" `shouldBe` False
+
+        it "excludes cabal files under dist-newstyle" do
+            let watches = makeWatches (ProjectRoot "/proj") emptyWatcherSession
+            matchesAny watches "/proj/dist-newstyle/foo.cabal" `shouldBe` False
+  where
+    parsePattern p = fromRight (error . toText $ "bad test pattern: " <> p) (parseRegex p)
+    emptyWatcherSession = watcherSession [] []
+    watcherSession dirs patterns = WatcherSession (WatchDirs dirs) (WatchExclusionPatterns patterns)
 
 
 emptyDaemonInfo :: DaemonInfo
