@@ -6,27 +6,10 @@
 }:
 let
   nix-hpack = pkgs.callPackage ./package/nix-hpack.nix { };
-  # Include the `package.yaml` file for the `haskell-plan-to-nix` step of the
-  # build process. When `haskell-plan-to-nix` uses `package.yaml` instead of
-  # the raw `.cabal` files, it omits the module paths from the materialized
-  # files. By keeping module paths out of our materialized files, we don't have
-  # to update materialization for every module we add or remove, only for
-  # dependencies.
-  src = pkgs.runCommand "src" { } ''
-    mkdir -p src
-    cp -r ${./..}/* src
-    chmod -R +w src
-    ls -la src
-    (cd src && ${nix-hpack}/bin/nix-hpack --keep)
-    mv src $out
-  '';
 in
 pkgs.haskell-nix.cabalProject' {
-  inherit src compiler-nix-name;
-
-  # Enable materialization for deterministic builds and better CI caching
-  materialized = ./materialized/${pkgs.stdenv.hostPlatform.system}/${compiler-nix-name};
-  checkMaterialization = true;
+  src = ../.;
+  inherit compiler-nix-name;
 
   # Add tmp-postgres from flake input
   cabalProjectLocal = ''
