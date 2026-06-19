@@ -34,7 +34,7 @@ import Tricorder.BuildState
 import Tricorder.Effects.BuildStore (BuildStore)
 import Tricorder.Effects.SessionStore (SessionStore, SessionStoreReloaded)
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Session (..))
+import Tricorder.Session (Session (..), WatchDirs (..))
 
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.SessionStore qualified as SessionStore
@@ -106,7 +106,7 @@ withWatcherSession
     -> (SessionStore.Reloader es -> WatcherSession -> Eff es Void)
     -> Eff es Void
 withWatcherSession =
-    SessionStore.withSubSession $ WatcherSession . (.watchDirs)
+    SessionStore.withSubSession $ WatcherSession . (.watchDirs.getWatchDirs)
 
 
 watchFiles

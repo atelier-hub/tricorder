@@ -26,6 +26,7 @@ import Tricorder.Effects.GhciSession.GhciParser
     , pathSuffixesAsModuleName
     , unattributedFailure
     )
+import Tricorder.Session (WatchDirs (..))
 
 
 -- | The Builder's per-GHCi-session cache: what it last saw from GHCi plus its
@@ -159,9 +160,9 @@ dispatch knownTargets known fp event = case known of
 -- failures (e.g. a home-unit GHC plugin that can't load under
 -- @--enable-multi-repl@) that must not be dropped, or the build would silently
 -- read as clean.
-filterToWatchDirs :: FilePath -> [FilePath] -> [Diagnostic] -> [Diagnostic]
-filterToWatchDirs _ [] diags = diags
-filterToWatchDirs projectRoot watchDirs diags =
+filterToWatchDirs :: FilePath -> WatchDirs -> [Diagnostic] -> [Diagnostic]
+filterToWatchDirs _ (WatchDirs []) diags = diags
+filterToWatchDirs projectRoot (WatchDirs watchDirs) diags =
     filter (\d -> isLocationLess d.file || isUnderAnyWatchDir d.file) diags
   where
     absWatchDirs = map toAbsWd watchDirs

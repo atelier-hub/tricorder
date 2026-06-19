@@ -57,6 +57,7 @@ import Tricorder.Effects.GhciSession.GhciParser
     , stripAnsi
     , unattributedFailure
     )
+import Tricorder.Session (Command (..))
 
 
 -- | Configuration for GHCi process management.
@@ -142,7 +143,7 @@ startGhciProcess
        , Timeout :> es
        )
     => Config
-    -> Text
+    -> Command
     -> FilePath
     -> (GhciLoading -> Eff es ())
     -- ^ Called as each @[N of M] Compiling …@ line is streamed during the
@@ -162,7 +163,7 @@ startGhciProcess config cmd dir onProgress onReady = do
             $ setStderr createPipe
             $ setCreateGroup True
             $ setWorkingDir dir
-            $ shell (toString cmd)
+            $ shell (toString cmd.getCommand)
     let inp = getStdin p
         out = getStdout p
         err = getStderr p
@@ -237,7 +238,7 @@ startGhciProcess config cmd dir onProgress onReady = do
 withGhciProcess
     :: (Conc :> es, Concurrent :> es, File :> es, Process :> es, Timeout :> es)
     => Config
-    -> Text
+    -> Command
     -> FilePath
     -> (GhciLoading -> Eff es ())
     -> (GhciProcess -> Eff es ())
