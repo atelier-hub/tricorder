@@ -118,7 +118,6 @@ library
     , filepath >=1.4 && <1.6
     , fsnotify ==0.4.*
     , hs-opentelemetry-api ==0.3.*
-    , hs-opentelemetry-exporter-otlp ==0.1.*
     , hs-opentelemetry-sdk ==0.1.*
     , http-api-data ==0.7.*
     , http-types ==0.12.*
