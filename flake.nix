@@ -45,13 +45,10 @@
   outputs =
     { self, ... }@inputs:
     let
-      defaultGhcVersion = "ghc9102";
-      ghcVersions = [
-        defaultGhcVersion
-        "ghc98"
-        "ghc912"
-        "ghc914"
-      ];
+      common = import ./nix/package/common.nix;
+      versionToCompilerName = v: "ghc${builtins.replaceStrings [ "." ] [ "" ] v}";
+      defaultGhcVersion = versionToCompilerName common.default-ghc-version;
+      ghcVersions = map versionToCompilerName common.ghc-versions;
       lib = inputs.nixpkgs.lib;
     in
     inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (
