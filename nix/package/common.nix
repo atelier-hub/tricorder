@@ -1,10 +1,30 @@
 let
-  default-ghc-version = "9.10.2";
+  default-ghc-version = "9.10.3";
   additional-ghc-versions = [
-    "9.8"
-    "9.12"
+    "9.6.7"
+    "9.8.4"
+    "9.12.4"
   ];
   ghc-versions = [ default-ghc-version ] ++ additional-ghc-versions;
+
+  # Missed-specialisation warnings fire on imported overloaded functions (e.g.
+  # realToFrac, Data.Fixed instances, prometheus exporters) that we can't
+  # annotate with INLINABLE. They only appear under optimization and aren't
+  # actionable.
+  warnings = [
+    "-Weverything"
+    "-Wno-unsafe"
+    "-Wno-missing-safe-haskell-mode"
+    "-Wno-monomorphism-restriction"
+    "-Wno-missing-kind-signatures"
+    "-Wno-missing-local-signatures"
+    "-Wno-missing-import-lists"
+    "-Wno-implicit-prelude"
+    "-Wno-unticked-promoted-constructors"
+    "-Wno-unused-packages"
+    "-Wno-all-missed-specialisations"
+    "-Wno-missed-specialisations"
+  ];
 in
 {
   author = "Christian Georgii";
@@ -21,27 +41,22 @@ in
 
   tested-with = map (v: "GHC == ${v}") ghc-versions;
 
-  # Missed-specialisation warnings fire on imported overloaded functions (e.g.
-  # realToFrac, Data.Fixed instances, prometheus exporters) that we can't annotate
-  # with INLINABLE. They only appear under optimization and aren't actionable.
-  ghc-options = [
-    "-Weverything"
-    "-Wno-unsafe"
-    "-Wno-missing-safe-haskell-mode"
-    "-Wno-monomorphism-restriction"
-    "-Wno-missing-kind-signatures"
-    "-Wno-missing-poly-kind-signatures"
-    "-Wno-missing-role-annotations"
-    "-Wno-missing-local-signatures"
-    "-Wno-missing-import-lists"
-    "-Wno-implicit-prelude"
-    "-Wno-unticked-promoted-constructors"
-    "-Wno-unused-packages"
-    "-Wno-all-missed-specialisations"
-    "-Wno-missed-specialisations"
-    "-fplugin=Effectful.Plugin"
-    "-threaded"
-  ];
+  options = {
+    inherit warnings;
+    ghc-options = warnings ++ [
+      "-fplugin=Effectful.Plugin"
+      "-threaded"
+    ];
+    when = [
+      {
+        condition = "impl(GHC >= 9.8)";
+        ghc-options = [
+          "-Wno-missing-poly-kind-signatures"
+          "-Wno-missing-role-annotations"
+        ];
+      }
+    ];
+  };
 
   default-extensions = [
     "BlockArguments"

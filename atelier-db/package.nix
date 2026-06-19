@@ -20,9 +20,13 @@ in
     license
     license-file
     language
-    ghc-options
     default-extensions
     tested-with
+    ;
+
+  inherit (common.options)
+    ghc-options
+    when
     ;
 
   dependencies = depList [

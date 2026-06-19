@@ -89,16 +89,16 @@ library tricorder-internal
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded
   build-depends:
       Cabal-syntax >=3.12 && <3.17
     , aeson ==2.2.*
     , ansi-terminal ==1.1.*
     , atelier-core ==0.1.*
     , atelier-prelude ==0.1.*
-    , base >=4.19 && <4.23
+    , base >=4.18 && <4.23
     , brick ==2.10.*
-    , bytestring ==0.12.*
+    , bytestring >=0.11 && <0.13
     , casing ==0.1.*
     , containers >=0.6 && <0.9
     , data-default ==0.8.*
@@ -117,7 +117,7 @@ library tricorder-internal
     , regex-tdfa >=1.3.2.5 && <1.4
     , relude ==1.2.*
     , stm ==2.5.*
-    , template-haskell >=2.21 && <2.25
+    , template-haskell >=2.20 && <2.25
     , text ==2.1.*
     , time >=1.12 && <1.16
     , time-units ==1.0.*
@@ -127,6 +127,8 @@ library tricorder-internal
   mixins:
       base hiding (Prelude)
   default-language: GHC2021
+  if impl(GHC >= 9.8)
+    ghc-options: -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations
 
 executable tricorder
   main-is: Main.hs
@@ -153,16 +155,18 @@ executable tricorder
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
   build-depends:
       atelier-prelude ==0.1.*
-    , base >=4.19 && <4.23
+    , base >=4.18 && <4.23
     , effectful-core ==2.6.*
     , effectful-plugin >=2.0 && <2.2
     , tricorder-internal
   mixins:
       base hiding (Prelude)
   default-language: GHC2021
+  if impl(GHC >= 9.8)
+    ghc-options: -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations
 
 executable tricorder-daemon
   main-is: Main.hs
@@ -189,16 +193,18 @@ executable tricorder-daemon
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
   build-depends:
       atelier-prelude ==0.1.*
-    , base >=4.19 && <4.23
+    , base >=4.18 && <4.23
     , effectful-core ==2.6.*
     , effectful-plugin >=2.0 && <2.2
     , tricorder-internal
   mixins:
       base hiding (Prelude)
   default-language: GHC2021
+  if impl(GHC >= 9.8)
+    ghc-options: -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations
 
 test-suite tricorder-test
   type: exitcode-stdio-1.0
@@ -242,7 +248,7 @@ test-suite tricorder-test
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded -Wno-prepositive-qualified-module
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded -Wno-prepositive-qualified-module
   build-tool-depends:
       tasty-discover:tasty-discover
   build-depends:
@@ -250,7 +256,7 @@ test-suite tricorder-test
     , aeson ==2.2.*
     , atelier-core ==0.1.*
     , atelier-prelude ==0.1.*
-    , base >=4.19 && <4.23
+    , base >=4.18 && <4.23
     , containers >=0.6 && <0.9
     , data-default ==0.8.*
     , effectful ==2.6.*
@@ -272,3 +278,5 @@ test-suite tricorder-test
   mixins:
       base hiding (Prelude)
   default-language: GHC2021
+  if impl(GHC >= 9.8)
+    ghc-options: -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations

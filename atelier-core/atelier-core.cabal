@@ -17,9 +17,10 @@ license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 tested-with:
-    GHC == 9.10.2
-  , GHC == 9.8
-  , GHC == 9.12
+    GHC == 9.10.3
+  , GHC == 9.6.7
+  , GHC == 9.8.4
+  , GHC == 9.12.4
 extra-doc-files:
     CHANGELOG.md
     README.md
@@ -98,13 +99,13 @@ library
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded
   build-depends:
       aeson ==2.2.*
     , atelier-prelude ==0.1.*
-    , base >=4.19 && <4.23
+    , base >=4.18 && <4.23
     , base64-bytestring ==1.2.*
-    , bytestring ==0.12.*
+    , bytestring >=0.11 && <0.13
     , casing ==0.1.*
     , containers >=0.6 && <0.9
     , contra-tracer ==0.2.*
@@ -142,6 +143,8 @@ library
   mixins:
       base hiding (Prelude)
   default-language: GHC2021
+  if impl(GHC >= 9.8)
+    ghc-options: -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations
 
 test-suite atelier-test
   type: exitcode-stdio-1.0
@@ -189,7 +192,7 @@ test-suite atelier-test
       StrictData
       TemplateHaskell
       TypeFamilies
-  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded -Wno-prepositive-qualified-module
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded -Wno-prepositive-qualified-module
   build-tool-depends:
       tasty-discover:tasty-discover
   build-depends:
@@ -197,8 +200,8 @@ test-suite atelier-test
     , async ==2.2.*
     , atelier-core ==0.1.*
     , atelier-prelude ==0.1.*
-    , base >=4.19 && <4.23
-    , bytestring ==0.12.*
+    , base >=4.18 && <4.23
+    , bytestring >=0.11 && <0.13
     , containers >=0.6 && <0.9
     , data-default ==0.8.*
     , effectful ==2.6.*
@@ -216,3 +219,5 @@ test-suite atelier-test
   mixins:
       base hiding (Prelude)
   default-language: GHC2021
+  if impl(GHC >= 9.8)
+    ghc-options: -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations

@@ -5,7 +5,7 @@ let
   };
   depList = map dep;
   constraints = {
-    base = ">=4.19 && < 4.23";
+    base = ">=4.18 && < 4.23";
     Cabal-syntax = ">=3.12 && <3.17";
     aeson = ">=2.2 && <2.3";
     ansi-terminal = ">=1.1 && <1.2";
@@ -15,7 +15,7 @@ let
     atelier-prelude = ">=0.1 && <0.2";
     base64-bytestring = ">=1.2 && <1.3";
     brick = ">=2.10 && <2.11";
-    bytestring = ">=0.12 && <0.13";
+    bytestring = ">=0.11 && <0.13";
     casing = ">=0.1 && <0.2";
     containers = ">=0.6 && <0.9";
     contra-tracer = ">=0.2 && <0.3";
@@ -58,7 +58,7 @@ let
     tasty = ">=1.5 && <1.6";
     tasty-discover = ">=5.2 && <5.3";
     tasty-hspec = ">=1.2 && <1.3";
-    template-haskell = ">=2.21 && <2.25";
+    template-haskell = ">=2.20 && <2.25";
     text = ">=2.1 && <2.2";
     time = ">=1.12 && <1.16";
     time-units = ">=1.0 && <1.1";
