@@ -13,7 +13,21 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Command (..), Config (..), Targets (..), TestTargets (..), WatchDirs (..), allComponentTargets, discoverCabalFiles, resolveCommand, resolveTargets, resolveTestTargets, resolveWatchDirs, sourceDirsForTarget)
+import Tricorder.Session
+    ( Command (..)
+    , Config (..)
+    , Targets (..)
+    , TestTargets (..)
+    , WatchDirs (..)
+    , allComponentTargets
+    , compareTargets
+    , discoverCabalFiles
+    , resolveCommand
+    , resolveTargets
+    , resolveTestTargets
+    , resolveWatchDirs
+    , sourceDirsForTarget
+    )
 
 
 spec_Session :: Spec
@@ -25,6 +39,7 @@ spec_Session = do
     describe "resolveTestTargets" testResolveTestTargets
     describe "sourceDirsForTarget" testSourceDirsForTarget
     describe "allComponentTargets" testAllComponentTargets
+    describe "compareTargets" testCompareTargets
 
 
 testSourceDirsForTarget :: Spec
@@ -112,7 +127,7 @@ testResolveTargets = do
                         . evalState mempty
                         . runFileSystemState
                         $ resolveTargets ["/myapp.cabal"] ["lib:foo", "test:foo-test"]
-            actual `shouldBe` ["lib:foo", "test:foo-test"]
+            actual `shouldBe` ["test:foo-test", "lib:foo"]
 
     describe "when no targets are configured" do
         it "auto-detects all components from the cabal file" do
@@ -122,7 +137,7 @@ testResolveTargets = do
                         . runFileSystemState
                         $ resolveTargets ["/myapp.cabal"] []
             actual
-                `shouldBe` ["lib:myapp", "lib:myapp-utils", "exe:myapp-exe", "test:myapp-test"]
+                `shouldBe` ["exe:myapp-exe", "test:myapp-test", "lib:myapp", "lib:myapp-utils"]
 
         it "surfaces test-suite components so they can be run after a build" do
             let Targets actual =
@@ -299,6 +314,54 @@ testResolveCommand = do
     pr = ProjectRoot "/"
     cfg = def {replBuildDir = "/replbuild"}
     testTargets = TestTargets ["test:foo"]
+
+
+testCompareTargets :: Spec
+testCompareTargets = do
+    describe "Ord" do
+        describe "only first target beginnings with 'lib:'" do
+            describe "first target's component name normally sorts as LT" do
+                it "should return GT" do
+                    compareTargets "lib:a" "exe:b" `shouldBe` GT
+            describe "both targets have same component name" do
+                it "should return GT" do
+                    compareTargets "lib:a" "exe:a" `shouldBe` GT
+            describe "first target's component name normally sorts as GT" do
+                it "should return GT" do
+                    compareTargets "lib:b" "exe:a" `shouldBe` GT
+
+        describe "only second target begins with 'lib:'" do
+            describe "first target's component name normally sorts as LT" do
+                it "should return LT" do
+                    compareTargets "exe:a" "lib:b" `shouldBe` LT
+            describe "both targets have same component name" do
+                it "should return LT" do
+                    compareTargets "exe:a" "lib:a" `shouldBe` LT
+            describe "first target's component name normally sorts as GT" do
+                it "should return LT" do
+                    compareTargets "exe:b" "lib:a" `shouldBe` LT
+
+        describe "both targets begin with 'lib:'" do
+            describe "first target's component name normally sorts as LT" do
+                it "should sort normally" do
+                    compareTargets "lib:a" "lib:b" `shouldBe` LT
+            describe "both targets have same component name" do
+                it "should sort normally" do
+                    compareTargets "lib:a" "lib:a" `shouldBe` EQ
+            describe "first target's component name normally sorts as GT" do
+                it "should sort normally" do
+                    compareTargets "lib:b" "lib:a" `shouldBe` GT
+
+        describe "neither target begin with 'lib:'" do
+            describe "first target's component name normally sorts as LT" do
+                it "should sort normally" do
+                    compareTargets "exe:a" "exe:b" `shouldBe` LT
+            describe "both targets have same component name" do
+                it "should sort normally" do
+                    compareTargets "exe:a" "exe:a" `shouldBe` EQ
+            describe "first target's component name normally sorts as GT" do
+                it "should sort normally" do
+                    compareTargets "exe:b" "exe:a" `shouldBe` GT
 
 
 --------------------------------------------------------------------------------

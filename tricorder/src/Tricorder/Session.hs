@@ -17,6 +17,7 @@ module Tricorder.Session
     , resolveTestTargets
     , resolveWatchDirs
     , sourceDirsForTarget
+    , compareTargets
     ) where
 
 import Atelier.Config (LoadedConfig, extractConfig)
@@ -251,13 +252,32 @@ sourceDirsForTarget gpd target =
 -- Returns the configured targets as-is, or auto-detects all components across
 -- every discovered package when no targets are configured.
 resolveTargets :: (FileSystem :> es) => [FilePath] -> [Text] -> Eff es Targets
-resolveTargets _ targets@(_ : _) = pure $ Targets targets
+resolveTargets _ targets@(_ : _) = pure $ Targets $ sortBy compareTargets targets
 resolveTargets cabalFiles [] =
-    Targets . concat <$> traverse targetsFromCabal cabalFiles
+    Targets . sortBy compareTargets . concat <$> traverse targetsFromCabal cabalFiles
   where
     targetsFromCabal path = do
         contents <- readFileBs path
         pure $ maybe [] allComponentTargets (parseGenericPackageDescriptionMaybe contents)
+
+
+-- | When running @cabal repl <package defining custom prelude> <other
+-- packages...>@, GHCi fails because it attempts to load the provided @Prelude@
+-- module before loading the package itself. This is not a problem if the
+-- package defining the prelude module is not the first component listed.
+--
+-- Because of this GHCi quirk, we sort all packages beginning with @lib:@ last.
+-- This is based on the assumption that components defining custom preludes
+-- usually reside in libraries. If we can then place at least one target that
+-- does not specify a custom prelude a before targets that do, we will prevent
+-- the user from being hit with this rather obscure error message.
+compareTargets :: Text -> Text -> Ordering
+compareTargets a b
+    | isLib a && not (isLib b) = GT
+    | not (isLib a) && isLib b = LT
+    | otherwise = compare a b
+  where
+    isLib = ("lib:" `T.isPrefixOf`)
 
 
 -- | Locate every package's @.cabal@ file, logging what drove the result. In a
