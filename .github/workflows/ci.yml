@@ -10,7 +10,30 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  ghc-versions:
+    name: Get GHC versions
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.compute.outputs.ghc-versions }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Compute GHC versions
+        id: compute
+        shell: bash
+        run: |
+          versions=$(
+            nix eval --json --file nix/package/common.nix \
+              | jq -c '."ghc-versions" | [.[] | "ghc" + gsub("\\."; "")]'
+          )
+          echo "ghc-versions=$versions" >> "$GITHUB_OUTPUT"
+
   check:
+    needs: ghc-versions
     name: Check ${{ matrix.system }}/${{ matrix.ghc-version }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -18,10 +41,7 @@ jobs:
         os:
           - macos-14
           - ubuntu-latest
-        ghc-version:
-          - ghc9102
-          - ghc912
-          - ghc98
+        ghc-version: ${{ fromJson(needs.ghc-versions.outputs.versions) }}
         include:
           - os: macos-14
             system: aarch64-darwin

@@ -25,22 +25,9 @@ in
     tested-with
     ;
 
-  ghc-options = [
-    "-Weverything"
-    "-Wno-unsafe"
-    "-Wno-missing-safe-haskell-mode"
-    "-Wno-monomorphism-restriction"
-    "-Wno-missing-kind-signatures"
-    "-Wno-missing-poly-kind-signatures"
-    "-Wno-missing-role-annotations"
-    "-Wno-missing-local-signatures"
-    "-Wno-missing-import-lists"
-    "-Wno-implicit-prelude"
-    "-Wno-unticked-promoted-constructors"
-    "-Wno-unused-packages"
-    "-Wno-all-missed-specialisations"
-    "-Wno-missed-specialisations"
-  ];
+  ghc-options = common.options.warnings;
+  inherit (common.options) when;
+
   library = {
     source-dirs = "src";
     dependencies = depList [

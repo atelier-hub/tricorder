@@ -17,8 +17,12 @@ in
     license
     license-file
     language
-    ghc-options
     default-extensions
+    ;
+
+  inherit (common.options)
+    ghc-options
+    when
     ;
 
   dependencies = depList [
