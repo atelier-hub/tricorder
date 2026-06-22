@@ -36,6 +36,7 @@ import Tricorder.Effects.SessionStore (runSessionStore)
 import Tricorder.Effects.TestRunner (runTestRunnerIO)
 import Tricorder.Effects.UnixSocket (runUnixSocketIO)
 import Tricorder.Runtime (runLogPath, runProjectRoot, runRuntimeDir, runSocketPath)
+import Tricorder.Session (runCabalFiles)
 
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
@@ -77,6 +78,7 @@ main =
         . runTracingFromConfig
         . runChan
         . runPubSub @SessionStore.SessionStoreReloaded
+        . runCabalFiles
         . runSessionStore
         . runReader @CacheConfig.Config def
         . runPubSub @Watcher.WatchedFile

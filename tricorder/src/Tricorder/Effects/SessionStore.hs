@@ -30,7 +30,7 @@ import Atelier.Effects.Publishing qualified as Sub
 import Effectful.State.Static.Shared qualified as State
 
 import Tricorder.Runtime (ProjectRoot)
-import Tricorder.Session (Session, loadSession)
+import Tricorder.Session (CabalFile, Session, loadSession)
 
 
 data SessionStore :: Effect where
@@ -103,6 +103,7 @@ runSessionStore
        , Pub SessionStoreReloaded :> es
        , Reader LoadedConfig :> es
        , Reader ProjectRoot :> es
+       , Reader [CabalFile] :> es
        )
     => Eff (SessionStore : es) a -> Eff es a
 runSessionStore act = do
