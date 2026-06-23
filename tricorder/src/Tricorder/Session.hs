@@ -128,14 +128,15 @@ newtype Command = Command {getCommand :: Text}
 -- | The test suites to run after a clean build. Built only by projecting a
 -- target list onto its @test:@ components via 'projectTestTargets'; the data
 -- constructor is not exported, so a 'TestTargets' can never hold a non-test
--- target.
+-- target [ref:test_targets_invariant].
 newtype TestTargets = TestTargets {getTestTargets :: [Target]}
     deriving stock (Eq, Generic, Show)
     deriving (FromJSON, ToJSON) via [Target]
 
 
--- | Project a target list onto its test suites — the only way to build a
--- 'TestTargets', so the @test:@-only invariant holds by construction.
+-- | [tag:test_targets_invariant] Project a target list onto its test suites —
+-- the only way to build a 'TestTargets', so the @test:@-only invariant holds by
+-- construction.
 projectTestTargets :: [Target] -> TestTargets
 projectTestTargets = TestTargets . filter isTestTarget
   where
@@ -168,9 +169,9 @@ data ComponentKind = Lib | Exe | Test
     deriving stock (Bounded, Enum, Eq, Show)
 
 
--- | The textual prefix cabal uses for each component kind. Single source of
--- truth shared by 'parseTarget' and 'renderTarget' — keep this the only place
--- the prefix strings appear.
+-- | [tag:kind_prefix_sole_source] The textual prefix cabal uses for each
+-- component kind. Single source of truth shared by 'parseTarget' and
+-- 'renderTarget' — keep this the only place the prefix strings appear.
 kindPrefix :: ComponentKind -> Text
 kindPrefix = \case
     Lib -> "lib"
@@ -179,7 +180,7 @@ kindPrefix = \case
 
 
 -- | Parse a kind prefix, derived as the inverse of 'kindPrefix' so the two
--- never drift apart.
+-- never drift apart [ref:kind_prefix_sole_source].
 parseKind :: Text -> Maybe ComponentKind
 parseKind = inverseMap kindPrefix
 
@@ -195,7 +196,8 @@ parseTarget target = case T.splitOn ":" target of
 
 
 -- | Render a 'Target' back to the textual form cabal understands. Inverse of
--- 'parseTarget' (lossless: @parseTarget . renderTarget == id@).
+-- 'parseTarget' (lossless: @parseTarget . renderTarget == id@). Builds prefixes
+-- via 'kindPrefix' rather than hardcoding them [ref:kind_prefix_sole_source].
 renderTarget :: Target -> Text
 renderTarget = \case
     Qualified kind name -> kindPrefix kind <> ":" <> name
@@ -346,7 +348,8 @@ sourceDirsForTarget gpd target =
 -- raw target strings (from config) are parsed into structured 'Target's: the
 -- configured targets are parsed as-is, or all components across every
 -- discovered package are auto-detected when no targets are configured. Either
--- way the result is sorted with 'compareTargets' so libraries come last.
+-- way the result is sorted with 'compareTargets' so libraries come last
+-- [ref:lib_sort_order].
 resolveTargets :: (FileSystem :> es) => [FilePath] -> [Text] -> Eff es [Target]
 resolveTargets _ targets@(_ : _) = pure $ sortBy compareTargets $ map parseTarget targets
 resolveTargets cabalFiles [] =
@@ -357,10 +360,11 @@ resolveTargets cabalFiles [] =
         pure $ maybe [] allComponentTargets (parseGenericPackageDescriptionMaybe contents)
 
 
--- | When running @cabal repl <package defining custom prelude> <other
--- packages...>@, GHCi fails because it attempts to load the provided @Prelude@
--- module before loading the package itself. This is not a problem if the
--- package defining the prelude module is not the first component listed.
+-- | [tag:lib_sort_order] When running @cabal repl <package defining custom
+-- prelude> <other packages...>@, GHCi fails because it attempts to load the
+-- provided @Prelude@ module before loading the package itself. This is not a
+-- problem if the package defining the prelude module is not the first component
+-- listed.
 --
 -- Because of this GHCi quirk, we sort all packages beginning with @lib:@ last.
 -- This is based on the assumption that components defining custom preludes
@@ -453,7 +457,7 @@ allComponentTargets gpd =
 -- | Resolve which test suites to run after a clean build. Either source — the
 -- explicit @test_targets@ config or the build 'targets' — is projected onto its
 -- @test:@ components (see 'projectTestTargets'), so non-test entries are
--- dropped and the result only ever names test suites.
+-- dropped and the result only ever names test suites [ref:test_targets_invariant].
 resolveTestTargets :: Config -> [Target] -> TestTargets
 resolveTestTargets cfg targets = case cfg.testTargets of
     Just explicit -> parseTestTargets explicit
