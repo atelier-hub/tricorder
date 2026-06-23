@@ -14,6 +14,7 @@ let
       nixfmt
       postgresql
       pre-commit
+      tagref
     ]);
 in
 project.shellFor {

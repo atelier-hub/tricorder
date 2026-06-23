@@ -70,6 +70,12 @@ let
             entry = "${nix-hpack}/bin/nix-hpack";
             pass_filenames = false;
           };
+          # Validate tagref cross-references (no dangling refs / duplicate tags).
+          tagref = {
+            enable = true;
+            entry = "${pkgs.tagref}/bin/tagref check";
+            pass_filenames = false;
+          };
         }
       )
     ];
