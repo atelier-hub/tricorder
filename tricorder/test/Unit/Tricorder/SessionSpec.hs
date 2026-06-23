@@ -67,6 +67,20 @@ testSourceDirsForTarget = do
         it "returns test suite source dirs" do
             sourceDirsForTarget gpd "test:myapp-test" `shouldBe` ["test"]
 
+    describe "bare package name" do
+        it "returns every component's source dirs" do
+            sourceDirsForTarget gpd "myapp" `shouldBe` ["src", "utils", "app", "test"]
+
+    describe "bare component name" do
+        it "resolves a sub-library by its bare name" do
+            sourceDirsForTarget gpd "myapp-utils" `shouldBe` ["utils"]
+
+        it "resolves an executable by its bare name" do
+            sourceDirsForTarget gpd "myapp-exe" `shouldBe` ["app"]
+
+        it "resolves a test suite by its bare name" do
+            sourceDirsForTarget gpd "myapp-test" `shouldBe` ["test"]
+
     describe "unknown target" do
         it "returns empty list" do
             sourceDirsForTarget gpd "unknown" `shouldBe` []
@@ -203,6 +217,17 @@ testResolveWatchDirs = do
                         $ resolveWatchDirs pr [] def (Targets ["lib:myapp"])
             actual `shouldBe` ["."]
 
+        -- Sharp edge: an unparseable .cabal yields no source dirs, so resolution
+        -- falls back to watching the whole project root. This pins the current
+        -- behavior; if it ever changes to something narrower, update this test.
+        it "falls back to [\".\"] when the cabal file cannot be parsed" do
+            let WatchDirs actual =
+                    runPureEff
+                        . evalState (Map.singleton "/myapp.cabal" malformedCabal)
+                        . runFileSystemState
+                        $ resolveWatchDirs pr ["/myapp.cabal"] def (Targets ["lib:myapp"])
+            actual `shouldBe` ["."]
+
     describe "when the project is a multi-package cabal.project" do
         it "infers per-package source dirs, scoped to each package's directory" do
             let WatchDirs actual =
@@ -216,6 +241,18 @@ testResolveWatchDirs = do
                             (Targets ["lib:pkg-a", "test:pkg-a-test", "lib:pkg-b", "test:pkg-b-test"])
             actual
                 `shouldBe` ["/pkg-a/src", "/pkg-a/test", "/pkg-b/src", "/pkg-b/test"]
+
+        it "scopes a bare package-name target to that package, ignoring siblings" do
+            let WatchDirs actual =
+                    runPureEff
+                        . evalState multiPackageFs
+                        . runFileSystemState
+                        $ resolveWatchDirs
+                            pr
+                            ["/pkg-a/pkg-a.cabal", "/pkg-b/pkg-b.cabal"]
+                            def
+                            (Targets ["pkg-a"])
+            actual `shouldBe` ["/pkg-a/src", "/pkg-a/test"]
   where
     pr = ProjectRoot "/"
 
@@ -408,6 +445,12 @@ libTestCabal name =
             , "  build-depends: base"
             , "  default-language: Haskell2010"
             ]
+
+
+-- | Not a valid @.cabal@ file: @parseGenericPackageDescriptionMaybe@ returns
+-- 'Nothing' for it.
+malformedCabal :: ByteString
+malformedCabal = "this is not a cabal file {{{ <<< @@@\n"
 
 
 cabalFixture :: ByteString

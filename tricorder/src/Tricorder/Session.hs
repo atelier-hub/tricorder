@@ -226,26 +226,39 @@ resolveWatchDirsFromTargets cabalFiles (Targets targets) = do
 sourceDirsForTarget :: GenericPackageDescription -> Text -> [FilePath]
 sourceDirsForTarget gpd target =
     map getSymbolicPath $ case T.splitOn ":" target of
-        ["lib", ""] ->
-            maybe [] (libDirs . condTreeData) (condLibrary gpd)
-        ["lib", name] ->
-            let ucn = mkUnqualComponentName (toString name)
-                mainLibName = unPackageName . pkgName . package . packageDescription $ gpd
-            in  if toString name == mainLibName then
-                    maybe [] (libDirs . condTreeData) (condLibrary gpd)
-                else
-                    concatMap (libDirs . condTreeData . snd) $ filter ((== ucn) . fst) (condSubLibraries gpd)
-        ["test", name] ->
-            let ucn = mkUnqualComponentName (toString name)
-            in  concatMap (testDirs . condTreeData . snd) $ filter ((== ucn) . fst) (condTestSuites gpd)
-        ["exe", name] ->
-            let ucn = mkUnqualComponentName (toString name)
-            in  concatMap (exeDirs . condTreeData . snd) $ filter ((== ucn) . fst) (condExecutables gpd)
+        ["lib", ""] -> mainLibSourceDirs
+        ["lib", name]
+            | toString name == mainPkgName -> mainLibSourceDirs
+            | otherwise -> subLibSourceDirs name
+        ["test", name] -> testSourceDirs name
+        ["exe", name] -> exeSourceDirs name
+        -- A bare target (no @kind:@ prefix) is a package name or a component
+        -- name. A package name covers every component; otherwise match a
+        -- single component by name across the kinds.
+        [name]
+            | toString name == mainPkgName -> allComponentSourceDirs
+            | otherwise -> subLibSourceDirs name <> exeSourceDirs name <> testSourceDirs name
         _ -> []
   where
+    mainPkgName = unPackageName . pkgName . package . packageDescription $ gpd
     libDirs = hsSourceDirs . libBuildInfo
     testDirs = hsSourceDirs . testBuildInfo
     exeDirs = hsSourceDirs . buildInfo
+
+    mainLibSourceDirs = maybe [] (libDirs . condTreeData) (condLibrary gpd)
+    subLibSourceDirs name = dirsForComponent libDirs (condSubLibraries gpd) name
+    exeSourceDirs name = dirsForComponent exeDirs (condExecutables gpd) name
+    testSourceDirs name = dirsForComponent testDirs (condTestSuites gpd) name
+
+    allComponentSourceDirs =
+        mainLibSourceDirs
+            <> concatMap (libDirs . condTreeData . snd) (condSubLibraries gpd)
+            <> concatMap (exeDirs . condTreeData . snd) (condExecutables gpd)
+            <> concatMap (testDirs . condTreeData . snd) (condTestSuites gpd)
+
+    dirsForComponent dirs components name =
+        let ucn = mkUnqualComponentName (toString name)
+        in  concatMap (dirs . condTreeData . snd) $ filter ((== ucn) . fst) components
 
 
 -- | Infer the effective targets to build and watch.
