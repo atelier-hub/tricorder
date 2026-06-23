@@ -47,6 +47,7 @@ import Tricorder.BuildState
     , TestRunCompletion (..)
     , TestRunError (..)
     )
+import Tricorder.Session (Target, renderTarget)
 import Tricorder.TestOutput (stripGhciNoise)
 import Tricorder.UI.Keys (KeyEvent, keybindForRoute, viewKeybindings)
 import Tricorder.UI.Misc (emphasis, err, hBoxSpaced, ok, subtle, vBoxSpaced, warn)
@@ -196,7 +197,7 @@ viewVersion =
         ]
 
 
-viewTargets :: [Text] -> Widget n
+viewTargets :: [Target] -> Widget n
 viewTargets targets =
     hBoxSpaced
         1
@@ -204,7 +205,7 @@ viewTargets targets =
         , if null targets then
             txt "(all)"
           else
-            txtWrap (T.intercalate " " targets)
+            txtWrap (T.intercalate " " (map renderTarget targets))
         ]
 
 

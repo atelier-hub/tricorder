@@ -2,8 +2,13 @@ module Tricorder.Session
     ( Session (..)
     , Config (..)
     , Command (..)
-    , Targets (..)
-    , TestTargets (..)
+    , TestTargets
+    , getTestTargets
+    , parseTestTargets
+    , Target (..)
+    , ComponentKind (..)
+    , parseTarget
+    , renderTarget
     , WatchDirs (..)
     , WatchExclusionPatterns (..)
     , ReplBuildDir (..)
@@ -25,7 +30,7 @@ import Atelier.Effects.FileSystem (FileSystem, doesFileExist, listDirectory, rea
 import Atelier.Effects.Log (Log)
 import Atelier.Types.QuietSnake (QuietSnake (..))
 import Atelier.Types.WithDefaults (WithDefaults (..))
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Default (Default (..))
 import Data.List (nub)
 import Distribution.Fields (Field (..), FieldLine (..), Name (..), readFields)
@@ -64,7 +69,7 @@ import Tricorder.Runtime (ProjectRoot (..))
 
 data Session = Session
     { command :: Command
-    , targets :: Targets
+    , targets :: [Target]
     , testTargets :: TestTargets
     , watchDirs :: WatchDirs
     , watchExclusionPatterns :: WatchExclusionPatterns
@@ -80,8 +85,8 @@ instance Default Session where
     def =
         Session
             { command = Command ""
-            , targets = Targets []
-            , testTargets = TestTargets []
+            , targets = []
+            , testTargets = projectTestTargets []
             , watchDirs = WatchDirs []
             , watchExclusionPatterns = WatchExclusionPatterns []
             , replBuildDir = ReplBuildDir "/tmp"
@@ -120,14 +125,90 @@ newtype Command = Command {getCommand :: Text}
     deriving (FromJSON, ToJSON) via Text
 
 
-newtype Targets = Targets {getTargets :: [Text]}
+-- | The test suites to run after a clean build. Built only by projecting a
+-- target list onto its @test:@ components via 'projectTestTargets'; the data
+-- constructor is not exported, so a 'TestTargets' can never hold a non-test
+-- target.
+newtype TestTargets = TestTargets {getTestTargets :: [Target]}
     deriving stock (Eq, Generic, Show)
-    deriving (FromJSON, ToJSON) via [Text]
+    deriving (FromJSON, ToJSON) via [Target]
 
 
-newtype TestTargets = TestTargets {getTestTargets :: [Text]}
-    deriving stock (Eq, Generic, Show)
-    deriving (FromJSON, ToJSON) via [Text]
+-- | Project a target list onto its test suites — the only way to build a
+-- 'TestTargets', so the @test:@-only invariant holds by construction.
+projectTestTargets :: [Target] -> TestTargets
+projectTestTargets = TestTargets . filter isTestTarget
+  where
+    isTestTarget (Qualified Test _) = True
+    isTestTarget _ = False
+
+
+-- | Parse raw target strings (e.g. the @test_targets@ config) and project them
+-- onto their test suites — non-test entries are dropped.
+parseTestTargets :: [Text] -> TestTargets
+parseTestTargets = projectTestTargets . map parseTarget
+
+
+-- | A cabal build target, parsed from its textual @[kind:]name@ form. Used to
+-- resolve which source directories belong to a target.
+data Target
+    = -- | A @kind:name@ reference, e.g. @lib:foo@, @exe:foo@, @test:foo@. An
+      -- empty name with 'Lib' (i.e. @lib:@) denotes the package's main library.
+      Qualified ComponentKind Text
+    | -- | A name with no @kind:@ prefix. Refers either to a package (all of its
+      -- components) or to a single component matched by name.
+      Bare Text
+    | -- | A form we don't recognize: an unknown kind, or extra colons.
+      Unrecognized Text
+    deriving stock (Eq, Show)
+
+
+-- | The kind of cabal component a 'Qualified' target names.
+data ComponentKind = Lib | Exe | Test
+    deriving stock (Bounded, Enum, Eq, Show)
+
+
+-- | The textual prefix cabal uses for each component kind. Single source of
+-- truth shared by 'parseTarget' and 'renderTarget' — keep this the only place
+-- the prefix strings appear.
+kindPrefix :: ComponentKind -> Text
+kindPrefix = \case
+    Lib -> "lib"
+    Exe -> "exe"
+    Test -> "test"
+
+
+-- | Parse a kind prefix, derived as the inverse of 'kindPrefix' so the two
+-- never drift apart.
+parseKind :: Text -> Maybe ComponentKind
+parseKind = inverseMap kindPrefix
+
+
+-- | Classify a target's textual form. The grammar is @[kind:]name@ where
+-- @kind@ is one of @lib@, @exe@, or @test@; anything else (an unknown kind, or
+-- extra colons) is 'Unrecognized'.
+parseTarget :: Text -> Target
+parseTarget target = case T.splitOn ":" target of
+    [prefix, name] | Just kind <- parseKind prefix -> Qualified kind name
+    [name] -> Bare name
+    _ -> Unrecognized target
+
+
+-- | Render a 'Target' back to the textual form cabal understands. Inverse of
+-- 'parseTarget' (lossless: @parseTarget . renderTarget == id@).
+renderTarget :: Target -> Text
+renderTarget = \case
+    Qualified kind name -> kindPrefix kind <> ":" <> name
+    Bare name -> name
+    Unrecognized raw -> raw
+
+
+instance ToJSON Target where
+    toJSON = toJSON . renderTarget
+
+
+instance FromJSON Target where
+    parseJSON = fmap parseTarget . parseJSON
 
 
 newtype WatchDirs = WatchDirs {getWatchDirs :: [FilePath]}
@@ -154,7 +235,7 @@ newtype TestTimeout = TestTimeout {getTestTimeout :: Int}
 -- The @testTargets@ are the discovered @test:@ components; they are appended to
 -- the auto-detected @all@ target (see 'detectCommand'). They are ignored when
 -- the user has pinned an explicit @command@ or explicit @targets@ in config.
-resolveCommand :: (FileSystem :> es) => ProjectRoot -> Config -> Targets -> TestTargets -> Eff es Command
+resolveCommand :: (FileSystem :> es) => ProjectRoot -> Config -> [Target] -> TestTargets -> Eff es Command
 resolveCommand projectRoot cfg targets testTargets =
     case cfg.command of
         Just cmd -> pure $ Command cmd
@@ -174,14 +255,14 @@ resolveCommand projectRoot cfg targets testTargets =
 -- "not loaded" and the session dies — which a naive discovery-order enumeration
 -- triggers but @all@ avoids. Appending already-included test targets is a no-op
 -- (cabal deduplicates).
-detectCommand :: (FileSystem :> es) => Targets -> TestTargets -> FilePath -> ProjectRoot -> Eff es Command
-detectCommand (Targets targets) (TestTargets testTargets) replBuildDir (ProjectRoot projectRoot) = do
+detectCommand :: (FileSystem :> es) => [Target] -> TestTargets -> FilePath -> ProjectRoot -> Eff es Command
+detectCommand targets (TestTargets testTargets) replBuildDir (ProjectRoot projectRoot) = do
     hasCabalProject <- doesFileExist (projectRoot </> "cabal.project")
     cabalFiles <- filter (\f -> takeExtension f == ".cabal") <$> listDirectory projectRoot
     hasStack <- doesFileExist (projectRoot </> "stack.yaml")
     let targetStr
-            | not (null targets) = unwords targets
-            | otherwise = unwords ("all" : testTargets)
+            | not (null targets) = unwords (map renderTarget targets)
+            | otherwise = unwords ("all" : map renderTarget testTargets)
         buildDirFlag = "--builddir " <> toText replBuildDir <> " "
     pure
         if
@@ -197,16 +278,16 @@ detectCommand (Targets targets) (TestTargets testTargets) replBuildDir (ProjectR
 -- 1. @watch_dirs@ from config, if non-empty (used as-is relative to project root)
 -- 2. @hs-source-dirs@ inferred from cabal targets, if targets are set
 -- 3. Falls back to @["."]@ (project root) if neither is available
-resolveWatchDirs :: (FileSystem :> es) => ProjectRoot -> [FilePath] -> Config -> Targets -> Eff es WatchDirs
+resolveWatchDirs :: (FileSystem :> es) => ProjectRoot -> [FilePath] -> Config -> [Target] -> Eff es WatchDirs
 resolveWatchDirs projectRoot cabalFiles cfg targets =
     case cfg.watchDirs of
         dirs@(_ : _) -> pure $ WatchDirs $ map (coerce projectRoot </>) dirs
         [] -> resolveWatchDirsFromTargets cabalFiles targets
 
 
-resolveWatchDirsFromTargets :: (FileSystem :> es) => [FilePath] -> Targets -> Eff es WatchDirs
-resolveWatchDirsFromTargets _ (Targets []) = pure $ WatchDirs ["."]
-resolveWatchDirsFromTargets cabalFiles (Targets targets) = do
+resolveWatchDirsFromTargets :: (FileSystem :> es) => [FilePath] -> [Target] -> Eff es WatchDirs
+resolveWatchDirsFromTargets _ [] = pure $ WatchDirs ["."]
+resolveWatchDirsFromTargets cabalFiles targets = do
     dirs <- nub . concat <$> traverse watchDirsForCabal cabalFiles
     pure $ WatchDirs $ if null dirs then ["."] else dirs
   where
@@ -223,22 +304,22 @@ resolveWatchDirsFromTargets cabalFiles (Targets targets) = do
             Just gpd -> map (pkgDir </>) (concatMap (sourceDirsForTarget gpd) targets)
 
 
-sourceDirsForTarget :: GenericPackageDescription -> Text -> [FilePath]
+sourceDirsForTarget :: GenericPackageDescription -> Target -> [FilePath]
 sourceDirsForTarget gpd target =
-    map getSymbolicPath $ case T.splitOn ":" target of
-        ["lib", ""] -> mainLibSourceDirs
-        ["lib", name]
+    map getSymbolicPath $ case target of
+        Qualified Lib "" -> mainLibSourceDirs
+        Qualified Lib name
             | toString name == mainPkgName -> mainLibSourceDirs
             | otherwise -> subLibSourceDirs name
-        ["test", name] -> testSourceDirs name
-        ["exe", name] -> exeSourceDirs name
+        Qualified Exe name -> exeSourceDirs name
+        Qualified Test name -> testSourceDirs name
         -- A bare target (no @kind:@ prefix) is a package name or a component
         -- name. A package name covers every component; otherwise match a
         -- single component by name across the kinds.
-        [name]
+        Bare name
             | toString name == mainPkgName -> allComponentSourceDirs
             | otherwise -> subLibSourceDirs name <> exeSourceDirs name <> testSourceDirs name
-        _ -> []
+        Unrecognized _ -> []
   where
     mainPkgName = unPackageName . pkgName . package . packageDescription $ gpd
     libDirs = hsSourceDirs . libBuildInfo
@@ -261,13 +342,15 @@ sourceDirsForTarget gpd target =
         in  concatMap (dirs . condTreeData . snd) $ filter ((== ucn) . fst) components
 
 
--- | Infer the effective targets to build and watch.
--- Returns the configured targets as-is, or auto-detects all components across
--- every discovered package when no targets are configured.
-resolveTargets :: (FileSystem :> es) => [FilePath] -> [Text] -> Eff es Targets
-resolveTargets _ targets@(_ : _) = pure $ Targets $ sortBy compareTargets targets
+-- | Infer the effective targets to build and watch. This is the boundary where
+-- raw target strings (from config) are parsed into structured 'Target's: the
+-- configured targets are parsed as-is, or all components across every
+-- discovered package are auto-detected when no targets are configured. Either
+-- way the result is sorted with 'compareTargets' so libraries come last.
+resolveTargets :: (FileSystem :> es) => [FilePath] -> [Text] -> Eff es [Target]
+resolveTargets _ targets@(_ : _) = pure $ sortBy compareTargets $ map parseTarget targets
 resolveTargets cabalFiles [] =
-    Targets . sortBy compareTargets . concat <$> traverse targetsFromCabal cabalFiles
+    sortBy compareTargets . concat <$> traverse targetsFromCabal cabalFiles
   where
     targetsFromCabal path = do
         contents <- readFileBs path
@@ -284,13 +367,14 @@ resolveTargets cabalFiles [] =
 -- usually reside in libraries. If we can then place at least one target that
 -- does not specify a custom prelude a before targets that do, we will prevent
 -- the user from being hit with this rather obscure error message.
-compareTargets :: Text -> Text -> Ordering
+compareTargets :: Target -> Target -> Ordering
 compareTargets a b
     | isLib a && not (isLib b) = GT
     | not (isLib a) && isLib b = LT
-    | otherwise = compare a b
+    | otherwise = compare (renderTarget a) (renderTarget b)
   where
-    isLib = ("lib:" `T.isPrefixOf`)
+    isLib (Qualified Lib _) = True
+    isLib _ = False
 
 
 -- | Locate every package's @.cabal@ file, logging what drove the result. In a
@@ -351,7 +435,7 @@ projectPackageEntries contents =
     fromLine (FieldLine _ bs) = map BC.unpack (BC.words bs)
 
 
-allComponentTargets :: GenericPackageDescription -> [Text]
+allComponentTargets :: GenericPackageDescription -> [Target]
 allComponentTargets gpd =
     mainLibTargets
         ++ subLibTargets
@@ -359,20 +443,21 @@ allComponentTargets gpd =
         ++ testTargets
   where
     mainPkgName = toText $ unPackageName . pkgName . package . packageDescription $ gpd
-    mainLibTargets = maybe [] (const ["lib:" <> mainPkgName]) (condLibrary gpd)
-    subLibTargets = map (\(n, _) -> "lib:" <> toText (unUnqualComponentName n)) (condSubLibraries gpd)
-    exeTargets = map (\(n, _) -> "exe:" <> toText (unUnqualComponentName n)) (condExecutables gpd)
-    testTargets = map (\(n, _) -> "test:" <> toText (unUnqualComponentName n)) (condTestSuites gpd)
+    mainLibTargets = maybe [] (const [Qualified Lib mainPkgName]) (condLibrary gpd)
+    subLibTargets = map (\(n, _) -> Qualified Lib (componentName n)) (condSubLibraries gpd)
+    exeTargets = map (\(n, _) -> Qualified Exe (componentName n)) (condExecutables gpd)
+    testTargets = map (\(n, _) -> Qualified Test (componentName n)) (condTestSuites gpd)
+    componentName = toText . unUnqualComponentName
 
 
--- | Resolve which test suites to run after a clean build.
---
--- When 'testTargets' is set in config, those suites are used directly.
--- Otherwise, all @test:@ components in 'targets' are inferred.
-resolveTestTargets :: Config -> Targets -> TestTargets
+-- | Resolve which test suites to run after a clean build. Either source — the
+-- explicit @test_targets@ config or the build 'targets' — is projected onto its
+-- @test:@ components (see 'projectTestTargets'), so non-test entries are
+-- dropped and the result only ever names test suites.
+resolveTestTargets :: Config -> [Target] -> TestTargets
 resolveTestTargets cfg targets = case cfg.testTargets of
-    Just explicit -> TestTargets explicit
-    Nothing -> TestTargets $ filter ("test:" `T.isPrefixOf`) targets.getTargets
+    Just explicit -> parseTestTargets explicit
+    Nothing -> projectTestTargets targets
 
 
 resolveWatchExclusionPatterns :: [Text] -> Eff es WatchExclusionPatterns

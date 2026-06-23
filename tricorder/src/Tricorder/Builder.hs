@@ -66,7 +66,7 @@ import Tricorder.Effects.GhciSession.GhciProcess (GhciProcessError (..))
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Effects.TestRunner (TestRunner)
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Command (..), Session (..), Targets, TestTargets (..), WatchDirs)
+import Tricorder.Session (Command (..), Session (..), Target, TestTargets, WatchDirs, getTestTargets, renderTarget)
 
 import Tricorder.Effects.BuildStore qualified as BuildStore
 import Tricorder.Effects.GhciSession qualified as GhciSession
@@ -104,7 +104,7 @@ component =
 -- | A subset of 'Session' with just the properties that 'Builder' cares about.
 data BuildConfig = BuildConfig
     { command :: Command
-    , targets :: Targets
+    , targets :: [Target]
     , testTargets :: TestTargets
     , watchDirs :: WatchDirs
     }
@@ -546,18 +546,21 @@ runTestsIfClean
     -> BuildResult
     -> Eff es (Maybe [TestRun])
 runTestsIfClean (BuildConfig {testTargets}) bid partialResult
-    | null testTargets.getTestTargets || any (\d -> d.severity == SError) partialResult.diagnostics = pure (Just [])
+    | null targetNames || any (\d -> d.severity == SError) partialResult.diagnostics = pure (Just [])
     | otherwise = do
         TestRunner.resetAbort
         setNewPhase
             $ EnteringNewPhase bid
-            $ Testing partialResult {testRuns = map (`TestRunning` Nothing) testTargets.getTestTargets}
+            $ Testing partialResult {testRuns = map (`TestRunning` Nothing) targetNames}
 
-        Log.info $ "Running " <> show (length testTargets.getTestTargets) <> " test suite(s)"
+        Log.info $ "Running " <> show (length targetNames) <> " test suite(s)"
 
-        let initial = (\t -> (t, TestRunning t Nothing)) <$> testTargets.getTestTargets
-        runLoop initial testTargets.getTestTargets
+        let initial = (\t -> (t, TestRunning t Nothing)) <$> targetNames
+        runLoop initial targetNames
   where
+    -- The runner consumes the @test:@ targets as cabal/ghci arguments, so
+    -- render the structured targets to their textual form at this boundary.
+    targetNames = map renderTarget testTargets.getTestTargets
     runLoop acc [] = pure (Just (snd <$> acc))
     runLoop acc (target : rest) = do
         Log.info $ "Running tests: " <> target
