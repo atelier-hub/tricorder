@@ -88,6 +88,16 @@ testMakeWatches = do
             matchesAny watches "/proj/src/Foo.hs" `shouldBe` True
             matchesAny watches "/proj/test/FooSpec.hs" `shouldBe` True
 
+        -- Second line of defense: 'cabalWatches' registers the whole project
+        -- root, and 'deduplicateDirs' collapses the narrow source dirs into it,
+        -- so the OS watches the entire repo recursively. 'matchesAny' is what
+        -- re-scopes events back to the configured dirs — a .hs file in a sibling
+        -- package must not match.
+        it "does not match a .hs file in a sibling package outside the watch dirs" do
+            let watches = makeWatches (ProjectRoot "/proj") (watcherSession ["/proj/pkg-a/src"] [])
+            matchesAny watches "/proj/pkg-a/src/Foo.hs" `shouldBe` True
+            matchesAny watches "/proj/pkg-b/src/Foo.hs" `shouldBe` False
+
     describe "cabal watches" do
         it "matches .cabal files under project root" do
             let watches = makeWatches (ProjectRoot "/proj") emptyWatcherSession

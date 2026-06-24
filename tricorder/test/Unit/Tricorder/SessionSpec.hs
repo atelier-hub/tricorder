@@ -13,21 +13,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session
-    ( Command (..)
-    , Config (..)
-    , Targets (..)
-    , TestTargets (..)
-    , WatchDirs (..)
-    , allComponentTargets
-    , compareTargets
-    , discoverCabalFiles
-    , resolveCommand
-    , resolveTargets
-    , resolveTestTargets
-    , resolveWatchDirs
-    , sourceDirsForTarget
-    )
+import Tricorder.Session (Command (..), ComponentKind (..), Config (..), Target (..), WatchDirs (..), allComponentTargets, compareTargets, discoverCabalFiles, parseTarget, parseTestTargets, resolveCommand, resolveTargets, resolveTestTargets, resolveWatchDirs, sourceDirsForTarget)
 
 
 spec_Session :: Spec
@@ -37,58 +23,146 @@ spec_Session = do
     describe "resolveTargets" testResolveTargets
     describe "resolveWatchDirs" testResolveWatchDirs
     describe "resolveTestTargets" testResolveTestTargets
+    describe "parseTarget" testParseTarget
     describe "sourceDirsForTarget" testSourceDirsForTarget
     describe "allComponentTargets" testAllComponentTargets
     describe "compareTargets" testCompareTargets
 
 
+testParseTarget :: Spec
+testParseTarget = do
+    describe "qualified targets" do
+        it "parses lib: as the main library (empty name)" do
+            parseTarget "lib:" `shouldBe` Qualified Lib ""
+
+        it "parses a named lib: target" do
+            parseTarget "lib:myapp-utils" `shouldBe` Qualified Lib "myapp-utils"
+
+        it "parses an flib: target" do
+            parseTarget "flib:myapp-flib" `shouldBe` Qualified FLib "myapp-flib"
+
+        it "parses an exe: target" do
+            parseTarget "exe:myapp-exe" `shouldBe` Qualified Exe "myapp-exe"
+
+        it "parses a test: target" do
+            parseTarget "test:myapp-test" `shouldBe` Qualified Test "myapp-test"
+
+        it "parses a bench: target" do
+            parseTarget "bench:myapp-bench" `shouldBe` Qualified Bench "myapp-bench"
+
+    describe "a name with no kind prefix" do
+        it "parses as bare" do
+            parseTarget "myapp" `shouldBe` Bare "myapp"
+
+    describe "unrecognized targets" do
+        it "rejects an unknown kind" do
+            parseTarget "bogus:myapp" `shouldBe` Unrecognized "bogus:myapp"
+
+        it "rejects a form with extra colons" do
+            parseTarget "lib:a:b" `shouldBe` Unrecognized "lib:a:b"
+
+
+-- | These exercise the 'Target' -> dirs resolution directly with constructed
+-- 'Target' values; the string -> 'Target' parsing is covered by 'testParseTarget'.
 testSourceDirsForTarget :: Spec
 testSourceDirsForTarget = do
-    describe "lib:" do
-        it "returns main library source dirs" do
-            sourceDirsForTarget gpd "lib:" `shouldBe` ["src"]
+    describe "Qualified Lib" do
+        context "when the name is empty" do
+            it "returns the main library source dirs" do
+                sourceDirsForTarget gpd (Qualified Lib "") `shouldBe` ["src"]
 
-    describe "lib:<package-name>" do
-        it "returns main library source dirs when name matches package name" do
-            sourceDirsForTarget gpd "lib:myapp" `shouldBe` ["src"]
+        context "when the name matches the package name" do
+            it "returns the main library source dirs" do
+                sourceDirsForTarget gpd (Qualified Lib "myapp") `shouldBe` ["src"]
 
-    describe "lib:<sub-library>" do
-        it "returns sub-library source dirs" do
-            sourceDirsForTarget gpd "lib:myapp-utils" `shouldBe` ["utils"]
+        context "when the name matches a sub-library" do
+            it "returns the sub-library source dirs" do
+                sourceDirsForTarget gpd (Qualified Lib "myapp-utils") `shouldBe` ["utils"]
 
-        it "returns empty list for unknown sub-library" do
-            sourceDirsForTarget gpd "lib:nonexistent" `shouldBe` []
+        context "when the sub-library is unknown" do
+            it "returns an empty list" do
+                sourceDirsForTarget gpd (Qualified Lib "nonexistent") `shouldBe` []
 
-    describe "exe:<name>" do
-        it "returns executable source dirs" do
-            sourceDirsForTarget gpd "exe:myapp-exe" `shouldBe` ["app"]
+    describe "Qualified FLib" do
+        it "returns the foreign-library source dirs" do
+            sourceDirsForTarget gpd (Qualified FLib "myapp-flib") `shouldBe` ["flib"]
 
-    describe "test:<name>" do
-        it "returns test suite source dirs" do
-            sourceDirsForTarget gpd "test:myapp-test" `shouldBe` ["test"]
+    describe "Qualified Exe" do
+        it "returns the executable source dirs" do
+            sourceDirsForTarget gpd (Qualified Exe "myapp-exe") `shouldBe` ["app"]
 
-    describe "unknown target" do
-        it "returns empty list" do
-            sourceDirsForTarget gpd "unknown" `shouldBe` []
+    describe "Qualified Test" do
+        it "returns the test suite source dirs" do
+            sourceDirsForTarget gpd (Qualified Test "myapp-test") `shouldBe` ["test"]
+
+    describe "Qualified Bench" do
+        it "returns the benchmark source dirs" do
+            sourceDirsForTarget gpd (Qualified Bench "myapp-bench") `shouldBe` ["bench"]
+
+    describe "Bare (package name)" do
+        it "returns every component's source dirs" do
+            sourceDirsForTarget gpd (Bare "myapp") `shouldBe` ["src", "utils", "flib", "app", "test", "bench"]
+
+    describe "Bare (component name)" do
+        context "when it names a sub-library" do
+            it "returns the sub-library source dirs" do
+                sourceDirsForTarget gpd (Bare "myapp-utils") `shouldBe` ["utils"]
+
+        context "when it names an executable" do
+            it "returns the executable source dirs" do
+                sourceDirsForTarget gpd (Bare "myapp-exe") `shouldBe` ["app"]
+
+        context "when it names a test suite" do
+            it "returns the test suite source dirs" do
+                sourceDirsForTarget gpd (Bare "myapp-test") `shouldBe` ["test"]
+
+        context "when it matches no component" do
+            it "returns an empty list" do
+                sourceDirsForTarget gpd (Bare "unknown") `shouldBe` []
+
+    describe "Unrecognized" do
+        it "matches an aliased kind prefix by trailing name" do
+            sourceDirsForTarget gpd (Unrecognized "executable:myapp-exe") `shouldBe` ["app"]
+
+        it "matches a case-variant kind prefix by trailing name" do
+            sourceDirsForTarget gpd (Unrecognized "Test-Suite:myapp-test") `shouldBe` ["test"]
+
+        it "matches the main library when the trailing name is the package name" do
+            sourceDirsForTarget gpd (Unrecognized "library:myapp") `shouldBe` ["src"]
+
+        it "returns an empty list when the trailing name matches no component" do
+            sourceDirsForTarget gpd (Unrecognized "bogus:x") `shouldBe` []
 
 
 testAllComponentTargets :: Spec
 testAllComponentTargets = do
-    it "includes the main library as lib:<package-name>" do
-        allComponentTargets gpd `shouldContain` ["lib:myapp"]
+    it "includes the main library as a named Qualified Lib" do
+        allComponentTargets gpd `shouldContain` [Qualified Lib "myapp"]
 
     it "includes sub-libraries" do
-        allComponentTargets gpd `shouldContain` ["lib:myapp-utils"]
+        allComponentTargets gpd `shouldContain` [Qualified Lib "myapp-utils"]
+
+    it "includes foreign libraries" do
+        allComponentTargets gpd `shouldContain` [Qualified FLib "myapp-flib"]
 
     it "includes executables" do
-        allComponentTargets gpd `shouldContain` ["exe:myapp-exe"]
+        allComponentTargets gpd `shouldContain` [Qualified Exe "myapp-exe"]
 
     it "includes test suites" do
-        allComponentTargets gpd `shouldContain` ["test:myapp-test"]
+        allComponentTargets gpd `shouldContain` [Qualified Test "myapp-test"]
 
-    it "returns all four components for the fixture" do
+    it "includes benchmarks" do
+        allComponentTargets gpd `shouldContain` [Qualified Bench "myapp-bench"]
+
+    it "returns every component for the fixture" do
         allComponentTargets gpd
-            `shouldBe` ["lib:myapp", "lib:myapp-utils", "exe:myapp-exe", "test:myapp-test"]
+            `shouldBe` [ Qualified Lib "myapp"
+                       , Qualified Lib "myapp-utils"
+                       , Qualified FLib "myapp-flib"
+                       , Qualified Exe "myapp-exe"
+                       , Qualified Test "myapp-test"
+                       , Qualified Bench "myapp-bench"
+                       ]
 
 
 -- | Pins the discovery contract: a @cabal.project@ selects per-package
@@ -122,33 +196,39 @@ testResolveTargets = do
         it "returns configured targets as-is without reading any cabal file" do
             -- The cabal file is absent from the mock FS, so any attempt to read
             -- it would error; passing the test proves the early return.
-            let Targets actual =
+            let actual =
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
                         $ resolveTargets ["/myapp.cabal"] ["lib:foo", "test:foo-test"]
-            actual `shouldBe` ["test:foo-test", "lib:foo"]
+            actual `shouldBe` [Qualified Test "foo-test", Qualified Lib "foo"]
 
     describe "when no targets are configured" do
         it "auto-detects all components from the cabal file" do
-            let Targets actual =
+            let actual =
                     runPureEff
                         . evalState (Map.singleton "/myapp.cabal" cabalFixture)
                         . runFileSystemState
                         $ resolveTargets ["/myapp.cabal"] []
             actual
-                `shouldBe` ["exe:myapp-exe", "test:myapp-test", "lib:myapp", "lib:myapp-utils"]
+                `shouldBe` [ Qualified Bench "myapp-bench"
+                           , Qualified Exe "myapp-exe"
+                           , Qualified FLib "myapp-flib"
+                           , Qualified Test "myapp-test"
+                           , Qualified Lib "myapp"
+                           , Qualified Lib "myapp-utils"
+                           ]
 
         it "surfaces test-suite components so they can be run after a build" do
-            let Targets actual =
+            let actual =
                     runPureEff
                         . evalState (Map.singleton "/myapp.cabal" cabalFixture)
                         . runFileSystemState
                         $ resolveTargets ["/myapp.cabal"] []
-            actual `shouldContain` ["test:myapp-test"]
+            actual `shouldContain` [Qualified Test "myapp-test"]
 
         it "returns no targets when there are no cabal files" do
-            let Targets actual =
+            let actual =
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
@@ -156,15 +236,15 @@ testResolveTargets = do
             actual `shouldBe` []
 
         it "aggregates components across every package (regression: was 0)" do
-            let Targets actual =
+            let actual =
                     runPureEff
                         . evalState multiPackageFs
                         . runFileSystemState
                         $ resolveTargets ["/pkg-a/pkg-a.cabal", "/pkg-b/pkg-b.cabal"] []
-            actual `shouldContain` ["lib:pkg-a"]
-            actual `shouldContain` ["lib:pkg-b"]
-            filter ("test:" `T.isPrefixOf`) actual
-                `shouldBe` ["test:pkg-a-test", "test:pkg-b-test"]
+            actual `shouldContain` [Qualified Lib "pkg-a"]
+            actual `shouldContain` [Qualified Lib "pkg-b"]
+            [t | t@(Qualified Test _) <- actual]
+                `shouldBe` [Qualified Test "pkg-a-test", Qualified Test "pkg-b-test"]
 
 
 testResolveWatchDirs :: Spec
@@ -175,7 +255,7 @@ testResolveWatchDirs = do
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveWatchDirs pr [] def {watchDirs = ["src", "test"]} (Targets [])
+                        $ resolveWatchDirs pr [] def {watchDirs = ["src", "test"]} []
             actual `shouldBe` ["/src", "/test"]
 
     describe "when watch_dirs is not set" do
@@ -184,7 +264,7 @@ testResolveWatchDirs = do
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveWatchDirs pr [] def (Targets [])
+                        $ resolveWatchDirs pr [] def []
             actual `shouldBe` ["."]
 
         it "infers source dirs from resolved targets" do
@@ -192,7 +272,7 @@ testResolveWatchDirs = do
                     runPureEff
                         . evalState (Map.singleton "/myapp.cabal" cabalFixture)
                         . runFileSystemState
-                        $ resolveWatchDirs pr ["/myapp.cabal"] def (Targets ["lib:myapp", "test:myapp-test"])
+                        $ resolveWatchDirs pr ["/myapp.cabal"] def (mkTargets ["lib:myapp", "test:myapp-test"])
             actual `shouldBe` ["/src", "/test"]
 
         it "falls back to [\".\"] when there are no cabal files" do
@@ -200,7 +280,18 @@ testResolveWatchDirs = do
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveWatchDirs pr [] def (Targets ["lib:myapp"])
+                        $ resolveWatchDirs pr [] def (mkTargets ["lib:myapp"])
+            actual `shouldBe` ["."]
+
+        -- Sharp edge: an unparseable .cabal yields no source dirs, so resolution
+        -- falls back to watching the whole project root. This pins the current
+        -- behavior; if it ever changes to something narrower, update this test.
+        it "falls back to [\".\"] when the cabal file cannot be parsed" do
+            let WatchDirs actual =
+                    runPureEff
+                        . evalState (Map.singleton "/myapp.cabal" malformedCabal)
+                        . runFileSystemState
+                        $ resolveWatchDirs pr ["/myapp.cabal"] def (mkTargets ["lib:myapp"])
             actual `shouldBe` ["."]
 
     describe "when the project is a multi-package cabal.project" do
@@ -213,9 +304,21 @@ testResolveWatchDirs = do
                             pr
                             ["/pkg-a/pkg-a.cabal", "/pkg-b/pkg-b.cabal"]
                             def
-                            (Targets ["lib:pkg-a", "test:pkg-a-test", "lib:pkg-b", "test:pkg-b-test"])
+                            (mkTargets ["lib:pkg-a", "test:pkg-a-test", "lib:pkg-b", "test:pkg-b-test"])
             actual
                 `shouldBe` ["/pkg-a/src", "/pkg-a/test", "/pkg-b/src", "/pkg-b/test"]
+
+        it "scopes a bare package-name target to that package, ignoring siblings" do
+            let WatchDirs actual =
+                    runPureEff
+                        . evalState multiPackageFs
+                        . runFileSystemState
+                        $ resolveWatchDirs
+                            pr
+                            ["/pkg-a/pkg-a.cabal", "/pkg-b/pkg-b.cabal"]
+                            def
+                            (mkTargets ["pkg-a"])
+            actual `shouldBe` ["/pkg-a/src", "/pkg-a/test"]
   where
     pr = ProjectRoot "/"
 
@@ -224,23 +327,23 @@ testResolveTestTargets :: Spec
 testResolveTestTargets = do
     it "infers test: components from targets when testTargets is absent" do
         let cfg = def :: Config
-        resolveTestTargets cfg (Targets ["lib:mylib", "test:mylib-test"]) `shouldBe` TestTargets ["test:mylib-test"]
+        resolveTestTargets cfg (mkTargets ["lib:mylib", "test:mylib-test"]) `shouldBe` parseTestTargets ["test:mylib-test"]
 
     it "returns empty list when no test: components in targets" do
         let cfg = def :: Config
-        resolveTestTargets cfg (Targets ["lib:mylib", "exe:myapp"]) `shouldBe` TestTargets []
+        resolveTestTargets cfg (mkTargets ["lib:mylib", "exe:myapp"]) `shouldBe` parseTestTargets []
 
     it "uses explicit testTargets list when set" do
         let cfg = def {testTargets = Just ["test:b-test"]} :: Config
-        resolveTestTargets cfg (Targets ["lib:a", "test:a-test", "test:b-test"]) `shouldBe` TestTargets ["test:b-test"]
+        resolveTestTargets cfg (mkTargets ["lib:a", "test:a-test", "test:b-test"]) `shouldBe` parseTestTargets ["test:b-test"]
 
     it "returns empty list when testTargets is explicitly empty" do
         let cfg = def {testTargets = Just []} :: Config
-        resolveTestTargets cfg (Targets ["lib:a", "test:a-test"]) `shouldBe` TestTargets []
+        resolveTestTargets cfg (mkTargets ["lib:a", "test:a-test"]) `shouldBe` parseTestTargets []
 
     it "infers multiple test: components" do
         let cfg = def :: Config
-        resolveTestTargets cfg (Targets ["lib:a", "test:a-test", "test:b-test"]) `shouldBe` TestTargets ["test:a-test", "test:b-test"]
+        resolveTestTargets cfg (mkTargets ["lib:a", "test:a-test", "test:b-test"]) `shouldBe` parseTestTargets ["test:a-test", "test:b-test"]
 
 
 testResolveCommand :: Spec
@@ -251,7 +354,7 @@ testResolveCommand = do
                     runPureEff
                         . evalState mempty
                         . runFileSystemState
-                        $ resolveCommand pr def {command = Just "foo"} (Targets []) testTargets
+                        $ resolveCommand pr def {command = Just "foo"} [] testTargets
             actual `shouldBe` "foo"
 
     describe "when config has explicit targets" do
@@ -260,7 +363,7 @@ testResolveCommand = do
                     runPureEff
                         . evalState (Map.singleton "/cabal.project" "")
                         . runFileSystemState
-                        $ resolveCommand pr cfg (Targets ["lib:foo"]) testTargets
+                        $ resolveCommand pr cfg (mkTargets ["lib:foo"]) testTargets
             actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild lib:foo"
 
     describe "when config does not have a command or targets" do
@@ -270,7 +373,7 @@ testResolveCommand = do
                         runPureEff
                             . evalState (Map.singleton "/cabal.project" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg (Targets []) testTargets
+                            $ resolveCommand pr cfg [] testTargets
                 actual
                     `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all test:foo"
 
@@ -280,7 +383,7 @@ testResolveCommand = do
                         runPureEff
                             . evalState (Map.singleton "/foo.cabal" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg (Targets []) testTargets
+                            $ resolveCommand pr cfg [] testTargets
                 actual
                     `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all test:foo"
 
@@ -290,7 +393,7 @@ testResolveCommand = do
                         runPureEff
                             . evalState (Map.singleton "/stack.yaml" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg (Targets []) testTargets
+                            $ resolveCommand pr cfg [] testTargets
                 actual `shouldBe` "stack ghci all test:foo"
 
         describe "but there are no project files" do
@@ -299,7 +402,7 @@ testResolveCommand = do
                         runPureEff
                             . evalState mempty
                             . runFileSystemState
-                            $ resolveCommand pr cfg (Targets []) testTargets
+                            $ resolveCommand pr cfg [] testTargets
                 actual `shouldBe` "cabal repl --builddir /replbuild all test:foo"
 
         describe "and no test targets are discovered" do
@@ -308,12 +411,12 @@ testResolveCommand = do
                         runPureEff
                             . evalState (Map.singleton "/cabal.project" "")
                             . runFileSystemState
-                            $ resolveCommand pr cfg (Targets []) (TestTargets [])
+                            $ resolveCommand pr cfg [] (parseTestTargets [])
                 actual `shouldBe` "cabal repl --enable-multi-repl --builddir /replbuild all"
   where
     pr = ProjectRoot "/"
     cfg = def {replBuildDir = "/replbuild"}
-    testTargets = TestTargets ["test:foo"]
+    testTargets = parseTestTargets ["test:foo"]
 
 
 testCompareTargets :: Spec
@@ -322,46 +425,46 @@ testCompareTargets = do
         describe "only first target beginnings with 'lib:'" do
             describe "first target's component name normally sorts as LT" do
                 it "should return GT" do
-                    compareTargets "lib:a" "exe:b" `shouldBe` GT
+                    compareTargets (Qualified Lib "a") (Qualified Exe "b") `shouldBe` GT
             describe "both targets have same component name" do
                 it "should return GT" do
-                    compareTargets "lib:a" "exe:a" `shouldBe` GT
+                    compareTargets (Qualified Lib "a") (Qualified Exe "a") `shouldBe` GT
             describe "first target's component name normally sorts as GT" do
                 it "should return GT" do
-                    compareTargets "lib:b" "exe:a" `shouldBe` GT
+                    compareTargets (Qualified Lib "b") (Qualified Exe "a") `shouldBe` GT
 
         describe "only second target begins with 'lib:'" do
             describe "first target's component name normally sorts as LT" do
                 it "should return LT" do
-                    compareTargets "exe:a" "lib:b" `shouldBe` LT
+                    compareTargets (Qualified Exe "a") (Qualified Lib "b") `shouldBe` LT
             describe "both targets have same component name" do
                 it "should return LT" do
-                    compareTargets "exe:a" "lib:a" `shouldBe` LT
+                    compareTargets (Qualified Exe "a") (Qualified Lib "a") `shouldBe` LT
             describe "first target's component name normally sorts as GT" do
                 it "should return LT" do
-                    compareTargets "exe:b" "lib:a" `shouldBe` LT
+                    compareTargets (Qualified Exe "b") (Qualified Lib "a") `shouldBe` LT
 
         describe "both targets begin with 'lib:'" do
             describe "first target's component name normally sorts as LT" do
                 it "should sort normally" do
-                    compareTargets "lib:a" "lib:b" `shouldBe` LT
+                    compareTargets (Qualified Lib "a") (Qualified Lib "b") `shouldBe` LT
             describe "both targets have same component name" do
                 it "should sort normally" do
-                    compareTargets "lib:a" "lib:a" `shouldBe` EQ
+                    compareTargets (Qualified Lib "a") (Qualified Lib "a") `shouldBe` EQ
             describe "first target's component name normally sorts as GT" do
                 it "should sort normally" do
-                    compareTargets "lib:b" "lib:a" `shouldBe` GT
+                    compareTargets (Qualified Lib "b") (Qualified Lib "a") `shouldBe` GT
 
         describe "neither target begin with 'lib:'" do
             describe "first target's component name normally sorts as LT" do
                 it "should sort normally" do
-                    compareTargets "exe:a" "exe:b" `shouldBe` LT
+                    compareTargets (Qualified Exe "a") (Qualified Exe "b") `shouldBe` LT
             describe "both targets have same component name" do
                 it "should sort normally" do
-                    compareTargets "exe:a" "exe:a" `shouldBe` EQ
+                    compareTargets (Qualified Exe "a") (Qualified Exe "a") `shouldBe` EQ
             describe "first target's component name normally sorts as GT" do
                 it "should sort normally" do
-                    compareTargets "exe:b" "exe:a" `shouldBe` GT
+                    compareTargets (Qualified Exe "b") (Qualified Exe "a") `shouldBe` GT
 
 
 --------------------------------------------------------------------------------
@@ -372,6 +475,12 @@ gpd :: GenericPackageDescription
 gpd =
     fromMaybe (error "cabalFixture failed to parse")
         $ parseGenericPackageDescriptionMaybe cabalFixture
+
+
+-- | Build a target list from textual forms, exactly as config and cabal
+-- discovery do via 'parseTarget'.
+mkTargets :: [Text] -> [Target]
+mkTargets = map parseTarget
 
 
 -- | An in-memory project root with a @cabal.project@ listing two packages,
@@ -410,6 +519,12 @@ libTestCabal name =
             ]
 
 
+-- | Not a valid @.cabal@ file: @parseGenericPackageDescriptionMaybe@ returns
+-- 'Nothing' for it.
+malformedCabal :: ByteString
+malformedCabal = "this is not a cabal file {{{ <<< @@@\n"
+
+
 cabalFixture :: ByteString
 cabalFixture =
     "cabal-version: 2.0\n\
@@ -427,6 +542,12 @@ cabalFixture =
     \  build-depends: base\n\
     \  default-language: Haskell2010\n\
     \\n\
+    \foreign-library myapp-flib\n\
+    \  type: native-shared\n\
+    \  hs-source-dirs: flib\n\
+    \  build-depends: base\n\
+    \  default-language: Haskell2010\n\
+    \\n\
     \executable myapp-exe\n\
     \  main-is: Main.hs\n\
     \  hs-source-dirs: app\n\
@@ -437,5 +558,12 @@ cabalFixture =
     \  type: exitcode-stdio-1.0\n\
     \  main-is: Test.hs\n\
     \  hs-source-dirs: test\n\
+    \  build-depends: base\n\
+    \  default-language: Haskell2010\n\
+    \\n\
+    \benchmark myapp-bench\n\
+    \  type: exitcode-stdio-1.0\n\
+    \  main-is: Bench.hs\n\
+    \  hs-source-dirs: bench\n\
     \  build-depends: base\n\
     \  default-language: Haskell2010\n"

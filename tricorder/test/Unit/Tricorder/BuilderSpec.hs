@@ -68,7 +68,7 @@ import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModu
 import Tricorder.Effects.GhciSession.GhciParser (collectResult, extractTitle, resolveKnownTargets)
 import Tricorder.Effects.TestRunner (TestRunner (..), runTestRunnerScripted)
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Command (..), Targets (..), TestTargets (..), WatchDirs (..))
+import Tricorder.Session (Command (..), WatchDirs (..), parseTestTargets)
 
 import Tricorder.BuildState qualified as BuildState
 import Tricorder.Builder qualified as Builder
@@ -455,20 +455,20 @@ testCompileLoadResultsIntoBuildResults = do
 testRequestTestRunsForNewBuildResults :: Spec
 testRequestTestRunsForNewBuildResults = do
     describe "when there are no test targets" $ it "should skip testing" do
-        phases <- runTest (TestTargets []) [] expected
+        phases <- runTest (parseTestTargets []) [] expected
         length phases `shouldBe` 1
         phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Done expected]
 
     describe "when there are errors" $ it "should skip testing" do
         let expected' = expected {BuildState.diagnostics = [errMsg]}
-        phases <- runTest (TestTargets ["test:foo"]) [] expected'
+        phases <- runTest (parseTestTargets ["test:foo"]) [] expected'
         length phases `shouldBe` 1
         phases `shouldMatchList` [EnteringNewPhase (BuildId 1) $ Done expected']
 
     it "should emit EnteringNewPhase events for each test target" do
         phases <-
             runTest
-                (TestTargets ["test:foo", "test:bar"])
+                (parseTestTargets ["test:foo", "test:bar"])
                 [ Right $ mkTestRun "test:foo"
                 , Right $ mkTestRun "test:bar"
                 ]
@@ -512,8 +512,8 @@ testRequestTestRunsForNewBuildResults = do
                 $ requestTestRunsForNewBuildResults
                     BuildConfig
                         { command = Command ""
-                        , targets = Targets []
-                        , testTargets = TestTargets ["test:foo", "test:bar"]
+                        , targets = []
+                        , testTargets = parseTestTargets ["test:foo", "test:bar"]
                         , watchDirs = WatchDirs []
                         }
                     expected
@@ -538,7 +538,7 @@ testRequestTestRunsForNewBuildResults = do
             $ requestTestRunsForNewBuildResults
                 BuildConfig
                     { command = Command ""
-                    , targets = Targets []
+                    , targets = []
                     , testTargets
                     , watchDirs = WatchDirs []
                     }

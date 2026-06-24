@@ -38,7 +38,7 @@ import System.FilePath (makeRelative)
 
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Runtime (LogPath (..), ProjectRoot (..), SocketPath (..))
-import Tricorder.Session (Session (..), Targets (..), WatchDirs (..))
+import Tricorder.Session (Session (..), Target, WatchDirs (..))
 
 import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.Observability qualified as Observability
@@ -51,7 +51,7 @@ newtype BuildId = BuildId Int
 
 
 data DaemonInfo = DaemonInfo
-    { targets :: [Text]
+    { targets :: [Target]
     , watchDirs :: [FilePath]
     , sockPath :: FilePath
     , logFile :: FilePath
@@ -77,7 +77,7 @@ loadDaemonInfo = do
     LogPath logFile <- ask
     pure
         $ DaemonInfo
-            { targets = session.targets.getTargets
+            { targets = session.targets
             , watchDirs = map (makeRelative projectRoot) session.watchDirs.getWatchDirs
             , sockPath
             , logFile
