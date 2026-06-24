@@ -50,8 +50,8 @@ testParseTarget = do
         it "parses a bench: target" do
             parseTarget "bench:myapp-bench" `shouldBe` Qualified Bench "myapp-bench"
 
-    describe "bare targets" do
-        it "parses a name with no kind prefix as bare" do
+    describe "a name with no kind prefix" do
+        it "parses as bare" do
             parseTarget "myapp" `shouldBe` Bare "myapp"
 
     describe "unrecognized targets" do

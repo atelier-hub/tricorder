@@ -33,13 +33,10 @@ import Atelier.Types.WithDefaults (WithDefaults (..))
 import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Default (Default (..))
 import Data.List (nub)
+import Distribution.Compat.Lens (view)
 import Distribution.Fields (Field (..), FieldLine (..), Name (..), readFields)
 import Distribution.PackageDescription.Parsec (parseGenericPackageDescriptionMaybe)
-import Distribution.Types.Benchmark (benchmarkBuildInfo)
-import Distribution.Types.BuildInfo (hsSourceDirs)
 import Distribution.Types.CondTree (condTreeData)
-import Distribution.Types.Executable (buildInfo)
-import Distribution.Types.ForeignLib (foreignLibBuildInfo)
 import Distribution.Types.GenericPackageDescription
     ( GenericPackageDescription
     , condBenchmarks
@@ -50,11 +47,9 @@ import Distribution.Types.GenericPackageDescription
     , condTestSuites
     , packageDescription
     )
-import Distribution.Types.Library (libBuildInfo)
 import Distribution.Types.PackageDescription (package)
 import Distribution.Types.PackageId (pkgName)
 import Distribution.Types.PackageName (unPackageName)
-import Distribution.Types.TestSuite (testBuildInfo)
 import Distribution.Types.UnqualComponentName (mkUnqualComponentName, unUnqualComponentName)
 import Distribution.Utils.Path (getSymbolicPath)
 import Effectful.Exception (throwIO)
@@ -66,6 +61,7 @@ import Text.Regex.TDFA.ReadRegex (parseRegex)
 import Atelier.Effects.Log qualified as Log
 import Data.ByteString.Char8 qualified as BC
 import Data.Text qualified as T
+import Distribution.Types.BuildInfo.Lens qualified as Lens
 import Text.Regex.TDFA.Pattern qualified as Regex
 
 import Tricorder.Runtime (ProjectRoot (..))
@@ -348,18 +344,18 @@ sourceDirsForTarget gpd target =
         Unrecognized raw -> componentSourceDirsByName (T.takeWhileEnd (/= ':') raw)
   where
     mainPkgName = unPackageName . pkgName . package . packageDescription $ gpd
-    libDirs = hsSourceDirs . libBuildInfo
-    flibDirs = hsSourceDirs . foreignLibBuildInfo
-    testDirs = hsSourceDirs . testBuildInfo
-    exeDirs = hsSourceDirs . buildInfo
-    benchDirs = hsSourceDirs . benchmarkBuildInfo
 
-    mainLibSourceDirs = maybe [] (libDirs . condTreeData) (condLibrary gpd)
-    subLibSourceDirs name = dirsForComponent libDirs (condSubLibraries gpd) name
-    flibSourceDirs name = dirsForComponent flibDirs (condForeignLibs gpd) name
-    exeSourceDirs name = dirsForComponent exeDirs (condExecutables gpd) name
-    testSourceDirs name = dirsForComponent testDirs (condTestSuites gpd) name
-    benchSourceDirs name = dirsForComponent benchDirs (condBenchmarks gpd) name
+    -- @hs-source-dirs@ of any component, via the @HasBuildInfo@ lens — one
+    -- accessor that works uniformly across libraries, foreign libs, exes,
+    -- tests, and benchmarks, so we don't repeat a per-kind @buildInfo@ getter.
+    componentDirs component = view Lens.hsSourceDirs component
+
+    mainLibSourceDirs = maybe [] (componentDirs . condTreeData) (condLibrary gpd)
+    subLibSourceDirs name = dirsForComponent (condSubLibraries gpd) name
+    flibSourceDirs name = dirsForComponent (condForeignLibs gpd) name
+    exeSourceDirs name = dirsForComponent (condExecutables gpd) name
+    testSourceDirs name = dirsForComponent (condTestSuites gpd) name
+    benchSourceDirs name = dirsForComponent (condBenchmarks gpd) name
 
     -- Match a component name across every kind. The main library is keyed by
     -- the package name rather than an unqualified component name, so it joins
@@ -378,15 +374,15 @@ sourceDirsForTarget gpd target =
 
     allComponentSourceDirs =
         mainLibSourceDirs
-            <> concatMap (libDirs . condTreeData . snd) (condSubLibraries gpd)
-            <> concatMap (flibDirs . condTreeData . snd) (condForeignLibs gpd)
-            <> concatMap (exeDirs . condTreeData . snd) (condExecutables gpd)
-            <> concatMap (testDirs . condTreeData . snd) (condTestSuites gpd)
-            <> concatMap (benchDirs . condTreeData . snd) (condBenchmarks gpd)
+            <> concatMap (componentDirs . condTreeData . snd) (condSubLibraries gpd)
+            <> concatMap (componentDirs . condTreeData . snd) (condForeignLibs gpd)
+            <> concatMap (componentDirs . condTreeData . snd) (condExecutables gpd)
+            <> concatMap (componentDirs . condTreeData . snd) (condTestSuites gpd)
+            <> concatMap (componentDirs . condTreeData . snd) (condBenchmarks gpd)
 
-    dirsForComponent dirs components name =
+    dirsForComponent components name =
         let ucn = mkUnqualComponentName (toString name)
-        in  concatMap (dirs . condTreeData . snd) $ filter ((== ucn) . fst) components
+        in  concatMap (componentDirs . condTreeData . snd) $ filter ((== ucn) . fst) components
 
 
 -- | Infer the effective targets to build and watch. This is the boundary where
