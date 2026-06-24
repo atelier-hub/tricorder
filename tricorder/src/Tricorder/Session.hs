@@ -181,8 +181,9 @@ data ComponentKind = Lib | FLib | Exe | Test | Bench
 -- We deliberately model only these canonical prefixes, not cabal's full set of
 -- aliases (@executable@, @test-suite@, …) or its case-folding. Those would mean
 -- hand-mirroring an unexported, internally-inconsistent cabal table; instead an
--- aliased spelling falls to 'Unrecognized' and is passed to cabal verbatim (so
--- the build still works), only forgoing precise watch-dir scoping.
+-- aliased spelling falls to 'Unrecognized', which is still handed to cabal
+-- verbatim for the build and still resolves watch dirs by matching its trailing
+-- component name [ref:alias_name_match].
 kindPrefix :: ComponentKind -> Text
 kindPrefix = \case
     Lib -> "lib"
@@ -336,13 +337,15 @@ sourceDirsForTarget gpd target =
         -- single component by name across the kinds.
         Bare name
             | toString name == mainPkgName -> allComponentSourceDirs
-            | otherwise ->
-                subLibSourceDirs name
-                    <> flibSourceDirs name
-                    <> exeSourceDirs name
-                    <> testSourceDirs name
-                    <> benchSourceDirs name
-        Unrecognized _ -> []
+            | otherwise -> componentSourceDirsByName name
+        -- [tag:alias_name_match] A form we couldn't parse into a kind — a cabal
+        -- alias (@executable:@) or a case variant (@Lib:@). The kind is
+        -- untrustworthy, but cabal component names are unique within a package,
+        -- so we match the trailing name across every kind. This recovers precise
+        -- watch dirs for aliased spellings; worst case we over-match a
+        -- same-named component, never miss one. (The raw string is still handed
+        -- to cabal verbatim for the build.)
+        Unrecognized raw -> componentSourceDirsByName (T.takeWhileEnd (/= ':') raw)
   where
     mainPkgName = unPackageName . pkgName . package . packageDescription $ gpd
     libDirs = hsSourceDirs . libBuildInfo
@@ -357,6 +360,21 @@ sourceDirsForTarget gpd target =
     exeSourceDirs name = dirsForComponent exeDirs (condExecutables gpd) name
     testSourceDirs name = dirsForComponent testDirs (condTestSuites gpd) name
     benchSourceDirs name = dirsForComponent benchDirs (condBenchmarks gpd) name
+
+    -- Match a component name across every kind. The main library is keyed by
+    -- the package name rather than an unqualified component name, so it joins
+    -- in only when @name@ is the package name.
+    componentSourceDirsByName name =
+        mainLibForName name
+            <> subLibSourceDirs name
+            <> flibSourceDirs name
+            <> exeSourceDirs name
+            <> testSourceDirs name
+            <> benchSourceDirs name
+
+    mainLibForName name
+        | toString name == mainPkgName = mainLibSourceDirs
+        | otherwise = []
 
     allComponentSourceDirs =
         mainLibSourceDirs

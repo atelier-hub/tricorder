@@ -121,7 +121,16 @@ testSourceDirsForTarget = do
                 sourceDirsForTarget gpd (Bare "unknown") `shouldBe` []
 
     describe "Unrecognized" do
-        it "returns an empty list" do
+        it "matches an aliased kind prefix by trailing name" do
+            sourceDirsForTarget gpd (Unrecognized "executable:myapp-exe") `shouldBe` ["app"]
+
+        it "matches a case-variant kind prefix by trailing name" do
+            sourceDirsForTarget gpd (Unrecognized "Test-Suite:myapp-test") `shouldBe` ["test"]
+
+        it "matches the main library when the trailing name is the package name" do
+            sourceDirsForTarget gpd (Unrecognized "library:myapp") `shouldBe` ["src"]
+
+        it "returns an empty list when the trailing name matches no component" do
             sourceDirsForTarget gpd (Unrecognized "bogus:x") `shouldBe` []
 
 
