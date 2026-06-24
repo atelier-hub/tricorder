@@ -38,11 +38,17 @@ testParseTarget = do
         it "parses a named lib: target" do
             parseTarget "lib:myapp-utils" `shouldBe` Qualified Lib "myapp-utils"
 
+        it "parses an flib: target" do
+            parseTarget "flib:myapp-flib" `shouldBe` Qualified FLib "myapp-flib"
+
         it "parses an exe: target" do
             parseTarget "exe:myapp-exe" `shouldBe` Qualified Exe "myapp-exe"
 
         it "parses a test: target" do
             parseTarget "test:myapp-test" `shouldBe` Qualified Test "myapp-test"
+
+        it "parses a bench: target" do
+            parseTarget "bench:myapp-bench" `shouldBe` Qualified Bench "myapp-bench"
 
     describe "bare targets" do
         it "parses a name with no kind prefix as bare" do
@@ -50,7 +56,7 @@ testParseTarget = do
 
     describe "unrecognized targets" do
         it "rejects an unknown kind" do
-            parseTarget "bench:myapp-bench" `shouldBe` Unrecognized "bench:myapp-bench"
+            parseTarget "bogus:myapp" `shouldBe` Unrecognized "bogus:myapp"
 
         it "rejects a form with extra colons" do
             parseTarget "lib:a:b" `shouldBe` Unrecognized "lib:a:b"
@@ -77,6 +83,10 @@ testSourceDirsForTarget = do
             it "returns an empty list" do
                 sourceDirsForTarget gpd (Qualified Lib "nonexistent") `shouldBe` []
 
+    describe "Qualified FLib" do
+        it "returns the foreign-library source dirs" do
+            sourceDirsForTarget gpd (Qualified FLib "myapp-flib") `shouldBe` ["flib"]
+
     describe "Qualified Exe" do
         it "returns the executable source dirs" do
             sourceDirsForTarget gpd (Qualified Exe "myapp-exe") `shouldBe` ["app"]
@@ -85,9 +95,13 @@ testSourceDirsForTarget = do
         it "returns the test suite source dirs" do
             sourceDirsForTarget gpd (Qualified Test "myapp-test") `shouldBe` ["test"]
 
+    describe "Qualified Bench" do
+        it "returns the benchmark source dirs" do
+            sourceDirsForTarget gpd (Qualified Bench "myapp-bench") `shouldBe` ["bench"]
+
     describe "Bare (package name)" do
         it "returns every component's source dirs" do
-            sourceDirsForTarget gpd (Bare "myapp") `shouldBe` ["src", "utils", "app", "test"]
+            sourceDirsForTarget gpd (Bare "myapp") `shouldBe` ["src", "utils", "flib", "app", "test", "bench"]
 
     describe "Bare (component name)" do
         context "when it names a sub-library" do
@@ -108,7 +122,7 @@ testSourceDirsForTarget = do
 
     describe "Unrecognized" do
         it "returns an empty list" do
-            sourceDirsForTarget gpd (Unrecognized "bench:x") `shouldBe` []
+            sourceDirsForTarget gpd (Unrecognized "bogus:x") `shouldBe` []
 
 
 testAllComponentTargets :: Spec
@@ -119,15 +133,27 @@ testAllComponentTargets = do
     it "includes sub-libraries" do
         allComponentTargets gpd `shouldContain` [Qualified Lib "myapp-utils"]
 
+    it "includes foreign libraries" do
+        allComponentTargets gpd `shouldContain` [Qualified FLib "myapp-flib"]
+
     it "includes executables" do
         allComponentTargets gpd `shouldContain` [Qualified Exe "myapp-exe"]
 
     it "includes test suites" do
         allComponentTargets gpd `shouldContain` [Qualified Test "myapp-test"]
 
-    it "returns all four components for the fixture" do
+    it "includes benchmarks" do
+        allComponentTargets gpd `shouldContain` [Qualified Bench "myapp-bench"]
+
+    it "returns every component for the fixture" do
         allComponentTargets gpd
-            `shouldBe` [Qualified Lib "myapp", Qualified Lib "myapp-utils", Qualified Exe "myapp-exe", Qualified Test "myapp-test"]
+            `shouldBe` [ Qualified Lib "myapp"
+                       , Qualified Lib "myapp-utils"
+                       , Qualified FLib "myapp-flib"
+                       , Qualified Exe "myapp-exe"
+                       , Qualified Test "myapp-test"
+                       , Qualified Bench "myapp-bench"
+                       ]
 
 
 -- | Pins the discovery contract: a @cabal.project@ selects per-package
@@ -176,7 +202,13 @@ testResolveTargets = do
                         . runFileSystemState
                         $ resolveTargets ["/myapp.cabal"] []
             actual
-                `shouldBe` [Qualified Exe "myapp-exe", Qualified Test "myapp-test", Qualified Lib "myapp", Qualified Lib "myapp-utils"]
+                `shouldBe` [ Qualified Bench "myapp-bench"
+                           , Qualified Exe "myapp-exe"
+                           , Qualified FLib "myapp-flib"
+                           , Qualified Test "myapp-test"
+                           , Qualified Lib "myapp"
+                           , Qualified Lib "myapp-utils"
+                           ]
 
         it "surfaces test-suite components so they can be run after a build" do
             let actual =
@@ -501,6 +533,12 @@ cabalFixture =
     \  build-depends: base\n\
     \  default-language: Haskell2010\n\
     \\n\
+    \foreign-library myapp-flib\n\
+    \  type: native-shared\n\
+    \  hs-source-dirs: flib\n\
+    \  build-depends: base\n\
+    \  default-language: Haskell2010\n\
+    \\n\
     \executable myapp-exe\n\
     \  main-is: Main.hs\n\
     \  hs-source-dirs: app\n\
@@ -511,5 +549,12 @@ cabalFixture =
     \  type: exitcode-stdio-1.0\n\
     \  main-is: Test.hs\n\
     \  hs-source-dirs: test\n\
+    \  build-depends: base\n\
+    \  default-language: Haskell2010\n\
+    \\n\
+    \benchmark myapp-bench\n\
+    \  type: exitcode-stdio-1.0\n\
+    \  main-is: Bench.hs\n\
+    \  hs-source-dirs: bench\n\
     \  build-depends: base\n\
     \  default-language: Haskell2010\n"

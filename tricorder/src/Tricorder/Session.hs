@@ -35,12 +35,16 @@ import Data.Default (Default (..))
 import Data.List (nub)
 import Distribution.Fields (Field (..), FieldLine (..), Name (..), readFields)
 import Distribution.PackageDescription.Parsec (parseGenericPackageDescriptionMaybe)
+import Distribution.Types.Benchmark (benchmarkBuildInfo)
 import Distribution.Types.BuildInfo (hsSourceDirs)
 import Distribution.Types.CondTree (condTreeData)
 import Distribution.Types.Executable (buildInfo)
+import Distribution.Types.ForeignLib (foreignLibBuildInfo)
 import Distribution.Types.GenericPackageDescription
     ( GenericPackageDescription
+    , condBenchmarks
     , condExecutables
+    , condForeignLibs
     , condLibrary
     , condSubLibraries
     , condTestSuites
@@ -164,19 +168,28 @@ data Target
     deriving stock (Eq, Show)
 
 
--- | The kind of cabal component a 'Qualified' target names.
-data ComponentKind = Lib | Exe | Test
+-- | The kind of cabal component a 'Qualified' target names. Covers every
+-- component kind cabal models (matching @Distribution.Types.ComponentName@).
+data ComponentKind = Lib | FLib | Exe | Test | Bench
     deriving stock (Bounded, Enum, Eq, Show)
 
 
--- | [tag:kind_prefix_sole_source] The textual prefix cabal uses for each
+-- | [tag:kind_prefix_sole_source] The canonical prefix cabal uses for each
 -- component kind. Single source of truth shared by 'parseTarget' and
 -- 'renderTarget' — keep this the only place the prefix strings appear.
+--
+-- We deliberately model only these canonical prefixes, not cabal's full set of
+-- aliases (@executable@, @test-suite@, …) or its case-folding. Those would mean
+-- hand-mirroring an unexported, internally-inconsistent cabal table; instead an
+-- aliased spelling falls to 'Unrecognized' and is passed to cabal verbatim (so
+-- the build still works), only forgoing precise watch-dir scoping.
 kindPrefix :: ComponentKind -> Text
 kindPrefix = \case
     Lib -> "lib"
+    FLib -> "flib"
     Exe -> "exe"
     Test -> "test"
+    Bench -> "bench"
 
 
 -- | Parse a kind prefix, derived as the inverse of 'kindPrefix' so the two
@@ -186,8 +199,9 @@ parseKind = inverseMap kindPrefix
 
 
 -- | Classify a target's textual form. The grammar is @[kind:]name@ where
--- @kind@ is one of @lib@, @exe@, or @test@; anything else (an unknown kind, or
--- extra colons) is 'Unrecognized'.
+-- @kind@ is one of @lib@, @flib@, @exe@, @test@, or @bench@; anything else (an
+-- unknown kind, a cabal alias such as @executable@, or extra colons) is
+-- 'Unrecognized'.
 parseTarget :: Text -> Target
 parseTarget target = case T.splitOn ":" target of
     [prefix, name] | Just kind <- parseKind prefix -> Qualified kind name
@@ -313,31 +327,44 @@ sourceDirsForTarget gpd target =
         Qualified Lib name
             | toString name == mainPkgName -> mainLibSourceDirs
             | otherwise -> subLibSourceDirs name
+        Qualified FLib name -> flibSourceDirs name
         Qualified Exe name -> exeSourceDirs name
         Qualified Test name -> testSourceDirs name
+        Qualified Bench name -> benchSourceDirs name
         -- A bare target (no @kind:@ prefix) is a package name or a component
         -- name. A package name covers every component; otherwise match a
         -- single component by name across the kinds.
         Bare name
             | toString name == mainPkgName -> allComponentSourceDirs
-            | otherwise -> subLibSourceDirs name <> exeSourceDirs name <> testSourceDirs name
+            | otherwise ->
+                subLibSourceDirs name
+                    <> flibSourceDirs name
+                    <> exeSourceDirs name
+                    <> testSourceDirs name
+                    <> benchSourceDirs name
         Unrecognized _ -> []
   where
     mainPkgName = unPackageName . pkgName . package . packageDescription $ gpd
     libDirs = hsSourceDirs . libBuildInfo
+    flibDirs = hsSourceDirs . foreignLibBuildInfo
     testDirs = hsSourceDirs . testBuildInfo
     exeDirs = hsSourceDirs . buildInfo
+    benchDirs = hsSourceDirs . benchmarkBuildInfo
 
     mainLibSourceDirs = maybe [] (libDirs . condTreeData) (condLibrary gpd)
     subLibSourceDirs name = dirsForComponent libDirs (condSubLibraries gpd) name
+    flibSourceDirs name = dirsForComponent flibDirs (condForeignLibs gpd) name
     exeSourceDirs name = dirsForComponent exeDirs (condExecutables gpd) name
     testSourceDirs name = dirsForComponent testDirs (condTestSuites gpd) name
+    benchSourceDirs name = dirsForComponent benchDirs (condBenchmarks gpd) name
 
     allComponentSourceDirs =
         mainLibSourceDirs
             <> concatMap (libDirs . condTreeData . snd) (condSubLibraries gpd)
+            <> concatMap (flibDirs . condTreeData . snd) (condForeignLibs gpd)
             <> concatMap (exeDirs . condTreeData . snd) (condExecutables gpd)
             <> concatMap (testDirs . condTreeData . snd) (condTestSuites gpd)
+            <> concatMap (benchDirs . condTreeData . snd) (condBenchmarks gpd)
 
     dirsForComponent dirs components name =
         let ucn = mkUnqualComponentName (toString name)
@@ -443,14 +470,18 @@ allComponentTargets :: GenericPackageDescription -> [Target]
 allComponentTargets gpd =
     mainLibTargets
         ++ subLibTargets
+        ++ flibTargets
         ++ exeTargets
         ++ testTargets
+        ++ benchTargets
   where
     mainPkgName = toText $ unPackageName . pkgName . package . packageDescription $ gpd
     mainLibTargets = maybe [] (const [Qualified Lib mainPkgName]) (condLibrary gpd)
     subLibTargets = map (\(n, _) -> Qualified Lib (componentName n)) (condSubLibraries gpd)
+    flibTargets = map (\(n, _) -> Qualified FLib (componentName n)) (condForeignLibs gpd)
     exeTargets = map (\(n, _) -> Qualified Exe (componentName n)) (condExecutables gpd)
     testTargets = map (\(n, _) -> Qualified Test (componentName n)) (condTestSuites gpd)
+    benchTargets = map (\(n, _) -> Qualified Bench (componentName n)) (condBenchmarks gpd)
     componentName = toText . unUnqualComponentName
 
 
