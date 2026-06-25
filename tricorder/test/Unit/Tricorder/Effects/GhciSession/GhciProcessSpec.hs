@@ -3,14 +3,13 @@ module Unit.Tricorder.Effects.GhciSession.GhciProcessSpec (spec_GhciProcess) whe
 import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.File (runFile)
-import Atelier.Effects.Process (runProcessIO)
+import Atelier.Effects.Process (runProcessIO, terminateProcessGroup, withProcessGroup)
 import Atelier.Effects.Timeout (runTimeout)
 import Atelier.Time (Millisecond)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Exception (IOException, catch, finally)
+import Control.Exception (IOException, catch)
 import Data.Char (isDigit)
-import Data.Default (def)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Time.Units (Second)
 import Effectful (runEff)
@@ -42,14 +41,12 @@ import System.Process qualified as Process
 import System.Timeout qualified
 
 import Tricorder.Effects.GhciSession.GhciProcess
-    ( Config (..)
-    , GhciProcess (..)
+    ( GhciProcess (..)
     , GhciProcessError (..)
     , InterruptDecision (..)
     , SessionState (..)
     , decideInterrupt
     , execGhci
-    , stopGhciProcess
     , waitForBannerOrFail
     )
 
@@ -61,7 +58,8 @@ spec_GhciProcess = do
     describe "execGhci (stale marker desync)" testExecGhciStaleMarker
     describe "execGhci (sync marker scope independence)" testSyncMarkerScopeIndependent
     describe "waitForBannerOrFail" testWaitForBannerOrFail
-    describe "stopGhciProcess (process group)" testStopGhciKillsGroup
+    describe "withProcessGroup (process group)" testWithProcessGroupCleanup
+    describe "terminateProcessGroup (process group)" testTerminateProcessGroup
 
 
 -- | Regression for the touch-during-reload desync. Interrupting a *Busy* GHCi
@@ -192,17 +190,8 @@ testWaitForBannerOrFail =
     it "captures the full stderr output when the command exits before the banner" do
         let lineCount = 200 :: Int
             lastLine = "err line " <> show lineCount
-        -- 'true' exits immediately. We only need it for the 'Process' handle
-        -- that 'waitForBannerOrFail' stops on the failure path; the banner and
-        -- error streams are pipes we drive ourselves, so the timing is
-        -- deterministic rather than a race against the OS pipe buffer.
-        p <-
-            startProcess
-                $ setStdin createPipe
-                $ setStdout createPipe
-                $ setStderr createPipe
-                $ shell "true"
-        _ <- waitExitCode p
+        -- The banner and error streams are pipes we drive ourselves, so the
+        -- timing is deterministic rather than a race against the OS pipe buffer.
         (bannerOut, bannerOutW) <- Process.createPipe
         (errR, errW) <- Process.createPipe
         result <-
@@ -212,7 +201,6 @@ testWaitForBannerOrFail =
                 . runDelay
                 . runFile
                 . runConc
-                . runProcessIO
                 $ do
                     -- No banner will ever arrive: close the write end so the
                     -- wait sees EOF at once and takes the "command exited"
@@ -227,8 +215,7 @@ testWaitForBannerOrFail =
                         for_ [1 .. lineCount] \i ->
                             File.hPutTextLn errW ("err line " <> show i :: Text)
                         File.hClose errW
-                    trySync (waitForBannerOrFail (5 :: Second) bannerOut errR p)
-        _ <- (Right <$> stopProcess p) `catch` \(_ :: SomeException) -> pure (Left ())
+                    trySync (waitForBannerOrFail (5 :: Second) bannerOut errR)
         case result of
             Right () -> expectationFailure "expected waitForBannerOrFail to throw a startup error"
             Left ex -> case fromException ex of
@@ -240,69 +227,91 @@ testWaitForBannerOrFail =
 
 -- | Regression for orphaned/zombie build subprocesses on restart and shutdown.
 --
--- @cabal repl@ is spawned in its own process group ('setCreateGroup' True), and
--- it forks build subprocesses (a worker @cabal@, @ghc@) that share that group.
--- 'stopGhciProcess' used to terminate only the group /leader/, so those
--- descendants were orphaned — exactly the dangling @cabal@ processes seen after
--- @tricorder stop@ and after a @.cabal@-triggered restart.
---
--- We simulate the tree deterministically: a leader that forks a long-lived
--- child sharing its process group, prints the child's pid, then exits cleanly
--- once it reads the @:quit@ 'stopGhciProcess' sends (mirroring GHCi quitting
--- gracefully while a build subprocess lingers). After 'stopGhciProcess', the
--- child must be gone, not just the leader.
-testStopGhciKillsGroup :: Spec
-testStopGhciKillsGroup =
-    it "terminates the whole process group, not just the leader" do
+-- The original leak was on the /graceful/ path: GHCi exits cleanly on @:quit@,
+-- so its leader is reaped, yet the build subprocesses sharing its group linger.
+-- 'withProcessGroup' must still sweep the whole group even after the leader has
+-- gone. We simulate it with a leader that forks a long-lived child sharing its
+-- group and exits on stdin input (mirroring @:quit@); after 'withProcessGroup'
+-- returns, the child must be gone.
+testWithProcessGroupCleanup :: Spec
+testWithProcessGroupCleanup =
+    it "terminates the whole group on exit, even after the leader has exited" do
+        childPidRef <- newIORef (Nothing :: Maybe Int)
+        let scenario =
+                runEff
+                    . runConcurrent
+                    . runTimeout
+                    . runDelay
+                    . runFile
+                    . runConc
+                    . runProcessIO
+                    $ withProcessGroup procConfig \p -> do
+                        -- First stdout line is the long-lived child's pid.
+                        line <- File.hGetLine (getStdout p)
+                        liftIO $ writeIORef childPidRef (parsePid (T.unpack line))
+                        -- Let the leader exit and reap it, so the cleanup runs
+                        -- with the leader already gone — the path the bug needed.
+                        File.hPutTextLn (getStdin p) ""
+                        File.hFlush (getStdin p)
+                        liftIO $ void $ waitExitCode p
         -- Hard wall-clock bound: a regression must surface as a failed
         -- assertion, never as a hang that stalls the whole suite.
-        outcome <- System.Timeout.timeout (8_000_000) runScenario
+        outcome <- System.Timeout.timeout (8_000_000) scenario
         case outcome of
             Nothing -> expectationFailure "test timed out (process did not settle)"
-            Just died -> died `shouldBe` True
+            Just () ->
+                readIORef childPidRef >>= \case
+                    Nothing -> expectationFailure "could not capture the child pid"
+                    Just childPid -> do
+                        died <- waitForProcessDeath childPid
+                        -- Never leak the child if the assertion fails.
+                        ignoring (signalProcess sigKILL (fromIntegral childPid))
+                        died `shouldBe` True
   where
-    runScenario :: IO Bool
-    runScenario = do
-        p <-
-            startProcess
-                $ setStdin createPipe
-                $ setStdout createPipe
-                $ setStderr createPipe
-                $ setCreateGroup True
-                $ shell "sleep 30 & echo \"$!\"; read _quit"
-        -- First line on stdout is the long-lived child's pid.
-        childLine <- hGetLine (getStdout p)
-        childPid <-
-            case readMaybe (takeWhile isDigit (dropWhile (not . isDigit) childLine)) of
-                Just pid -> pure (pid :: Int)
-                Nothing -> fail ("could not parse child pid from: " <> show childLine)
-        -- Always reap the child and leader, even if the assertion fails, so a
-        -- regression never leaks the very orphan it is testing for.
-        let cleanup = do
-                ignoring (signalProcess sigKILL (fromIntegral childPid))
-                ignoring (stopProcess p)
-        (`finally` cleanup) do
-            stateVar <- newTVarIO (Idle 0)
-            let gp =
-                    GhciProcess
-                        { stdin = getStdin p
-                        , stdout = getStdout p
-                        , stderr = getStderr p
-                        , handle = p
-                        , stateVar
-                        }
-            runEff
-                . runConcurrent
-                . runTimeout
-                . runDelay
-                . runFile
-                . runConc
-                . runProcessIO
-                $ stopGhciProcess (def {shutdownTimeout = 1}) gp
-            waitForProcessDeath childPid
+    procConfig =
+        setStdin createPipe
+            $ setStdout createPipe
+            $ setStderr createPipe
+            $ shell "sleep 30 & echo \"$!\"; read _quit"
 
-    ignoring :: IO () -> IO ()
-    ignoring act = act `catch` \(_ :: SomeException) -> pure ()
+
+-- | 'terminateProcessGroup' must kill the whole group when called mid-flight
+-- (the leader still alive) — the explicit early-termination path the test
+-- runner uses to abort a one-shot @cabal repl test:…@ from another thread.
+testTerminateProcessGroup :: Spec
+testTerminateProcessGroup =
+    it "kills the whole group, not just the leader, mid-flight" do
+        outcome <- System.Timeout.timeout (8_000_000) do
+            p <-
+                startProcess
+                    $ setStdin createPipe
+                    $ setStdout createPipe
+                    $ setStderr createPipe
+                    $ setCreateGroup True
+                    $ shell "sleep 30 & echo \"$!\"; read _quit"
+            childLine <- hGetLine (getStdout p)
+            case parsePid childLine of
+                Nothing -> do
+                    ignoring (stopProcess p)
+                    expectationFailure ("could not parse child pid from: " <> show childLine)
+                    pure False
+                Just childPid -> do
+                    runEff . runProcessIO $ terminateProcessGroup p
+                    died <- waitForProcessDeath childPid
+                    -- Never leak the child if the assertion fails.
+                    ignoring (signalProcess sigKILL (fromIntegral childPid))
+                    pure died
+        outcome `shouldBe` Just True
+
+
+-- | Parse a pid printed on its own line (tolerating surrounding whitespace).
+parsePid :: String -> Maybe Int
+parsePid = readMaybe . takeWhile isDigit . dropWhile (not . isDigit)
+
+
+-- | Swallow any exception from a best-effort cleanup action.
+ignoring :: IO () -> IO ()
+ignoring act = act `catch` \(_ :: SomeException) -> pure ()
 
 
 -- | Poll for up to ~3s for the given pid to disappear from the process table.

@@ -10,7 +10,6 @@ module Tricorder.Effects.GhciSession.GhciProcess
     , execGhci
     , interruptGhci
     , terminateGhciProcess
-    , stopGhciProcess
     , collectGhciResult
     , reloadGhci
     , addGhci
@@ -24,17 +23,14 @@ import Atelier.Effects.Process
     ( Process
     , RunningProcess
     , createPipe
-    , getProcessId
     , getStderr
     , getStdin
     , getStdout
-    , setCreateGroup
     , setStderr
     , setStdin
     , setStdout
     , setWorkingDir
     , shell
-    , terminateProcessGroup
     )
 import Atelier.Effects.Timeout (Timeout, timeout)
 import Control.Concurrent.STM (TVar, modifyTVar', readTVar, retry, writeTVar)
@@ -42,7 +38,7 @@ import Data.Default (Default (..))
 import Data.Time.Units (Second)
 import Effectful.Concurrent (Concurrent)
 import Effectful.Concurrent.STM (atomically, newTVarIO)
-import Effectful.Exception (bracket, finally, throwIO, trySync)
+import Effectful.Exception (finally, throwIO, trySync)
 
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.File qualified as File
@@ -133,21 +129,18 @@ data GhciProcessError
 instance Exception GhciProcessError
 
 
--- | Start a GHCi subprocess running the given command in the given directory.
+-- | Set up the GHCi protocol on an already-started process and return its
+-- handle together with the output captured during startup.
 --
--- Waits up to 'startupTimeout' seconds for GHCi to print its version banner,
--- then performs initial setup (setting prompts and synchronising) and sends
--- any 'extraSetupCommands' from the config.
-startGhciProcess
+-- The spawn and group teardown are owned by 'withGhciProcess'.
+setupGhciProcess
     :: ( Conc :> es
        , Concurrent :> es
        , File :> es
-       , Process :> es
        , Timeout :> es
        )
     => Config
-    -> Command
-    -> FilePath
+    -> RunningProcess Handle Handle Handle
     -> (GhciLoading -> Eff es ())
     -- ^ Called as each @[N of M] Compiling …@ line is streamed during the
     -- initial-build drain, so the UI can update the progress bar live
@@ -158,15 +151,7 @@ startGhciProcess
     -- for interruption while the slow @cabal repl@ startup (dependency build
     -- and recompilation) is still in progress.
     -> Eff es (GhciProcess, [Text])
-startGhciProcess config cmd dir onProgress onReady = do
-    p <-
-        Process.startProcess
-            $ setStdin createPipe
-            $ setStdout createPipe
-            $ setStderr createPipe
-            $ setCreateGroup True
-            $ setWorkingDir dir
-            $ shell (toString cmd.getCommand)
+setupGhciProcess config p onProgress onReady = do
     let inp = getStdin p
         out = getStdout p
         err = getStderr p
@@ -174,11 +159,8 @@ startGhciProcess config cmd dir onProgress onReady = do
     File.hSetBuffering out LineBuffering
     File.hSetBuffering err LineBuffering
 
-    -- Create the state var and the process handle up front, then register the
-    -- process for interruption *before* the (possibly slow) banner wait. For
-    -- @cabal repl@, dependency building happens before GHCi prints its banner,
-    -- so registering here lets an interrupt terminate the process during that
-    -- window rather than having to wait for the whole startup to complete.
+    -- Register the process for interruption before the (possibly slow) banner
+    -- wait, so an interrupt during @cabal repl@ startup can terminate it.
     stateVar <- newTVarIO (Idle 0)
     let ghciProcess =
             GhciProcess
@@ -197,7 +179,7 @@ startGhciProcess config cmd dir onProgress onReady = do
     -- Wait for the version banner. We concurrently capture stderr so that if
     -- the build command exits before printing a banner (e.g. cabal's
     -- dependency resolution fails) we can surface its error output.
-    waitForBannerOrFail config.startupTimeout out err p
+    waitForBannerOrFail config.startupTimeout out err
 
     -- Send fixed setup commands (protocol requirements)
     File.hPutTextLn inp ":set prompt \"\""
@@ -227,17 +209,12 @@ startGhciProcess config cmd dir onProgress onReady = do
     pure (ghciProcess, initialLines)
 
 
--- | Bracket helper: start a GHCi process, run an action, then stop it.
+-- | Run a GHCi @cabal repl@ session for the duration of @action@.
 --
--- The action receives both the process handle and the output lines captured
--- during the startup sync (stdout ++ stderr). These lines contain the initial
--- compilation progress and any startup diagnostics. The @onProgress@ callback
--- fires for each @[N of M] Compiling …@ line as GHCi emits it during the
--- initial build, so the UI can update its progress bar in real time. The
--- @onReady@ callback (see 'startGhciProcess') fires once the underlying
--- process exists but before the banner wait and initial-load drain — useful
--- for registering the process for early termination while @cabal repl@ startup
--- (dependency build and initial compilation) is still in flight.
+-- The session runs in its own process group, so the whole group is torn down on
+-- exit; 'quitGhci' first asks GHCi to @:quit@ for a graceful shutdown. The
+-- action receives the process handle and the output captured during startup.
+-- See 'setupGhciProcess' for the @onProgress@ and @onReady@ callbacks.
 withGhciProcess
     :: (Conc :> es, Concurrent :> es, File :> es, Process :> es, Timeout :> es)
     => Config
@@ -248,10 +225,16 @@ withGhciProcess
     -> (GhciProcess -> [Text] -> Eff es a)
     -> Eff es a
 withGhciProcess config cmd dir onProgress onReady action =
-    bracket
-        (startGhciProcess config cmd dir onProgress onReady)
-        (stopGhciProcess config . fst)
-        (uncurry action)
+    Process.withProcessGroup processConfig \p -> do
+        (ghciProcess, initialLines) <- setupGhciProcess config p onProgress onReady
+        action ghciProcess initialLines `finally` quitGhci config ghciProcess
+  where
+    processConfig =
+        setStdin createPipe
+            $ setStdout createPipe
+            $ setStderr createPipe
+            $ setWorkingDir dir
+            $ shell (toString cmd.getCommand)
 
 
 -- | Execute a command in GHCi and return the combined stdout+stderr output
@@ -316,59 +299,27 @@ interruptGhci ghciProcess = do
             sendSyncCommand ghciProcess.stdin (markerFor n)
 
 
--- | Forcefully terminate the GHCi process, closing its handles.
+-- | Forcefully terminate a GHCi process and its whole group.
 --
--- Stronger than 'interruptGhci': intended for one-shot processes (such as
--- the per-suite @cabal repl test:…@ used by the test runner) where SIGINT
--- is insufficient — test frameworks like @hspec@ and @tasty@ install
--- SIGINT handlers that finalise the current run rather than aborting it.
--- After this, any 'execGhci' drain raises 'UnexpectedExit' on the now-closed
--- handles.
---
--- Terminates the whole process /group/, not just the leader: @cabal repl@ is
--- started with @'setCreateGroup' True@ and forks build subprocesses (a worker
--- @cabal@, @ghc@) that share its group. 'Process.stopProcess' alone signals
--- only the leader, orphaning those descendants as dangling processes.
+-- Stronger than 'interruptGhci': intended for one-shot processes (such as the
+-- per-suite @cabal repl test:…@ used by the test runner) where SIGINT is
+-- insufficient — test frameworks like @hspec@ and @tasty@ install SIGINT
+-- handlers that finalise the current run rather than aborting it. Safe to call
+-- from another thread while the session is running.
 terminateGhciProcess :: (Process :> es) => GhciProcess -> Eff es ()
-terminateGhciProcess ghciProcess = do
-    -- Capture the group id before 'stopProcess' reaps the leader (after which
-    -- 'getProcessId' returns 'Nothing'), then signal the whole group.
-    mpid <- getProcessId ghciProcess.handle
-    for_ mpid terminateProcessGroup
-    Process.stopProcess ghciProcess.handle
+terminateGhciProcess ghciProcess =
+    Process.terminateProcessGroup ghciProcess.handle
 
 
--- | Stop the GHCi process gracefully, falling back to forced termination.
---
--- Never throws — all errors are swallowed.
-stopGhciProcess
-    :: (File :> es, Process :> es, Timeout :> es)
-    => Config -> GhciProcess -> Eff es ()
-stopGhciProcess config ghciProcess = do
-    -- Capture the process-group id up front: once the leader exits (gracefully
-    -- on :quit, or via the force-kill below) and is reaped, 'getProcessId'
-    -- returns 'Nothing' and we can no longer address its group.
-    mpid <- getProcessId ghciProcess.handle
-
-    -- Try to write :quit
+-- | Ask GHCi to @:quit@ and wait briefly for it to exit cleanly, letting it
+-- shut down gracefully before the enclosing 'withGhciProcess' tears down the
+-- group. Never throws.
+quitGhci :: (File :> es, Process :> es, Timeout :> es) => Config -> GhciProcess -> Eff es ()
+quitGhci config ghciProcess = do
     void $ trySync $ do
         File.hPutTextLn ghciProcess.stdin ":quit"
         File.hFlush ghciProcess.stdin
-
-    -- Wait up to shutdownTimeout seconds for the process to exit, then force-kill
-    result <- timeout config.shutdownTimeout (Process.waitExitCode ghciProcess.handle)
-    when (not (isJust result))
-        $ Process.stopProcess ghciProcess.handle
-
-    -- Even when the GHCi leader exits cleanly on :quit, the build subprocesses
-    -- @cabal repl@ forked (a worker @cabal@, @ghc@) share its process group and
-    -- can outlive it. Signal the whole group so none are left dangling — the
-    -- leader-only 'stopProcess'/:quit above does not reach them.
-    for_ mpid terminateProcessGroup
-
-    -- Close all handles, ignoring errors
-    for_ [ghciProcess.stdin, ghciProcess.stdout, ghciProcess.stderr] \h ->
-        void $ trySync $ File.hClose h
+    void $ timeout config.shutdownTimeout (Process.waitExitCode ghciProcess.handle)
 
 
 -- ---------------------------------------------------------------------------
@@ -450,11 +401,10 @@ waitForBannerOrFail
     :: ( Conc :> es
        , Concurrent :> es
        , File :> es
-       , Process :> es
        , Timeout :> es
        )
-    => Second -> Handle -> Handle -> RunningProcess Handle Handle Handle -> Eff es ()
-waitForBannerOrFail delay out err p = do
+    => Second -> Handle -> Handle -> Eff es ()
+waitForBannerOrFail delay out err = do
     capturedVar <- newTVarIO ([] :: [Text])
     let captureLine line = atomically $ modifyTVar' capturedVar (line :)
         drainStderr = drainUntilEof err captureLine
@@ -473,11 +423,9 @@ waitForBannerOrFail delay out err p = do
                 -- the drain happened to have read so far.
                 _ <- timeout (1 :: Second) (Conc.await stderrThread)
                 captured <- atomically $ readTVar capturedVar
-                Process.stopProcess p
                 throwIO $ StartupFailed $ fromMaybe (startupExitedMessage ex) (renderCapturedLines captured)
             Nothing -> do
                 captured <- atomically $ readTVar capturedVar
-                Process.stopProcess p
                 throwIO $ maybe StartupTimeout StartupFailed (renderCapturedLines captured)
 
 
