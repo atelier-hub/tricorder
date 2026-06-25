@@ -4,6 +4,7 @@ import Atelier.Effects.Conc (runConc)
 import Atelier.Effects.Delay (runDelay)
 import Atelier.Effects.File (runFile)
 import Atelier.Effects.Process (runProcessIO, terminateProcessGroup, withProcessGroup)
+import Atelier.Effects.Process.Internal (RunningProcess (..))
 import Atelier.Effects.Timeout (runTimeout)
 import Atelier.Time (Millisecond)
 import Control.Concurrent (threadDelay)
@@ -36,6 +37,7 @@ import Test.Hspec
 import Atelier.Effects.Conc qualified as Conc
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.File qualified as File
+import Atelier.Effects.Process qualified as AProc
 import Data.Text qualified as T
 import System.Process qualified as Process
 import System.Timeout qualified
@@ -89,7 +91,7 @@ testExecGhciStaleMarker =
                     { stdin = stdinW
                     , stdout = stdoutR
                     , stderr = stderrR
-                    , handle = p
+                    , handle = RunningProcess p
                     , stateVar
                     }
             -- Mirrors 'markerFor': "#~TRI-FINISH-<n>~#".
@@ -147,7 +149,7 @@ testSyncMarkerScopeIndependent =
                     { stdin = stdinW
                     , stdout = stdoutR
                     , stderr = stderrR
-                    , handle = p
+                    , handle = RunningProcess p
                     , stateVar
                     }
             marker = "#~TRI-FINISH-9~#" :: Text
@@ -247,13 +249,13 @@ testWithProcessGroupCleanup =
                     . runProcessIO
                     $ withProcessGroup procConfig \p -> do
                         -- First stdout line is the long-lived child's pid.
-                        line <- File.hGetLine (getStdout p)
+                        line <- File.hGetLine (AProc.getStdout p)
                         liftIO $ writeIORef childPidRef (parsePid (T.unpack line))
                         -- Let the leader exit and reap it, so the cleanup runs
                         -- with the leader already gone — the path the bug needed.
-                        File.hPutTextLn (getStdin p) ""
-                        File.hFlush (getStdin p)
-                        liftIO $ void $ waitExitCode p
+                        File.hPutTextLn (AProc.getStdin p) ""
+                        File.hFlush (AProc.getStdin p)
+                        void $ AProc.waitExitCode p
         -- Hard wall-clock bound: a regression must surface as a failed
         -- assertion, never as a hang that stalls the whole suite.
         outcome <- System.Timeout.timeout (8_000_000) scenario
@@ -296,7 +298,7 @@ testTerminateProcessGroup =
                     expectationFailure ("could not parse child pid from: " <> show childLine)
                     pure False
                 Just childPid -> do
-                    runEff . runProcessIO $ terminateProcessGroup p
+                    runEff . runProcessIO $ terminateProcessGroup (RunningProcess p)
                     died <- waitForProcessDeath childPid
                     -- Never leak the child if the assertion fails.
                     ignoring (signalProcess sigKILL (fromIntegral childPid))
@@ -383,7 +385,7 @@ testExecGhciScope =
                     { stdin = getStdin p
                     , stdout = getStdout p
                     , stderr = getStderr p
-                    , handle = p
+                    , handle = RunningProcess p
                     , stateVar
                     }
         siblingDoneRef <- newIORef False

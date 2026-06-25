@@ -49,9 +49,6 @@ import System.Process (Pid, getPid, interruptProcessGroupOf)
 import System.Process.Typed
     ( ProcessConfig
     , createPipe
-    , getStderr
-    , getStdin
-    , getStdout
     , proc
     , setCreateGroup
     , setStderr
@@ -63,27 +60,38 @@ import System.Process.Typed
 
 import System.Process.Typed qualified as TP
 
+import Atelier.Effects.Process.Internal (RunningProcess (..))
 
--- | @typed-process@'s started-process type, re-exported under a non-clashing
--- name (the effect itself is called 'Process'). Parameterised by its stdin,
--- stdout and stderr stream types.
-type RunningProcess = TP.Process
+
+-- | The process's stdin stream (its type set by the 'ProcessConfig').
+getStdin :: RunningProcess i o e -> i
+getStdin (RunningProcess p) = TP.getStdin p
+
+
+-- | The process's stdout stream.
+getStdout :: RunningProcess i o e -> o
+getStdout (RunningProcess p) = TP.getStdout p
+
+
+-- | The process's stderr stream.
+getStderr :: RunningProcess i o e -> e
+getStderr (RunningProcess p) = TP.getStderr p
 
 
 data Process :: Effect where
     -- | Run a process to completion, returning its exit code and captured stdout.
     ReadProcessStdout :: ProcessConfig i o e -> Process m (ExitCode, LByteString)
     -- | Spawn a process and return its handle. Internal; callers use 'withProcessGroup'.
-    StartProcess :: ProcessConfig i o e -> Process m (TP.Process i o e)
+    StartProcess :: ProcessConfig i o e -> Process m (RunningProcess i o e)
     -- | Terminate the leader and close its streams. Internal; does not reach the
     -- rest of the group.
-    StopProcess :: TP.Process i o e -> Process m ()
+    StopProcess :: RunningProcess i o e -> Process m ()
     -- | Block until the process exits and return its exit code.
-    WaitExitCode :: TP.Process i o e -> Process m ExitCode
+    WaitExitCode :: RunningProcess i o e -> Process m ExitCode
     -- | Send SIGINT to the process's group. Requires @'setCreateGroup' True@.
-    InterruptProcessGroup :: TP.Process i o e -> Process m ()
+    InterruptProcessGroup :: RunningProcess i o e -> Process m ()
     -- | Look up the OS process id, or 'Nothing' if it has already exited. Internal.
-    GetProcessId :: TP.Process i o e -> Process m (Maybe Pid)
+    GetProcessId :: RunningProcess i o e -> Process m (Maybe Pid)
     -- | Send SIGTERM to the given process group. Internal.
     SignalProcessGroupTerm :: Pid -> Process m ()
 
@@ -140,10 +148,10 @@ readProcessSafe cmd args = do
 runProcessIO :: (IOE :> es) => Eff (Process : es) a -> Eff es a
 runProcessIO = interpret_ \case
     ReadProcessStdout cfg -> liftIO $ TP.readProcessStdout cfg
-    StartProcess cfg -> liftIO $ TP.startProcess cfg
-    StopProcess p -> liftIO $ TP.stopProcess p
-    WaitExitCode p -> liftIO $ TP.waitExitCode p
-    InterruptProcessGroup p -> liftIO $ interruptProcessGroupOf (TP.unsafeProcessHandle p)
-    GetProcessId p -> liftIO $ getPid (TP.unsafeProcessHandle p)
+    StartProcess cfg -> liftIO $ RunningProcess <$> TP.startProcess cfg
+    StopProcess (RunningProcess p) -> liftIO $ TP.stopProcess p
+    WaitExitCode (RunningProcess p) -> liftIO $ TP.waitExitCode p
+    InterruptProcessGroup (RunningProcess p) -> liftIO $ interruptProcessGroupOf (TP.unsafeProcessHandle p)
+    GetProcessId (RunningProcess p) -> liftIO $ getPid (TP.unsafeProcessHandle p)
     SignalProcessGroupTerm pid ->
         liftIO $ signalProcessGroup sigTERM pid `catch` \(_ :: IOException) -> pure ()
