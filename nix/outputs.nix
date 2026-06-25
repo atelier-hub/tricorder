@@ -64,9 +64,30 @@ let
             enable = true;
             package = tools.nixfmt;
           };
+          # The upstream hpack-dir hook regenerates *.cabal from package.yaml
+          # files, but this project has none on disk — nix-hpack generates them
+          # transiently from package.nix and deletes them. It therefore always
+          # no-ops and reports "Passed", giving false confidence. Disable it in
+          # favour of nix-hpack below.
+          hpack = {
+            package = hpack-dir;
+            enable = false;
+          };
           nix-hpack = {
             enable = true;
-            files = "(^|/)package\\.nix$";
+            # Run whenever anything that feeds .cabal generation changes:
+            #   - *.hs / *.lhs / *.hs-boot : hpack auto-discovers modules from the
+            #     source tree, so adding/removing one changes the generated .cabal
+            #   - *.cabal                  : catches hand-edits — nix-hpack rewrites
+            #     the file from package.nix, so the commit fails if a checked-in
+            #     .cabal drifted from its source
+            #   - package.nix              : the per-package hpack source
+            #   - nix/package/*.nix        : shared constraints / common options
+            # pre-commit only runs a hook when a *staged* file matches `files`, so
+            # the old package.nix-only pattern let direct .cabal edits (and module
+            # additions) through locally; CI runs every hook unconditionally and
+            # caught them. This widens the local trigger to match CI.
+            files = "(\\.l?hs(-boot)?$)|(\\.cabal$)|((^|/)package\\.nix$)|((^|/)nix/package/.*\\.nix$)";
             entry = "${nix-hpack}/bin/nix-hpack";
             pass_filenames = false;
           };
