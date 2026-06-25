@@ -604,6 +604,14 @@ loadSession = do
                 pure $ WatchExclusionPatterns []
             Right pts -> pure pts
 
+    when (not (null effectiveTargets) && all (definesCustomPrelude projectFiles) effectiveTargets)
+        $ Log.warn
+            "Every resolved target exposes a custom Prelude module. GHCi may \
+            \fail to start because the first target's Prelude will be loaded \
+            \before its package is ready. Consider adding a target that does \
+            \not define its own Prelude, or set an explicit command in your \
+            \tricorder configuration."
+
     command <- resolveCommand projectRoot cfgFile effectiveTargets testTargets
 
     pure
