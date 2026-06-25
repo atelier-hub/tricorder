@@ -62,6 +62,7 @@ library
       Atelier.Effects.Posix.Daemons
       Atelier.Effects.Posix.IO
       Atelier.Effects.Process
+      Atelier.Effects.Process.Internal
       Atelier.Effects.Publishing
       Atelier.Effects.Tally
       Atelier.Effects.Timeout

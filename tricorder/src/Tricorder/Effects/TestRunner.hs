@@ -120,7 +120,7 @@ runTestRunnerIO act = do
                 Session {testTimeout} <- SessionStore.get
                 let onProgress = abortGatedProgress abortedRef target
                     noProgress = \_ -> pure ()
-                    -- Register the process as soon as 'startGhciProcess'
+                    -- Register the process as soon as 'setupGhciProcess'
                     -- constructs it — before the initial @cabal repl@
                     -- compile drain runs. Without this, an interrupt that
                     -- arrives during that drain would find
