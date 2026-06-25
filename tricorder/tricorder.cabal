@@ -275,6 +275,7 @@ test-suite tricorder-test
     , tricorder-internal
     , typed-process ==0.2.*
     , unagi-chan ==0.4.*
+    , unix ==2.8.*
   mixins:
       base hiding (Prelude)
   default-language: GHC2021

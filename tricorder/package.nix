@@ -137,6 +137,7 @@ in
         "time-units"
         "typed-process"
         "unagi-chan"
+        "unix"
       ];
     };
   };

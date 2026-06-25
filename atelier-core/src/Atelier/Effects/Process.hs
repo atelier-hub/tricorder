@@ -33,17 +33,21 @@ module Atelier.Effects.Process
     , stopProcess
     , waitExitCode
     , interruptProcessGroup
+    , getProcessId
+    , terminateProcessGroup
 
       -- * Interpreters
     , runProcessIO
     ) where
 
+import Control.Exception (IOException, catch)
 import Effectful (Effect, IOE)
 import Effectful.Dispatch.Dynamic (interpret_)
 import Effectful.Exception (trySync)
 import Effectful.TH (makeEffect)
 import System.Exit (ExitCode (..))
-import System.Process (interruptProcessGroupOf)
+import System.Posix.Signals (sigTERM, signalProcessGroup)
+import System.Process (Pid, getPid, interruptProcessGroupOf)
 import System.Process.Typed
     ( ProcessConfig
     , createPipe
@@ -80,6 +84,18 @@ data Process :: Effect where
     -- | Send an interrupt (SIGINT) to the process's group. Requires the process
     -- to have been started with @'setCreateGroup' True@.
     InterruptProcessGroup :: TP.Process i o e -> Process m ()
+    -- | Look up the OS process id of a started process, or 'Nothing' if it has
+    -- already exited and been reaped. Capture this /before/ waiting on or
+    -- stopping the process if you need to address its group afterwards.
+    GetProcessId :: TP.Process i o e -> Process m (Maybe Pid)
+    -- | Send SIGTERM to an entire process group, identified by the group
+    -- leader's 'Pid'. For a process started with @'setCreateGroup' True@ the
+    -- leader's pid equals its process-group id, so passing its 'getProcessId'
+    -- result terminates the leader and every descendant sharing the group
+    -- (e.g. the build subprocesses @cabal repl@ forks) — not just the leader,
+    -- which is all @'stopProcess'@/@terminateProcess@ would reach. Errors (e.g.
+    -- the group already gone) are swallowed.
+    TerminateProcessGroup :: Pid -> Process m ()
 
 
 makeEffect ''Process
@@ -102,3 +118,6 @@ runProcessIO = interpret_ \case
     StopProcess p -> liftIO $ TP.stopProcess p
     WaitExitCode p -> liftIO $ TP.waitExitCode p
     InterruptProcessGroup p -> liftIO $ interruptProcessGroupOf (TP.unsafeProcessHandle p)
+    GetProcessId p -> liftIO $ getPid (TP.unsafeProcessHandle p)
+    TerminateProcessGroup pid ->
+        liftIO $ signalProcessGroup sigTERM pid `catch` \(_ :: IOException) -> pure ()

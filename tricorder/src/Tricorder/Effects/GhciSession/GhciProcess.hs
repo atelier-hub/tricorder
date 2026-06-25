@@ -10,6 +10,7 @@ module Tricorder.Effects.GhciSession.GhciProcess
     , execGhci
     , interruptGhci
     , terminateGhciProcess
+    , stopGhciProcess
     , collectGhciResult
     , reloadGhci
     , addGhci
@@ -23,6 +24,7 @@ import Atelier.Effects.Process
     ( Process
     , RunningProcess
     , createPipe
+    , getProcessId
     , getStderr
     , getStdin
     , getStdout
@@ -32,6 +34,7 @@ import Atelier.Effects.Process
     , setStdout
     , setWorkingDir
     , shell
+    , terminateProcessGroup
     )
 import Atelier.Effects.Timeout (Timeout, timeout)
 import Control.Concurrent.STM (TVar, modifyTVar', readTVar, retry, writeTVar)
@@ -321,8 +324,18 @@ interruptGhci ghciProcess = do
 -- SIGINT handlers that finalise the current run rather than aborting it.
 -- After this, any 'execGhci' drain raises 'UnexpectedExit' on the now-closed
 -- handles.
+--
+-- Terminates the whole process /group/, not just the leader: @cabal repl@ is
+-- started with @'setCreateGroup' True@ and forks build subprocesses (a worker
+-- @cabal@, @ghc@) that share its group. 'Process.stopProcess' alone signals
+-- only the leader, orphaning those descendants as dangling processes.
 terminateGhciProcess :: (Process :> es) => GhciProcess -> Eff es ()
-terminateGhciProcess ghciProcess = Process.stopProcess ghciProcess.handle
+terminateGhciProcess ghciProcess = do
+    -- Capture the group id before 'stopProcess' reaps the leader (after which
+    -- 'getProcessId' returns 'Nothing'), then signal the whole group.
+    mpid <- getProcessId ghciProcess.handle
+    for_ mpid terminateProcessGroup
+    Process.stopProcess ghciProcess.handle
 
 
 -- | Stop the GHCi process gracefully, falling back to forced termination.
@@ -332,6 +345,11 @@ stopGhciProcess
     :: (File :> es, Process :> es, Timeout :> es)
     => Config -> GhciProcess -> Eff es ()
 stopGhciProcess config ghciProcess = do
+    -- Capture the process-group id up front: once the leader exits (gracefully
+    -- on :quit, or via the force-kill below) and is reaped, 'getProcessId'
+    -- returns 'Nothing' and we can no longer address its group.
+    mpid <- getProcessId ghciProcess.handle
+
     -- Try to write :quit
     void $ trySync $ do
         File.hPutTextLn ghciProcess.stdin ":quit"
@@ -341,6 +359,12 @@ stopGhciProcess config ghciProcess = do
     result <- timeout config.shutdownTimeout (Process.waitExitCode ghciProcess.handle)
     when (not (isJust result))
         $ Process.stopProcess ghciProcess.handle
+
+    -- Even when the GHCi leader exits cleanly on :quit, the build subprocesses
+    -- @cabal repl@ forked (a worker @cabal@, @ghc@) share its process group and
+    -- can outlive it. Signal the whole group so none are left dangling — the
+    -- leader-only 'stopProcess'/:quit above does not reach them.
+    for_ mpid terminateProcessGroup
 
     -- Close all handles, ignoring errors
     for_ [ghciProcess.stdin, ghciProcess.stdout, ghciProcess.stderr] \h ->

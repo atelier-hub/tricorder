@@ -6,18 +6,24 @@ import Atelier.Effects.File (runFile)
 import Atelier.Effects.Process (runProcessIO)
 import Atelier.Effects.Timeout (runTimeout)
 import Atelier.Time (Millisecond)
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Exception (catch)
+import Control.Exception (IOException, catch, finally)
+import Data.Char (isDigit)
+import Data.Default (def)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Time.Units (Second)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
 import Effectful.Exception (trySync)
+import System.IO (hGetLine)
+import System.Posix.Signals (nullSignal, sigKILL, signalProcess)
 import System.Process.Typed
     ( createPipe
     , getStderr
     , getStdin
     , getStdout
+    , setCreateGroup
     , setStderr
     , setStdin
     , setStdout
@@ -33,14 +39,17 @@ import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.File qualified as File
 import Data.Text qualified as T
 import System.Process qualified as Process
+import System.Timeout qualified
 
 import Tricorder.Effects.GhciSession.GhciProcess
-    ( GhciProcess (..)
+    ( Config (..)
+    , GhciProcess (..)
     , GhciProcessError (..)
     , InterruptDecision (..)
     , SessionState (..)
     , decideInterrupt
     , execGhci
+    , stopGhciProcess
     , waitForBannerOrFail
     )
 
@@ -52,6 +61,7 @@ spec_GhciProcess = do
     describe "execGhci (stale marker desync)" testExecGhciStaleMarker
     describe "execGhci (sync marker scope independence)" testSyncMarkerScopeIndependent
     describe "waitForBannerOrFail" testWaitForBannerOrFail
+    describe "stopGhciProcess (process group)" testStopGhciKillsGroup
 
 
 -- | Regression for the touch-during-reload desync. Interrupting a *Busy* GHCi
@@ -226,6 +236,88 @@ testWaitForBannerOrFail =
                     (lastLine `T.isInfixOf` msg) `shouldBe` True
                 other ->
                     expectationFailure ("expected StartupFailed, got: " <> show other)
+
+
+-- | Regression for orphaned/zombie build subprocesses on restart and shutdown.
+--
+-- @cabal repl@ is spawned in its own process group ('setCreateGroup' True), and
+-- it forks build subprocesses (a worker @cabal@, @ghc@) that share that group.
+-- 'stopGhciProcess' used to terminate only the group /leader/, so those
+-- descendants were orphaned — exactly the dangling @cabal@ processes seen after
+-- @tricorder stop@ and after a @.cabal@-triggered restart.
+--
+-- We simulate the tree deterministically: a leader that forks a long-lived
+-- child sharing its process group, prints the child's pid, then exits cleanly
+-- once it reads the @:quit@ 'stopGhciProcess' sends (mirroring GHCi quitting
+-- gracefully while a build subprocess lingers). After 'stopGhciProcess', the
+-- child must be gone, not just the leader.
+testStopGhciKillsGroup :: Spec
+testStopGhciKillsGroup =
+    it "terminates the whole process group, not just the leader" do
+        -- Hard wall-clock bound: a regression must surface as a failed
+        -- assertion, never as a hang that stalls the whole suite.
+        outcome <- System.Timeout.timeout (8_000_000) runScenario
+        case outcome of
+            Nothing -> expectationFailure "test timed out (process did not settle)"
+            Just died -> died `shouldBe` True
+  where
+    runScenario :: IO Bool
+    runScenario = do
+        p <-
+            startProcess
+                $ setStdin createPipe
+                $ setStdout createPipe
+                $ setStderr createPipe
+                $ setCreateGroup True
+                $ shell "sleep 30 & echo \"$!\"; read _quit"
+        -- First line on stdout is the long-lived child's pid.
+        childLine <- hGetLine (getStdout p)
+        childPid <-
+            case readMaybe (takeWhile isDigit (dropWhile (not . isDigit) childLine)) of
+                Just pid -> pure (pid :: Int)
+                Nothing -> fail ("could not parse child pid from: " <> show childLine)
+        -- Always reap the child and leader, even if the assertion fails, so a
+        -- regression never leaks the very orphan it is testing for.
+        let cleanup = do
+                ignoring (signalProcess sigKILL (fromIntegral childPid))
+                ignoring (stopProcess p)
+        (`finally` cleanup) do
+            stateVar <- newTVarIO (Idle 0)
+            let gp =
+                    GhciProcess
+                        { stdin = getStdin p
+                        , stdout = getStdout p
+                        , stderr = getStderr p
+                        , handle = p
+                        , stateVar
+                        }
+            runEff
+                . runConcurrent
+                . runTimeout
+                . runDelay
+                . runFile
+                . runConc
+                . runProcessIO
+                $ stopGhciProcess (def {shutdownTimeout = 1}) gp
+            waitForProcessDeath childPid
+
+    ignoring :: IO () -> IO ()
+    ignoring act = act `catch` \(_ :: SomeException) -> pure ()
+
+
+-- | Poll for up to ~3s for the given pid to disappear from the process table.
+-- @signalProcess nullSignal@ is a liveness probe: it throws once the process is
+-- gone (and reaped by init after being orphaned).
+waitForProcessDeath :: Int -> IO Bool
+waitForProcessDeath pid = go (60 :: Int)
+  where
+    go 0 = not <$> alive
+    go n = do
+        a <- alive
+        if not a then pure True else threadDelay 50_000 >> go (n - 1)
+    alive =
+        (signalProcess nullSignal (fromIntegral pid) >> pure True)
+            `catch` \(_ :: IOException) -> pure False
 
 
 testDecideInterrupt :: Spec
