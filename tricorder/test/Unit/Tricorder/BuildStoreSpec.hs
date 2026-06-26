@@ -161,7 +161,16 @@ buildingAt n = BuildState (BuildId n) (Building Nothing) emptyDaemonInfo
 
 
 donePhase :: BuildPhase
-donePhase = Done (BuildResult {completedAt = epoch, duration = 0, moduleCount = 0, diagnostics = [], testRuns = []})
+donePhase =
+    Done
+        $ BuildResult
+            { completedAt = epoch
+            , duration = 0
+            , moduleCount = 0
+            , diagnostics = []
+            , testRuns = []
+            , evalRuns = []
+            }
 
 
 doneAt :: Int -> BuildState
