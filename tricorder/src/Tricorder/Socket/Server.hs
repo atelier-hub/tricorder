@@ -31,9 +31,18 @@ import Tricorder.Effects.UnixSocket
     )
 import Tricorder.GhcPkg.Types (SourceQuery (..))
 import Tricorder.Runtime (SocketPath (..))
-import Tricorder.Socket.Protocol (ClientMessage (..), DiagnosticQuery (..), ErrorResponse (..), Query (..), StatusQuery (..))
+import Tricorder.Socket.Protocol
+    ( ClientMessage (..)
+    , DiagnosticQuery (..)
+    , ErrorResponse (..)
+    , Query (..)
+    , StatusQuery (..)
+    , Waiters (..)
+    )
 import Tricorder.SourceLookup (ModuleName, PackageId, ReExport, lookupModuleSource)
 import Tricorder.Version (VersionMismatch (..), checkVersion)
+
+import Tricorder.Effects.BuildStore qualified as BuildStore
 
 
 data SocketRemoved = SocketRemoved
@@ -136,14 +145,33 @@ dispatch query h = case query of
     Watch -> watchStream h
     Source moduleNames -> respondSource moduleNames h
     DiagnosticAt dq -> respondDiagnostic dq.index h
-    Quit -> quit h
+    Quit waiters -> quit h waiters
 
 
-quit :: (Exit :> es, Log :> es, UnixSocket :> es) => Handle -> Eff es ()
-quit h = do
-    sendJson h True
-    Log.info "Shutting down."
-    exitSuccess
+quit
+    :: ( BuildStore :> es
+       , Delay :> es
+       , Exit :> es
+       , Log :> es
+       , UnixSocket :> es
+       )
+    => Handle -> Waiters -> Eff es ()
+quit h = \case
+    WaitForWaiters -> waitBeforeQuit
+    IgnoreWaiters -> doQuit
+  where
+    doQuit = do
+        sendJson h True
+        Log.info "Shutting down."
+        exitSuccess
+
+    waitBeforeQuit = do
+        hasWaiters <- BuildStore.hasWaiters
+        if hasWaiters then do
+            wait (500 :: Millisecond)
+            waitBeforeQuit
+        else
+            doQuit
 
 
 respondOnce :: (BuildStore :> es, UnixSocket :> es) => Handle -> Eff es ()

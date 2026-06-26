@@ -6,6 +6,7 @@ module Tricorder.Arguments
     , TestOptions (..)
     , Verbosity (..)
     , WaitMode (..)
+    , Force (..)
     , parseArguments
     , runArguments
     ) where
@@ -80,9 +81,12 @@ data TestOptions = TestOptions
     }
 
 
+data Force = Force | NoForce
+
+
 data Command
     = Start
-    | Stop
+    | Stop Force
     | Status StatusOptions
     | Test TestOptions
     | UI
@@ -116,7 +120,7 @@ commandParser :: Parser Command
 commandParser =
     hsubparser
         ( command "start" (info (pure Start) (progDesc "Start the daemon (no-op if already running)"))
-            <> command "stop" (info (pure Stop) (progDesc "Stop the daemon"))
+            <> command "stop" (info stopParser (progDesc "Stop the daemon"))
             <> command "status" (info statusParser (progDesc "Print build diagnostics (--json for machine-readable output)"))
             <> command "test-results" (info testParser (progDesc "Show output from the latest test run"))
             <> command "ui" (info (pure UI) (progDesc "Auto-refreshing terminal display"))
@@ -193,6 +197,15 @@ testParser =
 sourceParser :: Parser Command
 sourceParser =
     Source <$> some (argument queryReader (metavar "MODULE[#FUNCTION]" <> help "Module or Module#function"))
+
+
+stopParser :: Parser Command
+stopParser =
+    Stop <$> forceParser "Ignore waiting queries when stopping the daemon"
+
+
+forceParser :: String -> Parser Force
+forceParser helpText = flag NoForce Force $ long "force" <> help helpText
 
 
 queryReader :: ReadM SourceQuery

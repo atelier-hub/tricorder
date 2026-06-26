@@ -4,6 +4,7 @@ module Tricorder.Socket.Protocol
     , DiagnosticQuery (..)
     , ErrorResponse (..)
     , ClientMessage (..)
+    , Waiters (..)
     ) where
 
 import Data.Aeson (FromJSON, ToJSON)
@@ -26,7 +27,12 @@ data Query
     | Watch
     | Source [SourceQuery]
     | DiagnosticAt DiagnosticQuery
-    | Quit
+    | Quit Waiters
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass (FromJSON, ToJSON)
+
+
+data Waiters = WaitForWaiters | IgnoreWaiters
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
 

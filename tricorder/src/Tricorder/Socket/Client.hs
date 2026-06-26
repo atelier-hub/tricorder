@@ -19,17 +19,25 @@ import Effectful.Exception (catchJust, trySync)
 import Effectful.Reader.Static (Reader, ask)
 import Effectful.State.Static.Shared (evalState, get, modify, put)
 import System.IO.Error (isEOFError)
+import Prelude hiding (force)
 
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.File qualified as File
 import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Data.ByteString.Lazy qualified as BSL
 
+import Tricorder.Arguments (Force (..))
 import Tricorder.BuildState (BuildState, Diagnostic)
 import Tricorder.Effects.UnixSocket (UnixSocket, withConnection)
 import Tricorder.GhcPkg.Types (SourceQuery)
 import Tricorder.Runtime (PidFile)
-import Tricorder.Socket.Protocol (ClientMessage (..), DiagnosticQuery (..), Query (..), StatusQuery (..))
+import Tricorder.Socket.Protocol
+    ( ClientMessage (..)
+    , DiagnosticQuery (..)
+    , Query (..)
+    , StatusQuery (..)
+    , Waiters (..)
+    )
 import Tricorder.SourceLookup (ModuleSourceResult)
 
 import Tricorder.Version qualified as Version
@@ -123,14 +131,20 @@ queryDiagnostic sockPath idx = withConnection sockPath \h -> do
         Right d -> pure $ Right d
 
 
-requestShutdown :: (File :> es, UnixSocket :> es) => FilePath -> Eff es (Either Text ())
-requestShutdown sockPath = withConnection sockPath \h -> do
-    sendQuery h Quit
+requestShutdown
+    :: (File :> es, UnixSocket :> es)
+    => Force -> FilePath -> Eff es (Either Text ())
+requestShutdown force sockPath = withConnection sockPath \h -> do
+    sendQuery h $ Quit waiters
     line <- File.hGetLine h
     if eitherDecode (BSL.fromStrict (encodeUtf8 line)) == Right True then
         pure $ Right ()
     else
         pure $ Left "Failed to request shutdown"
+  where
+    waiters = case force of
+        Force -> IgnoreWaiters
+        NoForce -> WaitForWaiters
 
 
 isDaemonRunning :: (Daemons :> es, Reader PidFile :> es) => Eff es Bool
