@@ -92,6 +92,7 @@ data Command
     | UI
     | Log FollowMode
     | Source [SourceQuery]
+    | Restart Force
 
 
 runArguments :: (Arguments :> es) => Eff (Reader Command : es) a -> Eff es a
@@ -126,6 +127,7 @@ commandParser =
             <> command "ui" (info (pure UI) (progDesc "Auto-refreshing terminal display"))
             <> command "log" (info logParser (progDesc "Show daemon log output"))
             <> command "source" (info sourceParser (progDesc "Print the Haskell source of one or more installed modules"))
+            <> command "restart" (info restartParser (progDesc "Restart the daemon"))
         )
 
 
@@ -202,6 +204,11 @@ sourceParser =
 stopParser :: Parser Command
 stopParser =
     Stop <$> forceParser "Ignore waiting queries when stopping the daemon"
+
+
+restartParser :: Parser Command
+restartParser =
+    Restart <$> forceParser "Ignore watiting queries when restarting the daemon"
 
 
 forceParser :: String -> Parser Force
