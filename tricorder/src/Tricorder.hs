@@ -59,7 +59,11 @@ run =
                 Console.putStrLn "Daemon already running."
             else do
                 startDaemon
-                Console.putStrLn "Daemon started."
+                ready <- waitForDaemon
+                if ready then
+                    Console.putStrLn "Daemon started."
+                else
+                    Console.putStrLn "Daemon started, but the socket is not responding yet."
         Stop force -> do
             running <- isDaemonRunning
             when running
@@ -99,11 +103,11 @@ run =
             running <- isDaemonRunning
             unless running do
                 startDaemon
-                waitForDaemon
+                void waitForDaemon
             viewUi
         Source moduleNames -> do
             running <- isDaemonRunning
             unless running $ do
                 startDaemon
-                waitForDaemon
+                void waitForDaemon
             showSource moduleNames

@@ -7,6 +7,7 @@ module Tricorder.Socket.Client
     , queryDiagnostic
     , requestShutdown
     , isDaemonRunning
+    , isDaemonReady
     ) where
 
 import Atelier.Effects.Delay (Delay)
@@ -151,6 +152,18 @@ isDaemonRunning :: (Daemons :> es, Reader PidFile :> es) => Eff es Bool
 isDaemonRunning = do
     pidFile <- ask
     Daemons.isRunning pidFile
+
+
+-- | Check whether the daemon socket is bound and accepting connections.
+--
+-- The PID file can appear before the daemon has bound its socket, so a
+-- running process is not enough to guarantee a client can connect. This opens
+-- (and immediately closes) a throwaway connection and reports whether it
+-- succeeded.
+isDaemonReady :: (UnixSocket :> es) => FilePath -> Eff es Bool
+isDaemonReady sockPath =
+    either (const False) (const True)
+        <$> trySync (withConnection sockPath \_ -> pass)
 
 
 -- internals

@@ -11,14 +11,17 @@ import Tricorder.Effects.UnixSocket
     , acceptHandle
     , bindSocket
     , removeSocketFile
+    , runUnixSocketIO
     , runUnixSocketScripted
     , socketFileExists
     )
+import Tricorder.Socket.Client (isDaemonReady)
 
 
 spec_Socket :: Spec
 spec_Socket = do
     describe "runUnixSocketScripted" testScripted
+    describe "isDaemonReady" testReady
 
 
 --------------------------------------------------------------------------------
@@ -55,9 +58,36 @@ testScripted = do
 
 
 --------------------------------------------------------------------------------
+-- isDaemonReady (real IO interpreter)
+--------------------------------------------------------------------------------
+
+testReady :: Spec
+testReady = do
+    it "returns False when nothing is listening on the path" do
+        -- A connect to a non-existent socket must be caught, not thrown: this is
+        -- the race the start/status path hit before the socket was bound.
+        result <- runIO' $ isDaemonReady "/tmp/tricorder-isdaemonready-absent.sock"
+        result `shouldBe` False
+
+    it "returns True once a socket is bound and listening" do
+        let path = "/tmp/tricorder-isdaemonready-bound.sock"
+        result <- runIO' do
+            removeSocketFile path
+            _ <- bindSocket path
+            isDaemonReady path
+        runIO' $ removeSocketFile path
+        result `shouldBe` True
+
+
+--------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
 
 -- | Run scripted socket operations (no Delay needed).
 runScripted :: [SocketScript] -> Eff '[UnixSocket, File, IOE] a -> IO a
 runScripted script = runEff . runFile . runUnixSocketScripted script
+
+
+-- | Run socket operations against the real IO interpreter.
+runIO' :: Eff '[UnixSocket, File, IOE] a -> IO a
+runIO' = runEff . runFile . runUnixSocketIO
