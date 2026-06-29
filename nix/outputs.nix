@@ -78,6 +78,9 @@ let
             files = "(\\.l?hs(-boot)?$)|(\\.cabal$)|((^|/)package\\.nix$)|((^|/)nix/package/.*\\.nix$)";
             entry = "${nix-hpack}/bin/nix-hpack";
             pass_filenames = false;
+            # The template has no package.nix and isn't part of this cabal
+            # project; keep nix-hpack from triggering on its files.
+            excludes = [ "^templates/" ];
           };
           # Validate tagref cross-references (no dangling refs / duplicate tags).
           tagref = {
@@ -90,6 +93,10 @@ let
     ];
   };
   nix-hpack = pkgs.callPackage ./package/nix-hpack.nix { };
+
+  # Canvas flake-template verification builds, gated to the template's target
+  # GHC (see nix/template.nix and nix/template-checks.nix).
+  templateChecks = import ./template.nix { inherit inputs pkgs compiler-nix-name; };
 
   checks = projectFlake.checks // {
     git-hooks = gitHooks;
@@ -166,10 +173,10 @@ in
     };
   };
 
-  legacyChecks.${compiler-nix-name} = {
+  legacyChecks.${compiler-nix-name} = templateChecks // {
     all = pkgs.symlinkJoin {
       name = "all-checks-${compiler-nix-name}";
-      paths = builtins.attrValues checks;
+      paths = builtins.attrValues checks ++ builtins.attrValues templateChecks;
     };
   };
 

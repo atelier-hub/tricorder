@@ -1,0 +1,22 @@
+roots = ["Main.main","^Paths_.*"]
+
+type-class-roots = false
+
+# Keep common instances that are often used implicitly
+root-instances = [
+  { class = "\\.IsString$" },
+  { class = "\\.IsList$" },
+  { class = "\\.Eq$" },
+  { class = "\\.Show$" },
+  { class = "\\.Generic$" },
+  { class = "\\.FromJSON$" },
+  { class = "\\.ToJSON$" },
+  { class = "\\.Ord$" },
+  { class = "\\.Read$" },
+  { class = "\\.DBEq$" },
+  { class = "\\.DBOrd$" },
+]
+
+unused-types = false
+
+root-modules = []

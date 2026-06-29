@@ -285,3 +285,25 @@ tricorder ui
 ## Libraries
 
 This repository also contains [Atelier](atelier-core/README.md), a set of Haskell libraries providing foundational infrastructure for effect-based applications (to be extracted into their own repository).
+
+## Project template
+
+To scaffold a new Atelier-based service from the bundled `canvas` flake template — an internal library plus a WAI/Warp executable with rel8/hasql Postgres access, sqitch migrations, and a [haskell.nix](https://input-output-hk.github.io/haskell.nix/) dev shell:
+
+```bash
+# Into a new directory:
+nix flake new -t github:atelier-hub/tricorder#canvas ./my-service
+
+# …or into the current (empty) directory:
+nix flake init -t github:atelier-hub/tricorder#canvas
+```
+
+Then, from the generated project:
+
+```bash
+nix develop          # or `direnv allow` to load the dev shell automatically
+nix run .#postgres   # start a local dev Postgres, then `sqitch deploy dev`
+cabal run canvas     # start the server (GET /, /health, /metrics, /items)
+```
+
+`canvas` is a placeholder name — the generated `README.md` explains how to rename it. See [`templates/canvas`](templates/canvas) for the full layout. The template is exercised in CI against both the released Atelier packages and this repo's in-development sources (`canvas-hackage` / `canvas-local` in `nix/template-checks.nix`).

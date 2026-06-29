@@ -1,0 +1,170 @@
+cabal-version: 2.0
+
+-- This file has been generated from package.yaml by hpack version 0.38.3.
+--
+-- see: https://github.com/sol/hpack
+
+name:           canvas
+version:        0.1.0.0
+synopsis:       A web server starter built on the atelier toolkit
+description:    Library and web-server executable scaffolded on the atelier toolkit (Effectful effects, rel8/hasql database access).
+category:       Web
+author:         Christian Georgii
+maintainer:     cgeorgii@gmail.com
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+tested-with:
+    GHC == 9.10.3
+extra-doc-files:
+    README.md
+    CHANGELOG.md
+
+library
+  exposed-modules:
+      Canvas.App
+      Canvas.Arguments
+      Canvas.Config
+      Canvas.Data.Item
+      Canvas.DB.Schema
+      Canvas.DB.Schemas.Items
+      Canvas.Effects.ItemRepo
+      Canvas.Metrics
+      Canvas.Server
+  other-modules:
+      Paths_canvas
+  autogen-modules:
+      Paths_canvas
+  hs-source-dirs:
+      src
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded
+  build-depends:
+      aeson ==2.2.*
+    , atelier-core ==0.2.*
+    , atelier-db >=0.1.1 && <0.2
+    , atelier-prelude ==0.1.*
+    , base >=4.18 && <4.23
+    , bytestring >=0.11 && <0.13
+    , casing ==0.1.*
+    , containers >=0.6 && <0.9
+    , data-default ==0.8.*
+    , effectful ==2.6.*
+    , effectful-core ==2.6.*
+    , effectful-plugin >=2.0 && <2.2
+    , effectful-th ==1.0.*
+    , hasql >=1.9 && <1.11
+    , hasql-transaction ==1.2.*
+    , http-types ==0.12.*
+    , optparse-applicative >=0.19 && <0.20
+    , rel8 ==1.7.*
+    , text ==2.1.*
+    , time >=1.12 && <1.16
+    , wai ==3.2.*
+    , warp ==3.4.*
+    , yaml ==0.11.*
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021
+  if impl(GHC >= 9.8)
+    ghc-options: -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations
+
+executable canvas
+  main-is: Main.hs
+  other-modules:
+      Paths_canvas
+  autogen-modules:
+      Paths_canvas
+  hs-source-dirs:
+      app
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded "-with-rtsopts=-N -T"
+  build-depends:
+      atelier-prelude ==0.1.*
+    , base >=4.18 && <4.23
+    , canvas
+    , effectful-core ==2.6.*
+    , effectful-plugin >=2.0 && <2.2
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021
+  if impl(GHC >= 9.8)
+    ghc-options: -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations
+
+test-suite canvas-test
+  type: exitcode-stdio-1.0
+  main-is: Driver.hs
+  other-modules:
+      SmokeSpec
+      Paths_canvas
+  autogen-modules:
+      Paths_canvas
+  hs-source-dirs:
+      test
+  default-extensions:
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FlexibleContexts
+      GADTs
+      LambdaCase
+      MultiWayIf
+      OverloadedLabels
+      OverloadedRecordDot
+      OverloadedStrings
+      StrictData
+      TemplateHaskell
+      TypeFamilies
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-unticked-promoted-constructors -Wno-unused-packages -Wno-all-missed-specialisations -Wno-missed-specialisations -fplugin=Effectful.Plugin -threaded -Wno-prepositive-qualified-module
+  build-tool-depends:
+      tasty-discover:tasty-discover
+  build-depends:
+      atelier-prelude ==0.1.*
+    , base >=4.18 && <4.23
+    , canvas
+    , effectful-core ==2.6.*
+    , effectful-plugin >=2.0 && <2.2
+    , hspec ==2.11.*
+    , tasty ==1.5.*
+    , tasty-discover ==5.2.*
+    , tasty-hspec ==1.2.*
+  mixins:
+      base hiding (Prelude)
+  default-language: GHC2021
+  if impl(GHC >= 9.8)
+    ghc-options: -Wno-missing-poly-kind-signatures -Wno-missing-role-annotations

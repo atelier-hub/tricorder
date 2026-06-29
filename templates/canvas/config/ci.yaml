@@ -1,0 +1,18 @@
+server:
+  host: 127.0.0.1
+  port: 3000
+
+database:
+  host: 127.0.0.1
+  port: 5432
+  database_name: canvas_ci
+  user: postgres
+  password: ""
+  pool:
+    size: 4
+    acquisition_timeout_seconds: 5
+    aging_timeout_seconds: 1800
+    idleness_timeout_seconds: 600
+
+logging:
+  minimum_severity: INFO

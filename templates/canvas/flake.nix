@@ -1,5 +1,5 @@
 {
-  description = "Tricorder";
+  description = "Canvas";
 
   nixConfig = {
     extra-substituters = [
@@ -45,10 +45,12 @@
   outputs =
     { self, ... }@inputs:
     let
-      common = import ./nix/package/common.nix;
+      # GHC versions to build. The first is the default; add more to build a
+      # matrix in CI. Kept to one to start so dev builds stay fast.
+      ghcVersionList = [ "9.10.3" ];
       versionToCompilerName = v: "ghc${builtins.replaceStrings [ "." ] [ "" ] v}";
-      defaultGhcVersion = versionToCompilerName common.default-ghc-version;
-      ghcVersions = map versionToCompilerName common.ghc-versions;
+      defaultGhcVersion = versionToCompilerName (builtins.head ghcVersionList);
+      ghcVersions = map versionToCompilerName ghcVersionList;
       lib = inputs.nixpkgs.lib;
     in
     inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (
@@ -75,30 +77,5 @@
     )
     // {
       overlays = import ./nix/overlays.nix self.packages;
-      homeManagerModules.default = import ./nix/home-module.nix;
-      nixosModules.default = import ./nix/nixos-module.nix;
-
-      # Atelier-based web-server starter. Instantiate with:
-      #   nix flake init -t github:atelier-hub/tricorder#canvas
-      templates.canvas = {
-        path = ./templates/canvas;
-        description = "Atelier-based web server starter (library + executable, WAI/Warp, rel8/Postgres, haskell.nix)";
-        welcomeText = ''
-          # canvas — atelier-based web server starter
-
-          You now have a haskell.nix project with a library, a WAI/Warp executable,
-          rel8/hasql Postgres access, sqitch migrations, and a dev shell.
-
-          Next steps:
-          - `nix develop` (or `direnv allow`) to enter the dev shell
-          - `nix run .#postgres` then `sqitch deploy dev` for a local database
-          - `tricorder ui` to start the development server (builds and runs tests)
-          - `cabal run canvas` to start the server
-
-          `canvas` is a placeholder name — see README.md for how to rename it.
-          Edit `canvas/package.yaml` (not the generated `.cabal`) to change dependencies.
-        '';
-      };
-      templates.default = self.templates.canvas;
     };
 }
