@@ -94,7 +94,7 @@ stopDaemon force = do
             pure ()
 
 
--- | Poll until the daemon socket becomes connectable, giving up after roughly
+-- | Poll until the daemon binds to the socket, giving up after roughly
 -- ten seconds. Returns 'True' once the socket is accepting connections.
 --
 -- We poll the socket rather than the PID file for two reasons: the daemon
