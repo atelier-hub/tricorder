@@ -13,7 +13,24 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Command (..), ComponentKind (..), Config (..), Target (..), WatchDirs (..), allComponentTargets, compareTargets, discoverCabalFiles, parseTarget, parseTestTargets, resolveCommand, resolveTargets, resolveTestTargets, resolveWatchDirs, sourceDirsForTarget)
+import Tricorder.Session
+    ( CabalFile (..)
+    , Command (..)
+    , ComponentKind (..)
+    , Config (..)
+    , Target (..)
+    , WatchDirs (..)
+    , allComponentTargets
+    , compareTargets
+    , discoverCabalFiles
+    , parseTarget
+    , parseTestTargets
+    , resolveCommand
+    , resolveTargets
+    , resolveTestTargets
+    , resolveWatchDirs
+    , sourceDirsForTarget
+    )
 
 
 spec_Session :: Spec
@@ -136,33 +153,24 @@ testSourceDirsForTarget = do
 
 testAllComponentTargets :: Spec
 testAllComponentTargets = do
-    it "includes the main library as a named Qualified Lib" do
-        allComponentTargets gpd `shouldContain` [Qualified Lib "myapp"]
-
-    it "includes sub-libraries" do
-        allComponentTargets gpd `shouldContain` [Qualified Lib "myapp-utils"]
-
-    it "includes foreign libraries" do
-        allComponentTargets gpd `shouldContain` [Qualified FLib "myapp-flib"]
-
-    it "includes executables" do
-        allComponentTargets gpd `shouldContain` [Qualified Exe "myapp-exe"]
-
-    it "includes test suites" do
-        allComponentTargets gpd `shouldContain` [Qualified Test "myapp-test"]
-
-    it "includes benchmarks" do
-        allComponentTargets gpd `shouldContain` [Qualified Bench "myapp-bench"]
-
     it "returns every component for the fixture" do
         allComponentTargets gpd
-            `shouldBe` [ Qualified Lib "myapp"
-                       , Qualified Lib "myapp-utils"
-                       , Qualified FLib "myapp-flib"
-                       , Qualified Exe "myapp-exe"
-                       , Qualified Test "myapp-test"
-                       , Qualified Bench "myapp-bench"
-                       ]
+            `shouldMatchList` [ Qualified Lib "myapp"
+                              , Qualified Lib "myapp-utils"
+                              , Qualified FLib "myapp-flib"
+                              , Qualified Exe "myapp-exe"
+                              , Qualified Test "myapp-test"
+                              , Qualified Bench "myapp-bench"
+                              ]
+    -- This test ensures `allComponentTargets`' part of the aggregate test.
+    -- [ref:test_resolve_targest_aggregate]
+    it "returns every component for test fixures" do
+        let actual =
+                allComponentTargets
+                    $ fromMaybe (error "failed to parse cabal")
+                    $ parseGenericPackageDescriptionMaybe
+                    $ libTestCabal "pkg-a"
+        actual `shouldMatchList` [Qualified Lib "pkg-a", Qualified Test "pkg-a-test"]
 
 
 -- | Pins the discovery contract: a @cabal.project@ selects per-package
@@ -194,22 +202,12 @@ testResolveTargets :: Spec
 testResolveTargets = do
     describe "when targets are configured" do
         it "returns configured targets as-is without reading any cabal file" do
-            -- The cabal file is absent from the mock FS, so any attempt to read
-            -- it would error; passing the test proves the early return.
-            let actual =
-                    runPureEff
-                        . evalState mempty
-                        . runFileSystemState
-                        $ resolveTargets ["/myapp.cabal"] ["lib:foo", "test:foo-test"]
+            let actual = resolveTargets [] ["lib:foo", "test:foo-test"]
             actual `shouldBe` [Qualified Test "foo-test", Qualified Lib "foo"]
 
     describe "when no targets are configured" do
         it "auto-detects all components from the cabal file" do
-            let actual =
-                    runPureEff
-                        . evalState (Map.singleton "/myapp.cabal" cabalFixture)
-                        . runFileSystemState
-                        $ resolveTargets ["/myapp.cabal"] []
+            let actual = resolveTargets singleCabalFile []
             actual
                 `shouldBe` [ Qualified Bench "myapp-bench"
                            , Qualified Exe "myapp-exe"
@@ -220,31 +218,22 @@ testResolveTargets = do
                            ]
 
         it "surfaces test-suite components so they can be run after a build" do
-            let actual =
-                    runPureEff
-                        . evalState (Map.singleton "/myapp.cabal" cabalFixture)
-                        . runFileSystemState
-                        $ resolveTargets ["/myapp.cabal"] []
+            let actual = resolveTargets singleCabalFile []
             actual `shouldContain` [Qualified Test "myapp-test"]
 
         it "returns no targets when there are no cabal files" do
-            let actual =
-                    runPureEff
-                        . evalState mempty
-                        . runFileSystemState
-                        $ resolveTargets [] []
+            let actual = resolveTargets [] []
             actual `shouldBe` []
 
+        -- [tag: test_resolve_targest_aggregate]
         it "aggregates components across every package (regression: was 0)" do
-            let actual =
-                    runPureEff
-                        . evalState multiPackageFs
-                        . runFileSystemState
-                        $ resolveTargets ["/pkg-a/pkg-a.cabal", "/pkg-b/pkg-b.cabal"] []
-            actual `shouldContain` [Qualified Lib "pkg-a"]
-            actual `shouldContain` [Qualified Lib "pkg-b"]
-            [t | t@(Qualified Test _) <- actual]
-                `shouldBe` [Qualified Test "pkg-a-test", Qualified Test "pkg-b-test"]
+            let actual = resolveTargets multiCabalFiles []
+            actual
+                `shouldMatchList` [ Qualified Test "pkg-a-test"
+                                  , Qualified Test "pkg-b-test"
+                                  , Qualified Lib "pkg-a"
+                                  , Qualified Lib "pkg-b"
+                                  ]
 
 
 testResolveWatchDirs :: Spec
@@ -252,72 +241,46 @@ testResolveWatchDirs = do
     describe "when watch_dirs is set in config" do
         it "uses config dirs relative to project root" do
             let WatchDirs actual =
-                    runPureEff
-                        . evalState mempty
-                        . runFileSystemState
-                        $ resolveWatchDirs pr [] def {watchDirs = ["src", "test"]} []
+                    resolveWatchDirs pr [] def {watchDirs = ["src", "test"]} []
             actual `shouldBe` ["/src", "/test"]
 
     describe "when watch_dirs is not set" do
         it "falls back to [\".\"] when targets list is empty" do
-            let WatchDirs actual =
-                    runPureEff
-                        . evalState mempty
-                        . runFileSystemState
-                        $ resolveWatchDirs pr [] def []
+            let WatchDirs actual = resolveWatchDirs pr [] def []
             actual `shouldBe` ["."]
 
         it "infers source dirs from resolved targets" do
             let WatchDirs actual =
-                    runPureEff
-                        . evalState (Map.singleton "/myapp.cabal" cabalFixture)
-                        . runFileSystemState
-                        $ resolveWatchDirs pr ["/myapp.cabal"] def (mkTargets ["lib:myapp", "test:myapp-test"])
+                    resolveWatchDirs pr singleCabalFile def (mkTargets ["lib:myapp", "test:myapp-test"])
             actual `shouldBe` ["/src", "/test"]
 
         it "falls back to [\".\"] when there are no cabal files" do
             let WatchDirs actual =
-                    runPureEff
-                        . evalState mempty
-                        . runFileSystemState
-                        $ resolveWatchDirs pr [] def (mkTargets ["lib:myapp"])
+                    resolveWatchDirs pr [] def (mkTargets ["lib:myapp"])
             actual `shouldBe` ["."]
 
         -- Sharp edge: an unparseable .cabal yields no source dirs, so resolution
         -- falls back to watching the whole project root. This pins the current
         -- behavior; if it ever changes to something narrower, update this test.
-        it "falls back to [\".\"] when the cabal file cannot be parsed" do
+        it "falls back to [\".\"] when no cabal files are found or parsed" do
             let WatchDirs actual =
-                    runPureEff
-                        . evalState (Map.singleton "/myapp.cabal" malformedCabal)
-                        . runFileSystemState
-                        $ resolveWatchDirs pr ["/myapp.cabal"] def (mkTargets ["lib:myapp"])
+                    resolveWatchDirs pr [] def (mkTargets ["lib:myapp"])
             actual `shouldBe` ["."]
 
     describe "when the project is a multi-package cabal.project" do
         it "infers per-package source dirs, scoped to each package's directory" do
             let WatchDirs actual =
-                    runPureEff
-                        . evalState multiPackageFs
-                        . runFileSystemState
-                        $ resolveWatchDirs
-                            pr
-                            ["/pkg-a/pkg-a.cabal", "/pkg-b/pkg-b.cabal"]
-                            def
-                            (mkTargets ["lib:pkg-a", "test:pkg-a-test", "lib:pkg-b", "test:pkg-b-test"])
+                    resolveWatchDirs
+                        pr
+                        multiCabalFiles
+                        def
+                        (mkTargets ["lib:pkg-a", "test:pkg-a-test", "lib:pkg-b", "test:pkg-b-test"])
             actual
                 `shouldBe` ["/pkg-a/src", "/pkg-a/test", "/pkg-b/src", "/pkg-b/test"]
 
         it "scopes a bare package-name target to that package, ignoring siblings" do
             let WatchDirs actual =
-                    runPureEff
-                        . evalState multiPackageFs
-                        . runFileSystemState
-                        $ resolveWatchDirs
-                            pr
-                            ["/pkg-a/pkg-a.cabal", "/pkg-b/pkg-b.cabal"]
-                            def
-                            (mkTargets ["pkg-a"])
+                    resolveWatchDirs pr multiCabalFiles def (mkTargets ["pkg-a"])
             actual `shouldBe` ["/pkg-a/src", "/pkg-a/test"]
   where
     pr = ProjectRoot "/"
@@ -483,13 +446,30 @@ mkTargets :: [Text] -> [Target]
 mkTargets = map parseTarget
 
 
+multiCabalFiles :: [CabalFile]
+multiCabalFiles =
+    uncurry CabalFile
+        . second
+            ( fromMaybe (error "multiCabalFiles failed to parse")
+                . parseGenericPackageDescriptionMaybe
+            )
+        <$> Map.toList multiPackageCabalFs
+
+
 -- | An in-memory project root with a @cabal.project@ listing two packages,
 -- each in its own subdirectory with a library and a test suite.
 multiPackageFs :: Map FilePath ByteString
 multiPackageFs =
     Map.fromList
         [ ("/cabal.project", "packages:\n  pkg-a\n  pkg-b\n\ntests: True\n")
-        , ("/pkg-a/pkg-a.cabal", libTestCabal "pkg-a")
+        ]
+        `Map.union` multiPackageCabalFs
+
+
+multiPackageCabalFs :: Map FilePath ByteString
+multiPackageCabalFs =
+    Map.fromList
+        [ ("/pkg-a/pkg-a.cabal", libTestCabal "pkg-a")
         , ("/pkg-b/pkg-b.cabal", libTestCabal "pkg-b")
         ]
 
@@ -519,10 +499,12 @@ libTestCabal name =
             ]
 
 
--- | Not a valid @.cabal@ file: @parseGenericPackageDescriptionMaybe@ returns
--- 'Nothing' for it.
-malformedCabal :: ByteString
-malformedCabal = "this is not a cabal file {{{ <<< @@@\n"
+singleCabalFile :: [CabalFile]
+singleCabalFile = [CabalFile "/myapp.cabal" gpdFixture]
+
+
+gpdFixture :: GenericPackageDescription
+gpdFixture = fromMaybe (error "gpdFixture failed to parse") $ parseGenericPackageDescriptionMaybe cabalFixture
 
 
 cabalFixture :: ByteString

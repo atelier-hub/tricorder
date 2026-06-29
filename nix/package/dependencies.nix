@@ -6,6 +6,7 @@ let
   depList = map dep;
   constraints = {
     base = ">=4.18 && < 4.23";
+    Cabal = ">=3.12 && <3.17";
     Cabal-syntax = ">=3.12 && <3.17";
     aeson = ">=2.2 && <2.3";
     ansi-terminal = ">=1.1 && <1.2";

@@ -45,6 +45,7 @@ in
       ++ depList [
         "atelier-prelude"
         "atelier-core"
+        "Cabal"
         "Cabal-syntax"
         "aeson"
         "ansi-terminal"

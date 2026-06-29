@@ -15,6 +15,8 @@ module Tricorder.Session
     , TestTimeout (..)
     , Pattern
     , loadSession
+    , CabalFile (..)
+    , runCabalFiles
     , resolveCommand
     , resolveTargets
     , discoverCabalFiles
@@ -33,6 +35,7 @@ import Atelier.Types.WithDefaults (WithDefaults (..))
 import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Default (Default (..))
 import Data.List (nub)
+import Data.Traversable (for)
 import Distribution.Compat.Lens (view)
 import Distribution.Fields (Field (..), FieldLine (..), Name (..), readFields)
 import Distribution.PackageDescription.Parsec (parseGenericPackageDescriptionMaybe)
@@ -52,10 +55,8 @@ import Distribution.Types.PackageId (pkgName)
 import Distribution.Types.PackageName (unPackageName)
 import Distribution.Types.UnqualComponentName (mkUnqualComponentName, unUnqualComponentName)
 import Distribution.Utils.Path (getSymbolicPath)
-import Effectful.Exception (throwIO)
-import Effectful.Reader.Static (Reader, ask)
+import Effectful.Reader.Static (Reader, ask, runReader)
 import System.FilePath (normalise, takeDirectory, takeExtension, (</>))
-import System.IO.Error (userError)
 import Text.Regex.TDFA.ReadRegex (parseRegex)
 
 import Atelier.Effects.Log qualified as Log
@@ -291,30 +292,30 @@ detectCommand targets (TestTargets testTargets) replBuildDir (ProjectRoot projec
 -- 1. @watch_dirs@ from config, if non-empty (used as-is relative to project root)
 -- 2. @hs-source-dirs@ inferred from cabal targets, if targets are set
 -- 3. Falls back to @["."]@ (project root) if neither is available
-resolveWatchDirs :: (FileSystem :> es) => ProjectRoot -> [FilePath] -> Config -> [Target] -> Eff es WatchDirs
-resolveWatchDirs projectRoot cabalFiles cfg targets =
+resolveWatchDirs :: ProjectRoot -> [CabalFile] -> Config -> [Target] -> WatchDirs
+resolveWatchDirs projectRoot projectFiles cfg targets =
     case cfg.watchDirs of
-        dirs@(_ : _) -> pure $ WatchDirs $ map (coerce projectRoot </>) dirs
-        [] -> resolveWatchDirsFromTargets cabalFiles targets
+        dirs@(_ : _) -> WatchDirs $ map (coerce projectRoot </>) dirs
+        [] -> resolveWatchDirsFromTargets projectFiles targets
 
 
-resolveWatchDirsFromTargets :: (FileSystem :> es) => [FilePath] -> [Target] -> Eff es WatchDirs
-resolveWatchDirsFromTargets _ [] = pure $ WatchDirs ["."]
-resolveWatchDirsFromTargets cabalFiles targets = do
-    dirs <- nub . concat <$> traverse watchDirsForCabal cabalFiles
-    pure $ WatchDirs $ if null dirs then ["."] else dirs
+resolveWatchDirsFromTargets :: [CabalFile] -> [Target] -> WatchDirs
+resolveWatchDirsFromTargets _ [] = WatchDirs ["."]
+resolveWatchDirsFromTargets projectFiles targets =
+    WatchDirs $ case dirs of
+        [] -> ["."]
+        _ -> dirs
   where
+    dirs = nub . concat $ watchDirsForCabal <$> projectFiles
     -- @hs-source-dirs@ are relative to the package's own directory, so scope
     -- them to the directory holding that package's @.cabal@. In a
     -- single-package project that directory is the project root; in a
     -- multi-package project it's the per-package subdirectory. Targets that
     -- don't belong to this package yield no dirs.
-    watchDirsForCabal cabalFile = do
-        contents <- readFileBs cabalFile
-        let pkgDir = takeDirectory cabalFile
-        pure $ case parseGenericPackageDescriptionMaybe contents of
-            Nothing -> []
-            Just gpd -> map (pkgDir </>) (concatMap (sourceDirsForTarget gpd) targets)
+    watchDirsForCabal projectFile =
+        let pkgDir = takeDirectory projectFile.projectFilePath
+            sourceDirs = sourceDirsForTarget projectFile.projectPackageDescription
+        in  (pkgDir </>) <$> concatMap sourceDirs targets
 
 
 sourceDirsForTarget :: GenericPackageDescription -> Target -> [FilePath]
@@ -391,14 +392,11 @@ sourceDirsForTarget gpd target =
 -- discovered package are auto-detected when no targets are configured. Either
 -- way the result is sorted with 'compareTargets' so libraries come last
 -- [ref:lib_sort_order].
-resolveTargets :: (FileSystem :> es) => [FilePath] -> [Text] -> Eff es [Target]
-resolveTargets _ targets@(_ : _) = pure $ sortBy compareTargets $ map parseTarget targets
+resolveTargets :: [CabalFile] -> [Text] -> [Target]
+resolveTargets _ targets@(_ : _) = sortBy compareTargets $ parseTarget <$> targets
 resolveTargets cabalFiles [] =
-    sortBy compareTargets . concat <$> traverse targetsFromCabal cabalFiles
-  where
-    targetsFromCabal path = do
-        contents <- readFileBs path
-        pure $ maybe [] allComponentTargets (parseGenericPackageDescriptionMaybe contents)
+    sortBy compareTargets
+        $ foldMap (allComponentTargets . (.projectPackageDescription)) cabalFiles
 
 
 -- | [tag:lib_sort_order] When running @cabal repl <package defining custom
@@ -472,7 +470,7 @@ projectPackageEntries :: ByteString -> [FilePath]
 projectPackageEntries contents =
     case readFields contents of
         Left _ -> []
-        Right fields -> filter (notElem '*') (concatMap fromField fields)
+        Right fields -> filter (notElem '*') $ concatMap fromField fields
   where
     fromField (Field (Name _ name) fieldLines)
         | name == "packages" = concatMap fromLine fieldLines
@@ -509,14 +507,39 @@ resolveTestTargets cfg targets = case cfg.testTargets of
     Nothing -> projectTestTargets targets
 
 
-resolveWatchExclusionPatterns :: [Text] -> Eff es WatchExclusionPatterns
+resolveWatchExclusionPatterns :: [Text] -> Either Text WatchExclusionPatterns
 resolveWatchExclusionPatterns rawPatterns = do
-    either (throwIO . userError . show) (pure . WatchExclusionPatterns)
-        $ traverse
-            ( parseRegex
-                . toString
-            )
-            rawPatterns
+    bimap show WatchExclusionPatterns
+        $ traverse (parseRegex . toString) rawPatterns
+
+
+data CabalFile = CabalFile
+    { projectFilePath :: FilePath
+    , projectPackageDescription :: GenericPackageDescription
+    }
+    deriving stock (Show)
+
+
+runCabalFiles
+    :: ( FileSystem :> es
+       , Log :> es
+       , Reader ProjectRoot :> es
+       )
+    => Eff (Reader [CabalFile] : es) a -> Eff es a
+runCabalFiles act = do
+    projectRoot <- ask
+    projectFilePaths <- discoverCabalFiles projectRoot
+    (faileds, packageDescriptions) <-
+        partitionEithers <$> for projectFilePaths \p -> do
+            contents <- readFileBs p
+            case parseGenericPackageDescriptionMaybe contents of
+                Nothing -> pure $ Left p
+                Just gpd -> pure $ Right $ CabalFile p gpd
+    unless (null faileds) do
+        Log.warn
+            $ "Failed to parse .cabal files for the following packages: "
+                <> T.intercalate ", " (toText <$> faileds)
+    runReader packageDescriptions act
 
 
 loadSession
@@ -524,18 +547,34 @@ loadSession
        , Log :> es
        , Reader LoadedConfig :> es
        , Reader ProjectRoot :> es
+       , Reader [CabalFile] :> es
        )
     => Eff es Session
 loadSession = do
     projectRoot <- ask @ProjectRoot
     loadedCfg <- ask
+    projectFiles <- ask
+
     let cfgFile = extractConfig @"session" @Config loadedCfg
-    cabalFiles <- discoverCabalFiles projectRoot
-    effectiveTargets <- resolveTargets cabalFiles cfgFile.targets
-    let testTargets = resolveTestTargets cfgFile effectiveTargets
+        effectiveTargets = resolveTargets projectFiles cfgFile.targets
+        testTargets = resolveTestTargets cfgFile effectiveTargets
+        watchDirs = resolveWatchDirs projectRoot projectFiles cfgFile effectiveTargets
+
+    watchExclusionPatterns <-
+        case resolveWatchExclusionPatterns cfgFile.watchExclusionPatterns of
+            Left err -> do
+                Log.err
+                    $ T.intercalate
+                        "\n"
+                        [ "Failed to parse watch exclusion patterns:"
+                        , err
+                        , "Defaulting to no exclusion patterns."
+                        ]
+                pure $ WatchExclusionPatterns []
+            Right pts -> pure pts
+
     command <- resolveCommand projectRoot cfgFile effectiveTargets testTargets
-    watchDirs <- resolveWatchDirs projectRoot cabalFiles cfgFile effectiveTargets
-    watchExclusionPatterns <- resolveWatchExclusionPatterns cfgFile.watchExclusionPatterns
+
     pure
         $ Session
             { targets = effectiveTargets
