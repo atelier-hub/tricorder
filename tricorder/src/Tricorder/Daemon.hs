@@ -7,16 +7,18 @@ module Tricorder.Daemon
 import Atelier.Effects.Delay (Delay)
 import Atelier.Effects.File (File)
 import Atelier.Effects.Posix.Daemons (Daemons)
-import Atelier.Time (Millisecond)
+import Atelier.Effects.Timeout (Timeout, timeout)
+import Atelier.Time (Millisecond, Second)
 import Effectful (IOE)
 import Effectful.NonDet (OnEmptyPolicy (..), emptyEff, runNonDet)
 import Effectful.Reader.Static (Reader, ask)
-import Effectful.Timeout (Timeout, timeout)
 import Effectful.Writer.Static.Local (runWriter, tell)
+import Prelude hiding (force)
 
 import Atelier.Effects.Delay qualified as Delay
 import Atelier.Effects.Posix.Daemons qualified as Daemons
 
+import Tricorder.Arguments (Force (..))
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.Runtime (PidFile, SocketPath (..))
 import Tricorder.Socket.Client (isDaemonRunning, requestShutdown)
@@ -47,8 +49,8 @@ stopDaemon
        , Timeout :> es
        , UnixSocket :> es
        )
-    => Eff es (Either [Text] Text)
-stopDaemon = do
+    => Force -> Eff es (Either [Text] Text)
+stopDaemon force = do
     SocketPath sockPath <- ask
     pidFile <- ask
     res <-
@@ -61,9 +63,12 @@ stopDaemon = do
         (Just r, _) -> pure $ Right r
         (Nothing, es) -> pure $ Left es
   where
+    timeoutDelay :: Second = case force of
+        Force -> 3
+        NoForce -> 6
     requestStop sockPath pidFile = do
-        timeout1second (requestShutdown sockPath) >>= \_ -> do
-            didStop <- fmap isJust $ timeout 3_000_000 $ waitForStop pidFile
+        timeout1second (requestShutdown force sockPath) >>= \_ -> do
+            didStop <- fmap isJust $ timeout timeoutDelay $ waitForStop pidFile
             if didStop then
                 pure "Daemon stopped."
             else do
@@ -77,7 +82,7 @@ stopDaemon = do
                 tell ["Daemon did not respond to SIGKILL: " <> show ex]
                 emptyEff
 
-    timeout1second = fmap (join . fmap rightToMaybe) . timeout 1_000_000
+    timeout1second = fmap (join . fmap rightToMaybe) . timeout (1 :: Second)
 
     waitForStop :: forall es'. (Daemons :> es', Delay :> es') => PidFile -> Eff es' ()
     waitForStop pidFile = fix \rec -> do

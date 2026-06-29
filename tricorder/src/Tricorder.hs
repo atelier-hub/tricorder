@@ -8,9 +8,10 @@ import Atelier.Effects.Exit (Exit)
 import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Effects.Timeout (Timeout)
 import Effectful (IOE)
 import Effectful.Reader.Static (Reader, ask, asks)
-import Effectful.Timeout (Timeout)
+import Prelude hiding (force)
 
 import Atelier.Effects.Console qualified as Console
 import Data.Text qualified as T
@@ -59,10 +60,10 @@ run =
             else do
                 startDaemon
                 Console.putStrLn "Daemon started."
-        Stop -> do
+        Stop force -> do
             running <- isDaemonRunning
             when running
-                $ stopDaemon >>= \case
+                $ stopDaemon force >>= \case
                     Left reasons ->
                         Console.putTextLn
                             $ T.intercalate "\n"
