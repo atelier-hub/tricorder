@@ -25,6 +25,7 @@ module Tricorder.Session
     , resolveWatchDirs
     , sourceDirsForTarget
     , compareTargets
+    , definesCustomPrelude
     ) where
 
 import Atelier.Config (LoadedConfig, extractConfig)
@@ -50,6 +51,7 @@ import Distribution.Types.GenericPackageDescription
     , condTestSuites
     , packageDescription
     )
+import Distribution.Types.Library (exposedModules)
 import Distribution.Types.PackageDescription (package)
 import Distribution.Types.PackageId (pkgName)
 import Distribution.Types.PackageName (unPackageName)
@@ -390,12 +392,13 @@ sourceDirsForTarget gpd target =
 -- raw target strings (from config) are parsed into structured 'Target's: the
 -- configured targets are parsed as-is, or all components across every
 -- discovered package are auto-detected when no targets are configured. Either
--- way the result is sorted with 'compareTargets' so libraries come last
--- [ref:lib_sort_order].
+-- way the result is sorted with 'compareTargets' so libraries exposing a custom
+-- @Prelude@ come last [ref:lib_sort_order].
 resolveTargets :: [CabalFile] -> [Text] -> [Target]
-resolveTargets _ targets@(_ : _) = sortBy compareTargets $ parseTarget <$> targets
+resolveTargets cabalFiles targets@(_ : _) =
+    sortBy (compareTargets (definesCustomPrelude cabalFiles)) $ parseTarget <$> targets
 resolveTargets cabalFiles [] =
-    sortBy compareTargets
+    sortBy (compareTargets (definesCustomPrelude cabalFiles))
         $ foldMap (allComponentTargets . (.projectPackageDescription)) cabalFiles
 
 
@@ -405,19 +408,47 @@ resolveTargets cabalFiles [] =
 -- problem if the package defining the prelude module is not the first component
 -- listed.
 --
--- Because of this GHCi quirk, we sort all packages beginning with @lib:@ last.
--- This is based on the assumption that components defining custom preludes
--- usually reside in libraries. If we can then place at least one target that
--- does not specify a custom prelude a before targets that do, we will prevent
--- the user from being hit with this rather obscure error message.
-compareTargets :: Target -> Target -> Ordering
-compareTargets a b
-    | isLib a && not (isLib b) = GT
-    | not (isLib a) && isLib b = LT
+-- We check each library target against the discovered cabal files via
+-- 'definesCustomPrelude': only those that expose a @Prelude@ module are sorted
+-- last. This is more precise than sorting every @lib:@ target last — only the
+-- libraries that actually cause the failure are reordered.
+compareTargets :: (Target -> Bool) -> Target -> Target -> Ordering
+compareTargets definesPrelude a b
+    | definesPrelude a && not (definesPrelude b) = GT
+    | not (definesPrelude a) && definesPrelude b = LT
     | otherwise = compare (renderTarget a) (renderTarget b)
+
+
+-- | Check whether any of the discovered packages' libraries expose a @Prelude@
+-- module for the given target. Used to build the predicate passed to
+-- 'compareTargets' so that only the libraries that actually cause the GHCi
+-- startup failure are sorted last [ref:lib_sort_order].
+definesCustomPrelude :: [CabalFile] -> Target -> Bool
+definesCustomPrelude cabalFiles target = any check cabalFiles
   where
-    isLib (Qualified Lib _) = True
-    isLib _ = False
+    check cabalFile = any hasPrelude $ relevantLibs cabalFile.projectPackageDescription
+    hasPrelude lib = "Prelude" `elem` exposedModules lib
+    relevantLibs gpd =
+        let pkgN = unPackageName gpd.packageDescription.package.pkgName
+        in  case target of
+                Qualified Lib "" ->
+                    toList $ condTreeData <$> condLibrary gpd
+                Qualified Lib name
+                    | toString name == pkgN ->
+                        toList $ condTreeData <$> condLibrary gpd
+                    | otherwise ->
+                        subLibsNamed gpd (toString name)
+                Bare name
+                    | toString name == pkgN ->
+                        toList (condTreeData <$> condLibrary gpd)
+                            <> (condTreeData . snd <$> condSubLibraries gpd)
+                    | otherwise ->
+                        subLibsNamed gpd (toString name)
+                _ -> []
+    subLibsNamed gpd name =
+        map (condTreeData . snd)
+            $ filter ((== mkUnqualComponentName name) . fst)
+            $ condSubLibraries gpd
 
 
 -- | Locate every package's @.cabal@ file, logging what drove the result. In a

@@ -22,6 +22,7 @@ import Tricorder.Session
     , WatchDirs (..)
     , allComponentTargets
     , compareTargets
+    , definesCustomPrelude
     , discoverCabalFiles
     , parseTarget
     , parseTestTargets
@@ -44,6 +45,7 @@ spec_Session = do
     describe "sourceDirsForTarget" testSourceDirsForTarget
     describe "allComponentTargets" testAllComponentTargets
     describe "compareTargets" testCompareTargets
+    describe "definesCustomPrelude" testDefinesCustomPrelude
 
 
 testParseTarget :: Spec
@@ -201,20 +203,22 @@ testDiscoverCabalFiles = do
 testResolveTargets :: Spec
 testResolveTargets = do
     describe "when targets are configured" do
-        it "returns configured targets as-is without reading any cabal file" do
+        it "parses and sorts configured targets" do
             let actual = resolveTargets [] ["lib:foo", "test:foo-test"]
-            actual `shouldBe` [Qualified Test "foo-test", Qualified Lib "foo"]
+            actual `shouldBe` [Qualified Lib "foo", Qualified Test "foo-test"]
 
     describe "when no targets are configured" do
         it "auto-detects all components from the cabal file" do
+            -- cabalFixture exposes no Prelude module, so all components sort
+            -- alphabetically by their rendered form.
             let actual = resolveTargets singleCabalFile []
             actual
                 `shouldBe` [ Qualified Bench "myapp-bench"
                            , Qualified Exe "myapp-exe"
                            , Qualified FLib "myapp-flib"
-                           , Qualified Test "myapp-test"
                            , Qualified Lib "myapp"
                            , Qualified Lib "myapp-utils"
+                           , Qualified Test "myapp-test"
                            ]
 
         it "surfaces test-suite components so they can be run after a build" do
@@ -234,6 +238,14 @@ testResolveTargets = do
                                   , Qualified Lib "pkg-a"
                                   , Qualified Lib "pkg-b"
                                   ]
+
+        it "sorts a library exposing a custom Prelude last" do
+            let cabalFile =
+                    CabalFile "/myprelude.cabal"
+                        $ fromMaybe (error "libWithPreludeCabal failed to parse")
+                        $ parseGenericPackageDescriptionMaybe (libWithPreludeCabal "myprelude")
+            let actual = resolveTargets [cabalFile] []
+            actual `shouldBe` [Qualified Exe "myprelude-exe", Qualified Lib "myprelude"]
 
 
 testResolveWatchDirs :: Spec
@@ -384,50 +396,94 @@ testResolveCommand = do
 
 testCompareTargets :: Spec
 testCompareTargets = do
+    -- A predicate that stands in for 'definesCustomPrelude': marks lib: targets
+    -- as "defines custom Prelude" so the comparison contract is exercised
+    -- independently of cabal-file parsing.
+    let defPred (Qualified Lib _) = True
+        defPred _ = False
+
     describe "Ord" do
-        describe "only first target beginnings with 'lib:'" do
-            describe "first target's component name normally sorts as LT" do
+        describe "only first target matches the predicate" do
+            describe "first target's render normally sorts as LT" do
                 it "should return GT" do
-                    compareTargets (Qualified Lib "a") (Qualified Exe "b") `shouldBe` GT
-            describe "both targets have same component name" do
+                    compareTargets defPred (Qualified Lib "a") (Qualified Exe "b") `shouldBe` GT
+            describe "both targets have the same render" do
                 it "should return GT" do
-                    compareTargets (Qualified Lib "a") (Qualified Exe "a") `shouldBe` GT
-            describe "first target's component name normally sorts as GT" do
+                    compareTargets defPred (Qualified Lib "a") (Qualified Exe "a") `shouldBe` GT
+            describe "first target's render normally sorts as GT" do
                 it "should return GT" do
-                    compareTargets (Qualified Lib "b") (Qualified Exe "a") `shouldBe` GT
+                    compareTargets defPred (Qualified Lib "b") (Qualified Exe "a") `shouldBe` GT
 
-        describe "only second target begins with 'lib:'" do
-            describe "first target's component name normally sorts as LT" do
+        describe "only second target matches the predicate" do
+            describe "first target's render normally sorts as LT" do
                 it "should return LT" do
-                    compareTargets (Qualified Exe "a") (Qualified Lib "b") `shouldBe` LT
-            describe "both targets have same component name" do
+                    compareTargets defPred (Qualified Exe "a") (Qualified Lib "b") `shouldBe` LT
+            describe "both targets have the same render" do
                 it "should return LT" do
-                    compareTargets (Qualified Exe "a") (Qualified Lib "a") `shouldBe` LT
-            describe "first target's component name normally sorts as GT" do
+                    compareTargets defPred (Qualified Exe "a") (Qualified Lib "a") `shouldBe` LT
+            describe "first target's render normally sorts as GT" do
                 it "should return LT" do
-                    compareTargets (Qualified Exe "b") (Qualified Lib "a") `shouldBe` LT
+                    compareTargets defPred (Qualified Exe "b") (Qualified Lib "a") `shouldBe` LT
 
-        describe "both targets begin with 'lib:'" do
-            describe "first target's component name normally sorts as LT" do
+        describe "both targets match the predicate" do
+            describe "first target's render normally sorts as LT" do
                 it "should sort normally" do
-                    compareTargets (Qualified Lib "a") (Qualified Lib "b") `shouldBe` LT
-            describe "both targets have same component name" do
+                    compareTargets defPred (Qualified Lib "a") (Qualified Lib "b") `shouldBe` LT
+            describe "both targets have the same render" do
                 it "should sort normally" do
-                    compareTargets (Qualified Lib "a") (Qualified Lib "a") `shouldBe` EQ
-            describe "first target's component name normally sorts as GT" do
+                    compareTargets defPred (Qualified Lib "a") (Qualified Lib "a") `shouldBe` EQ
+            describe "first target's render normally sorts as GT" do
                 it "should sort normally" do
-                    compareTargets (Qualified Lib "b") (Qualified Lib "a") `shouldBe` GT
+                    compareTargets defPred (Qualified Lib "b") (Qualified Lib "a") `shouldBe` GT
 
-        describe "neither target begin with 'lib:'" do
-            describe "first target's component name normally sorts as LT" do
+        describe "neither target matches the predicate" do
+            describe "first target's render normally sorts as LT" do
                 it "should sort normally" do
-                    compareTargets (Qualified Exe "a") (Qualified Exe "b") `shouldBe` LT
-            describe "both targets have same component name" do
+                    compareTargets defPred (Qualified Exe "a") (Qualified Exe "b") `shouldBe` LT
+            describe "both targets have the same render" do
                 it "should sort normally" do
-                    compareTargets (Qualified Exe "a") (Qualified Exe "a") `shouldBe` EQ
-            describe "first target's component name normally sorts as GT" do
+                    compareTargets defPred (Qualified Exe "a") (Qualified Exe "a") `shouldBe` EQ
+            describe "first target's render normally sorts as GT" do
                 it "should sort normally" do
-                    compareTargets (Qualified Exe "b") (Qualified Exe "a") `shouldBe` GT
+                    compareTargets defPred (Qualified Exe "b") (Qualified Exe "a") `shouldBe` GT
+
+
+testDefinesCustomPrelude :: Spec
+testDefinesCustomPrelude = do
+    let preludeCF =
+            CabalFile "/myprelude.cabal"
+                $ fromMaybe (error "libWithPreludeCabal failed to parse")
+                $ parseGenericPackageDescriptionMaybe (libWithPreludeCabal "myprelude")
+
+    describe "when the main library exposes Prelude" do
+        it "returns True for Qualified Lib \"\" (unnamed main lib)" do
+            definesCustomPrelude [preludeCF] (Qualified Lib "") `shouldBe` True
+
+        it "returns True for Qualified Lib matching the package name" do
+            definesCustomPrelude [preludeCF] (Qualified Lib "myprelude") `shouldBe` True
+
+        it "returns True for Bare matching the package name" do
+            definesCustomPrelude [preludeCF] (Bare "myprelude") `shouldBe` True
+
+    describe "when no library exposes Prelude" do
+        it "returns False for a lib target in a normal package" do
+            definesCustomPrelude singleCabalFile (Qualified Lib "myapp") `shouldBe` False
+
+        it "returns False for Bare matching the package name" do
+            definesCustomPrelude singleCabalFile (Bare "myapp") `shouldBe` False
+
+    describe "for non-library targets" do
+        it "returns False for Qualified Exe" do
+            definesCustomPrelude [preludeCF] (Qualified Exe "myprelude-exe") `shouldBe` False
+
+        it "returns False for Qualified Test" do
+            definesCustomPrelude singleCabalFile (Qualified Test "myapp-test") `shouldBe` False
+
+        it "returns False for Unrecognized" do
+            definesCustomPrelude [preludeCF] (Unrecognized "library:myprelude") `shouldBe` False
+
+    it "returns False when the cabal file list is empty" do
+        definesCustomPrelude [] (Qualified Lib "anything") `shouldBe` False
 
 
 --------------------------------------------------------------------------------
@@ -472,6 +528,32 @@ multiPackageCabalFs =
         [ ("/pkg-a/pkg-a.cabal", libTestCabal "pkg-a")
         , ("/pkg-b/pkg-b.cabal", libTestCabal "pkg-b")
         ]
+
+
+-- | A minimal cabal file for @name@ with one library that exposes @Prelude@
+-- and one executable. Used to verify that libraries defining a custom Prelude
+-- are sorted last by 'resolveTargets'.
+libWithPreludeCabal :: Text -> ByteString
+libWithPreludeCabal name =
+    encodeUtf8
+        $ T.unlines
+            [ "cabal-version: 2.0"
+            , "name:          " <> name
+            , "version:       0.1.0.0"
+            , "build-type:    Simple"
+            , ""
+            , "library"
+            , "  hs-source-dirs: src"
+            , "  exposed-modules: Prelude"
+            , "  build-depends: base"
+            , "  default-language: Haskell2010"
+            , ""
+            , "executable " <> name <> "-exe"
+            , "  main-is: Main.hs"
+            , "  hs-source-dirs: app"
+            , "  build-depends: base"
+            , "  default-language: Haskell2010"
+            ]
 
 
 -- | A minimal cabal file for @name@ with one library and one test suite
