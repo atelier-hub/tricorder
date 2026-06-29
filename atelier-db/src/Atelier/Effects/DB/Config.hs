@@ -52,7 +52,8 @@ data DBConfig = DBConfig
     , pool :: PoolConfig
     -- ^ Connection pool settings.
     }
-    deriving stock (Eq, Show)
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON) via QuietSnake DBConfig
 
 
 -- | Separate connection pools for read and write operations.
