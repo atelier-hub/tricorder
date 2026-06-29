@@ -21,7 +21,7 @@ import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.Arguments (Force (..))
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.Runtime (PidFile, SocketPath (..))
-import Tricorder.Socket.Client (isDaemonRunning, requestShutdown)
+import Tricorder.Socket.Client (isDaemonReady, requestShutdown)
 
 import Tricorder.Daemon.Main qualified as Daemon.Main
 
@@ -94,9 +94,31 @@ stopDaemon force = do
             pure ()
 
 
--- | Poll until the daemon socket becomes connectable.
-waitForDaemon :: (Daemons :> es, Delay :> es, Reader PidFile :> es, UnixSocket :> es) => Eff es ()
+-- | Poll until the daemon socket becomes connectable, giving up after roughly
+-- ten seconds. Returns 'True' once the socket is accepting connections.
+--
+-- We poll the socket rather than the PID file for two reasons: the daemon
+-- writes its PID /before/ it binds the socket (a client connecting in that
+-- window gets a "connection refused" error), and right after forking the PID
+-- file may not exist yet — so the PID is not a reliable readiness signal either
+-- way.
+waitForDaemon
+    :: ( Delay :> es
+       , Reader SocketPath :> es
+       , UnixSocket :> es
+       )
+    => Eff es Bool
 waitForDaemon = do
-    Delay.wait (200 :: Millisecond)
-    running <- isDaemonRunning
-    unless running waitForDaemon
+    SocketPath sockPath <- ask
+    go sockPath maxAttempts
+  where
+    -- 50 attempts × 200ms ≈ 10s
+    maxAttempts = 50 :: Int
+    go _ 0 = pure False
+    go sockPath n = do
+        ready <- isDaemonReady sockPath
+        if ready then
+            pure True
+        else do
+            Delay.wait (200 :: Millisecond)
+            go sockPath (n - 1)
