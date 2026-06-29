@@ -28,11 +28,9 @@ let
     inherit (pkgs)
       fourmolu
       hlint
-      hpack
       nixfmt
       ;
   };
-  hpack-dir = pkgs.callPackage "${inputs.git-hooks}/nix/hpack-dir" { inherit (tools) hpack; };
 
   inherit (pkgs) lib;
 
@@ -49,7 +47,6 @@ let
   gitHooks = inputs.git-hooks.lib.${system}.run {
     src = ../.;
     hooks = lib.pipe tools [
-      (x: x // { hpack = hpack-dir; })
       (lib.mapAttrs (
         name: package: {
           inherit package;
@@ -63,15 +60,6 @@ let
           nixfmt = {
             enable = true;
             package = tools.nixfmt;
-          };
-          # The upstream hpack-dir hook regenerates *.cabal from package.yaml
-          # files, but this project has none on disk — nix-hpack generates them
-          # transiently from package.nix and deletes them. It therefore always
-          # no-ops and reports "Passed", giving false confidence. Disable it in
-          # favour of nix-hpack below.
-          hpack = {
-            package = hpack-dir;
-            enable = false;
           };
           nix-hpack = {
             enable = true;
@@ -101,7 +89,7 @@ let
       )
     ];
   };
-  nix-hpack = pkgs.callPackage ./package/nix-hpack.nix { inherit (tools) hpack; };
+  nix-hpack = pkgs.callPackage ./package/nix-hpack.nix { };
 
   checks = projectFlake.checks // {
     git-hooks = gitHooks;
