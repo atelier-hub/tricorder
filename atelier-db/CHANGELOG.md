@@ -5,9 +5,12 @@ All notable changes to `atelier-db` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to the [PVP](https://pvp.haskell.org/).
 
-## [Unreleased]
+## [0.1.0.0] - 2026-06-29
 
 ### Added
 
 - Initial release: a relational database effect (Hasql/Rel8) for the atelier
   toolkit.
+- `DBConfig` derives `FromJSON` (via `QuietSnake`, mapping fields to
+  `quiet_snake_case` keys), so connection settings can be decoded directly
+  from configuration files.
