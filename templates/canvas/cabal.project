@@ -1,0 +1,18 @@
+packages:
+  canvas
+
+tests: True
+
+-- allow-newer overrides for conservative upper bounds whose sources are
+-- compatible with the newer versions resolved from the current index:
+--   * tasty-hspec 1.2.0.4 caps `QuickCheck <2.18` (works with 2.18)
+allow-newer: tasty-hspec:QuickCheck
+
+-- Keep local/dev builds fast. -O0 is a dev-only choice and lives here.
+package canvas
+  optimization: False
+
+constraints:
+  -- atelier-db depends on rel8, which needs semialign < 1.4.
+  -- See https://github.com/circuithub/rel8/issues/402
+  semialign < 1.4

@@ -12,13 +12,7 @@ pkgs.haskell-nix.cabalProject' {
   inherit compiler-nix-name;
 
   # Add tmp-postgres from flake input
-  cabalProjectLocal = ''
-    source-repository-package
-      type: git
-      location: https://github.com/jfischoff/tmp-postgres
-      tag: ${inputs.tmp-postgres.rev}
-      --sha256: 0l1gdx5s8ximgawd3yzfy47pv5pgwqmjqp8hx5rbrq68vr04wkbl
-  '';
+  cabalProjectLocal = import ./tmp-postgres.nix { inherit inputs; };
 
   # Package-specific configuration
   modules = [

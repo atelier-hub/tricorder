@@ -1,0 +1,6 @@
+%syntax-version=1.0.0
+%project=canvas
+%uri=https://example.com/canvas
+
+001_init_schema 2026-06-28T00:00:00Z Christian Georgii <cgeorgii@gmail.com> # Create the canvas schema
+002_create_items_table [001_init_schema] 2026-06-28T00:00:00Z Christian Georgii <cgeorgii@gmail.com> # Sample items table

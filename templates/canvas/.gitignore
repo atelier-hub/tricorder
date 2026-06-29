@@ -1,0 +1,12 @@
+result
+.pre-commit-config.yaml
+dist-newstyle/
+.direnv
+*.hp
+*.prof
+*.hspp
+build.log
+.env.local
+data
+package.yaml
+.claude/*.local.*
