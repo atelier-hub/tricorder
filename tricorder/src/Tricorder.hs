@@ -111,3 +111,12 @@ run =
                 startDaemon
                 void waitForDaemon
             showSource moduleNames
+        Restart force -> do
+            running <- isDaemonRunning
+            if running then do
+                res <- stopDaemon force
+                whenLeft_ res
+                    $ traverse_ Console.putTextLn
+                startDaemon
+            else do
+                startDaemon
