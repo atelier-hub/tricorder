@@ -1,12 +1,16 @@
 module Unit.Tricorder.SessionSpec (spec_Session) where
 
+import Atelier.Config (LoadedConfig (..))
 import Atelier.Effects.FileSystem (runFileSystemState)
-import Atelier.Effects.Log (runLogNoOp)
+import Atelier.Effects.Log (Message (..), Severity (..), runLogNoOp, runLogWriter)
+import Data.Aeson (Value (Null))
 import Data.Default (Default (..))
 import Distribution.PackageDescription.Parsec (parseGenericPackageDescriptionMaybe)
 import Distribution.Types.GenericPackageDescription (GenericPackageDescription)
 import Effectful (runPureEff)
+import Effectful.Reader.Static (runReader)
 import Effectful.State.Static.Shared (evalState)
+import Effectful.Writer.Static.Shared (execWriter)
 import Test.Hspec
 
 import Data.Map.Strict qualified as Map
@@ -24,6 +28,7 @@ import Tricorder.Session
     , compareTargets
     , definesCustomPrelude
     , discoverCabalFiles
+    , loadSession
     , parseTarget
     , parseTestTargets
     , resolveCommand
@@ -46,6 +51,7 @@ spec_Session = do
     describe "allComponentTargets" testAllComponentTargets
     describe "compareTargets" testCompareTargets
     describe "definesCustomPrelude" testDefinesCustomPrelude
+    describe "loadSession" testLoadSession
 
 
 testParseTarget :: Spec
@@ -448,6 +454,42 @@ testCompareTargets = do
                     compareTargets defPred (Qualified Exe "b") (Qualified Exe "a") `shouldBe` GT
 
 
+testLoadSession :: Spec
+testLoadSession = do
+    describe "when every resolved target exposes a custom Prelude module" do
+        it "emits a WARN" do
+            let msgs = captureSessionLogs [preludeOnlyCF]
+            any (\m -> m.severity == WARN) msgs `shouldBe` True
+
+    describe "when not every resolved target exposes a custom Prelude module" do
+        it "does not emit a WARN" do
+            -- libWithPreludeCabal has both a lib (custom Prelude) and an exe (no Prelude)
+            let msgs = captureSessionLogs [mixedCF]
+            any (\m -> m.severity == WARN) msgs `shouldBe` False
+
+    it "does not emit a WARN when there are no resolved targets" do
+        any (\m -> m.severity == WARN) (captureSessionLogs []) `shouldBe` False
+  where
+    preludeOnlyCF =
+        CabalFile "/p.cabal"
+            $ fromMaybe (error "preludeOnlyLibCabal failed to parse")
+            $ parseGenericPackageDescriptionMaybe (preludeOnlyLibCabal "p")
+    mixedCF =
+        CabalFile "/mixed.cabal"
+            $ fromMaybe (error "libWithPreludeCabal failed to parse")
+            $ parseGenericPackageDescriptionMaybe (libWithPreludeCabal "mixed")
+    captureSessionLogs cabalFiles =
+        runPureEff
+            . execWriter @[Message]
+            . runLogWriter
+            . evalState @(Map FilePath ByteString) mempty
+            . runFileSystemState
+            . runReader cabalFiles
+            . runReader (ProjectRoot "/")
+            . runReader (LoadedConfig Null)
+            $ loadSession
+
+
 testDefinesCustomPrelude :: Spec
 testDefinesCustomPrelude = do
     let preludeCF =
@@ -528,6 +570,26 @@ multiPackageCabalFs =
         [ ("/pkg-a/pkg-a.cabal", libTestCabal "pkg-a")
         , ("/pkg-b/pkg-b.cabal", libTestCabal "pkg-b")
         ]
+
+
+-- | A minimal cabal file for @name@ with a single library that exposes
+-- @Prelude@ and nothing else. All auto-detected targets define a custom
+-- Prelude, which triggers the 'loadSession' warning.
+preludeOnlyLibCabal :: Text -> ByteString
+preludeOnlyLibCabal name =
+    encodeUtf8
+        $ T.unlines
+            [ "cabal-version: 2.0"
+            , "name:          " <> name
+            , "version:       0.1.0.0"
+            , "build-type:    Simple"
+            , ""
+            , "library"
+            , "  hs-source-dirs: src"
+            , "  exposed-modules: Prelude"
+            , "  build-depends: base"
+            , "  default-language: Haskell2010"
+            ]
 
 
 -- | A minimal cabal file for @name@ with one library that exposes @Prelude@
