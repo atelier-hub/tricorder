@@ -69,23 +69,30 @@ data Restarting = Restarting
 
 -- | Connect and stream build updates, calling the handler after each completed build.
 -- Retries automatically when the connection is lost or the daemon is restarting.
+--
+-- A transient drop is tolerated for a few attempts before giving up. While
+-- @isRestarting@ reports 'True' (a restart we initiated is in flight) the retry
+-- budget is ignored and reconnection continues indefinitely, so the watch
+-- survives the gap between stopping the old daemon and the new one binding its
+-- socket.
 queryWatch
     :: forall es
      . (Delay :> es, File :> es, UnixSocket :> es)
     => FilePath
+    -> Eff es Bool
+    -- ^ Whether a restart is currently in progress.
     -> (Either Restarting BuildState -> Eff es ())
     -> Eff es ()
-queryWatch sockPath handler = evalState retryLimit retryLoop
+queryWatch sockPath isRestarting handler = evalState retryLimit retryLoop
   where
     retryLimit = 3 :: Int
     retryLoop = do
         retries <- get @Int
-        if retries <= 0 then
-            pure ()
-        else do
+        keepGoing <- if retries > 0 then pure True else inject isRestarting
+        when keepGoing do
             void $ trySync $ withConnection sockPath \h -> sendQuery h Watch >> loop h
             Delay.wait (500 :: Millisecond)
-            modify $ subtract 1
+            when (retries > 0) $ modify $ subtract 1
             retryLoop
 
     loop h = do

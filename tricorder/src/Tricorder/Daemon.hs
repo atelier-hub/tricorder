@@ -1,6 +1,7 @@
 module Tricorder.Daemon
     ( startDaemon
     , stopDaemon
+    , restartDaemon
     , waitForDaemon
     ) where
 
@@ -21,7 +22,7 @@ import Atelier.Effects.Posix.Daemons qualified as Daemons
 import Tricorder.Arguments (Force (..))
 import Tricorder.Effects.UnixSocket (UnixSocket)
 import Tricorder.Runtime (PidFile, SocketPath (..))
-import Tricorder.Socket.Client (isDaemonReady, requestShutdown)
+import Tricorder.Socket.Client (isDaemonReady, isDaemonRunning, requestShutdown)
 
 import Tricorder.Daemon.Main qualified as Daemon.Main
 
@@ -92,6 +93,29 @@ stopDaemon force = do
             rec
         else
             pure ()
+
+
+-- | Restart the daemon: stop it (if running) and then start a fresh instance.
+-- Returns the outcome of the stop attempt, or 'Nothing' if the daemon was not
+-- running. The daemon is started unconditionally afterwards, mirroring the
+-- @restart@ subcommand.
+restartDaemon
+    :: ( Daemons :> es
+       , Delay :> es
+       , File :> es
+       , IOE :> es
+       , Reader PidFile :> es
+       , Reader SocketPath :> es
+       , Timeout :> es
+       , UnixSocket :> es
+       )
+    => Force
+    -> Eff es (Maybe (Either [Text] Text))
+restartDaemon force = do
+    running <- isDaemonRunning
+    res <- if running then Just <$> stopDaemon force else pure Nothing
+    startDaemon
+    pure res
 
 
 -- | Poll until the daemon binds to the socket, giving up after roughly

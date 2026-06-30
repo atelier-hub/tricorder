@@ -5,6 +5,14 @@ All notable changes to `tricorder` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to the [PVP](https://pvp.haskell.org/).
 
+## [Unreleased]
+
+### Added
+
+- The TUI can now restart the daemon — press `R` (the `restart_daemon` key
+  event, rebindable like the others). It reconnects automatically once the
+  fresh daemon is ready.
+
 ## [0.1.1.0] - 2026-06-26
 
 ### Added

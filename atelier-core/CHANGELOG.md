@@ -5,6 +5,14 @@ All notable changes to `atelier-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to the [PVP](https://pvp.haskell.org/).
 
+## [Unreleased]
+
+### Added
+
+- `Atelier.Effects.Process`: `getExecutablePath` returns the absolute path of
+  the currently running executable, for re-invoking the program as a
+  subprocess.
+
 ## [0.2.0.0] - 2026-06-26
 
 ### Added
