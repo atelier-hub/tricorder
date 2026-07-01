@@ -11,6 +11,7 @@ import Atelier.Effects.Posix.Daemons (Daemons)
 import Atelier.Effects.Process (Process)
 import Atelier.Effects.Timeout (Timeout)
 import Effectful (IOE)
+import Effectful.Concurrent (Concurrent)
 import Effectful.Reader.Static (Reader, ask, asks)
 import Prelude hiding (force)
 
@@ -36,6 +37,7 @@ run
        , BrickChan :> es
        , Clock :> es
        , Conc :> es
+       , Concurrent :> es
        , Console :> es
        , Daemons :> es
        , Delay :> es
