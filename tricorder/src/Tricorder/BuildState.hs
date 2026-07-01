@@ -11,6 +11,9 @@ module Tricorder.BuildState
     , BuildPhase (..)
     , BuildProgress (..)
     , BuildResult (..)
+    , EvalRun (..)
+    , EvalInfo (..)
+    , EvalResult (..)
     , TestRun (..)
     , TestRunError (..)
     , TestRunCompletion (..)
@@ -34,6 +37,7 @@ import Atelier.Time (Millisecond)
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Time (UTCTime)
 import Effectful.Reader.Static (Reader, ask)
+import GHC.Generics (Generically (..))
 import System.FilePath (makeRelative)
 
 import Tricorder.Effects.SessionStore (SessionStore)
@@ -144,9 +148,40 @@ data BuildResult = BuildResult
     , moduleCount :: Int
     , diagnostics :: [Diagnostic]
     , testRuns :: [TestRun]
+    , evalRuns :: [EvalRun]
     }
     deriving stock (Eq, Generic, Show)
     deriving anyclass (FromJSON, ToJSON)
+
+
+data EvalRun
+    = EvalPending EvalInfo
+    | EvalCompleted EvalResult
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON, ToJSON) via Generically EvalRun
+
+
+data EvalInfo = EvalInfo
+    { file :: FilePath
+    -- ^ Source file path, relative to the project root.
+    , line :: Int
+    -- ^ 1-based line number of the eval comment.
+    , expression :: Text
+    -- ^ The expression that was evaluated.
+    }
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON, ToJSON) via Generically EvalInfo
+
+
+-- | The result of evaluating a single @-- $> \<expr\>@ comment in a source
+-- file.
+data EvalResult = EvalResult
+    { info :: EvalInfo
+    , output :: Text
+    -- ^ Combined stdout+stderr from GHCi, or an error message.
+    }
+    deriving stock (Eq, Generic, Show)
+    deriving (FromJSON, ToJSON) via Generically EvalResult
 
 
 data BuildProgress = BuildProgress

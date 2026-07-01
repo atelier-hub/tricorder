@@ -45,6 +45,8 @@ import Tricorder.BuildState
     , BuildResult (..)
     , CabalChangeDetected (..)
     , Diagnostic (..)
+    , EvalInfo (..)
+    , EvalRun (..)
     , Severity (..)
     , SourceChangeDetected (..)
     , TestRun (..)
@@ -60,15 +62,26 @@ import Tricorder.Builder.Dispatch
     , preserveFailureVisibility
     )
 import Tricorder.Effects.BuildStore (BuildStore)
+import Tricorder.Effects.EvalRunner (EvalRunner, findEvalCommentsInModules)
 import Tricorder.Effects.GhciSession (GhciSession, LoadResult (..))
 import Tricorder.Effects.GhciSession.GhciParser (resolveKnownTargets)
 import Tricorder.Effects.GhciSession.GhciProcess (GhciProcessError (..))
 import Tricorder.Effects.SessionStore (SessionStore)
 import Tricorder.Effects.TestRunner (TestRunner)
+import Tricorder.EvalComment (EvalComment (..))
 import Tricorder.Runtime (ProjectRoot (..))
-import Tricorder.Session (Command (..), Session (..), Target, TestTargets, WatchDirs, getTestTargets, renderTarget)
+import Tricorder.Session
+    ( Command (..)
+    , Session (..)
+    , Target
+    , TestTargets
+    , WatchDirs
+    , getTestTargets
+    , renderTarget
+    )
 
 import Tricorder.Effects.BuildStore qualified as BuildStore
+import Tricorder.Effects.EvalRunner qualified as EvalRunner
 import Tricorder.Effects.GhciSession qualified as GhciSession
 import Tricorder.Effects.SessionStore qualified as SessionStore
 import Tricorder.Effects.TestRunner qualified as TestRunner
@@ -83,6 +96,7 @@ component
        , Conc :> es
        , Concurrent :> es
        , Debounce Text :> es
+       , EvalRunner :> es
        , GhciSession :> es
        , Log :> es
        , Reader ProjectRoot :> es
@@ -233,6 +247,7 @@ data GhciSessionHooks es = GhciSessionHooks
 defaultGhciSessionHooks
     :: ( BuildStore :> es
        , Clock :> es
+       , EvalRunner :> es
        , Log :> es
        , Reader ProjectRoot :> es
        , State BuildId :> es
@@ -308,6 +323,7 @@ buildWithGhciOnChange
        , Conc :> es
        , Concurrent :> es
        , Debounce Text :> es
+       , EvalRunner :> es
        , GhciSession :> es
        , Log :> es
        , Reader ProjectRoot :> es
@@ -408,6 +424,7 @@ interruptCurrent controls = do
 reloadOnSourceChange
     :: ( BuildStore :> es
        , Clock :> es
+       , EvalRunner :> es
        , Log :> es
        , Reader ProjectRoot :> es
        , State BuildId :> es
@@ -464,10 +481,11 @@ runAction controls = \case
 
 
 -- | Run the post-load pipeline synchronously: compile diagnostics into a
--- 'BuildResult', then (optionally) run tests and transition through the
--- corresponding phases.
+-- 'BuildResult', run eval comments in clean builds, then (optionally) run
+-- tests and transition through the corresponding phases.
 afterLoad
     :: ( BuildStore :> es
+       , EvalRunner :> es
        , Log :> es
        , Reader ProjectRoot :> es
        , State BuildId :> es
@@ -477,7 +495,33 @@ afterLoad
     => BuildConfig -> NewLoadResult -> Eff es ()
 afterLoad config newLoadResult = do
     buildResult <- compileLoadResultsIntoBuildResults config newLoadResult
-    requestTestRunsForNewBuildResults config buildResult
+    buildResult' <- runEvalsIfClean buildResult newLoadResult.loadResult
+    requestTestRunsForNewBuildResults config buildResult'
+  where
+    runEvalsIfClean partialBuildResult loadResult
+        | any (\d -> d.severity == SError) partialBuildResult.diagnostics =
+            pure partialBuildResult
+        | otherwise = do
+            builderState <- get @BuilderState
+            evalComments <- findEvalCommentsInModules (resolveKnownTargets builderState.loadedModules loadResult)
+            enterPhase
+                $ Done
+                    partialBuildResult
+                        { evalRuns =
+                            ( \(p, _, ecs) ->
+                                toPending p <$> toList ecs
+                            )
+                                `concatMap` evalComments
+                        }
+            evalRuns <- fmap EvalCompleted <$> EvalRunner.runEvals evalComments
+            pure $ partialBuildResult {evalRuns}
+    toPending p ec =
+        EvalPending
+            $ EvalInfo
+                { file = p
+                , line = ec.lineNumber
+                , expression = ec.expression
+                }
 
 
 compileLoadResultsIntoBuildResults
@@ -507,6 +551,7 @@ compileLoadResultsIntoBuildResults session newLoadResult = do
             , moduleCount = loadResult.moduleCount
             , diagnostics = sortOn (\d -> (d.severity, d.file, d.line, d.col)) $ concat (Map.elems newAccumulated)
             , testRuns = []
+            , evalRuns = []
             }
   where
     BuildConfig {watchDirs} = session

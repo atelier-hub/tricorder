@@ -217,6 +217,8 @@ The following event names are recognized
   bindings, including your custom key bindings.
 - `cycle_test_view`: Toggle the tests tab and cycle through test results views.
   Cycle past the end to go back to the dashboard.
+- `toggle_eval_comments`: Toggle displaying eval comments that have been
+  evaluated.
 - `restart_daemon`: Restart the background daemon — stops it if running, then
   starts a fresh instance. Bound to `R` by default.
 - `exit_view`: Exit the current view, going back to the dashboard. If you are

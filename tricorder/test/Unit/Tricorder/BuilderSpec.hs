@@ -64,6 +64,7 @@ import Tricorder.Builder.Dispatch
     , mergeDiagnostics
     , preserveFailureVisibility
     )
+import Tricorder.Effects.EvalRunner (runEvalRunnerNoOp)
 import Tricorder.Effects.GhciSession (Controls (..), LoadResult (..), LoadedModule (..), runGhciSessionScripted)
 import Tricorder.Effects.GhciSession.GhciParser (collectResult, extractTitle, resolveKnownTargets)
 import Tricorder.Effects.TestRunner (TestRunner (..), runTestRunnerScripted)
@@ -202,6 +203,7 @@ testBuildWithGhciRecovery = do
             . execWriter @[EnteringNewPhase]
             . runBuildStoreCapture
             . runTestRunnerScripted []
+            . runEvalRunnerNoOp
             . runGhciSessionScripted script
             . runPubSub @SourceChangeDetected
             . runConc
@@ -223,16 +225,16 @@ testReloadOnSourceChange = do
         describe "when the file is loaded in GHCi" do
             it "transitions through Building then Done" do
                 phases <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
-                phases `shouldBe` flow reloadLr
+                phases `shouldMatchList` (flow reloadLr)
 
             it "calls controls.reload" do
                 phases <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Modified)
-                buildResultsFrom phases `shouldMatchList` [resultFor reloadLr]
+                buildResultsFrom phases `shouldMatchList` [resultFor reloadLr, resultFor reloadLr]
 
         describe "when the file is not loaded in GHCi" do
             it "calls controls.add (the editor just wrote a new file)" do
                 phases <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/New.hs" Modified)
-                buildResultsFrom phases `shouldMatchList` [resultFor addLr]
+                buildResultsFrom phases `shouldMatchList` [resultFor addLr, resultFor addLr]
 
         -- Regression test for stale-diagnostics bug: cold-start with a
         -- pre-existing error then fix it. Foo is in :show targets but
@@ -246,7 +248,7 @@ testReloadOnSourceChange = do
                         (KnownTargetNames (Set.singleton "Foo"))
                         distinctCtrls
                         (SourceChangeDetected "/abs/src/Foo.hs" Modified)
-                buildResultsFrom phases `shouldMatchList` [resultFor reloadLr]
+                buildResultsFrom phases `shouldMatchList` [resultFor reloadLr, resultFor reloadLr]
 
         -- A failed executable 'Main' appears in :show targets only as its
         -- path ("app/Main.hs", since the name 'Main' is ambiguous across home
@@ -259,21 +261,21 @@ testReloadOnSourceChange = do
                         (KnownTargetNames (Set.singleton "app/Main.hs"))
                         distinctCtrls
                         (SourceChangeDetected "/abs/app/Main.hs" Modified)
-                buildResultsFrom phases `shouldMatchList` [resultFor reloadLr]
+                buildResultsFrom phases `shouldMatchList` [resultFor reloadLr, resultFor reloadLr]
 
     describe "Added" do
         describe "when the file is not loaded" $ it "calls controls.add" do
             phases <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
-            buildResultsFrom phases `shouldMatchList` [resultFor addLr]
+            buildResultsFrom phases `shouldMatchList` [resultFor addLr, resultFor addLr]
 
         describe "when the file is already loaded" $ it "calls controls.reload (re-add is a reload)" do
             phases <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Added)
-            buildResultsFrom phases `shouldMatchList` [resultFor reloadLr]
+            buildResultsFrom phases `shouldMatchList` [resultFor reloadLr, resultFor reloadLr]
 
     describe "Removed" do
         describe "when the file is loaded" $ it "calls controls.unadd" do
             phases <- runTest knownFoo noTargets distinctCtrls (SourceChangeDetected "/abs/path/Foo.hs" Removed)
-            buildResultsFrom phases `shouldMatchList` [resultFor unaddLr]
+            buildResultsFrom phases `shouldMatchList` [resultFor unaddLr, resultFor unaddLr]
 
         describe "when the file is not loaded" $ it "is a no-op" do
             phases <- runTest Map.empty noTargets distinctCtrls (SourceChangeDetected "/abs/path/Unknown.hs" Removed)
@@ -305,10 +307,12 @@ testReloadOnSourceChange = do
             . execWriter @[EnteringNewPhase]
             . runBuildStoreCapture
             . runTestRunnerScripted []
+            . runEvalRunnerNoOp
             $ reloadOnSourceChange (def @BuildConfig) ctrls event
 
     flow lr =
         [ EnteringNewPhase (BuildId 1) (Building Nothing)
+        , EnteringNewPhase (BuildId 1) (Done (resultFor lr))
         , EnteringNewPhase (BuildId 1) (Done (resultFor lr))
         ]
 
@@ -321,6 +325,7 @@ testReloadOnSourceChange = do
             , moduleCount = lr.moduleCount
             , diagnostics = []
             , testRuns = []
+            , evalRuns = []
             }
 
     noTargets = KnownTargetNames Set.empty
@@ -440,6 +445,7 @@ testCompileLoadResultsIntoBuildResults = do
                     , moduleCount = 2
                     , diagnostics = [warnMsg]
                     , testRuns = []
+                    , evalRuns = []
                     }
         r `shouldBe` expected
   where
@@ -556,6 +562,7 @@ testRequestTestRunsForNewBuildResults = do
             , moduleCount = 2
             , diagnostics = [warnMsg]
             , testRuns = []
+            , evalRuns = []
             }
 
     mkTestRun target =

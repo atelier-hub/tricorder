@@ -298,6 +298,7 @@ testAbortGatedProgress = do
             , moduleCount = 0
             , diagnostics = []
             , testRuns = runs
+            , evalRuns = []
             }
 
     phaseTestRuns :: BuildState -> [TestRun]

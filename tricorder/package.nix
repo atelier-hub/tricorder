@@ -122,14 +122,15 @@ in
       ]
       ++ [ "tricorder-internal" ]
       ++ depList [
-        "atelier-prelude"
-        "atelier-core"
         "Cabal-syntax"
         "aeson"
+        "atelier-core"
+        "atelier-prelude"
         "containers"
         "data-default"
         "effectful"
         "hspec"
+        "megaparsec"
         "process"
         "regex-tdfa"
         "stm"

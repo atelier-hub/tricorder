@@ -25,9 +25,29 @@ module Tricorder.Effects.GhciSession.GhciParser
     ) where
 
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
-import System.FilePath (dropExtension, isAbsolute, makeRelative, normalise, splitDirectories, (</>))
+import System.FilePath
+    ( dropExtension
+    , isAbsolute
+    , makeRelative
+    , normalise
+    , splitDirectories
+    , (</>)
+    )
 import Text.Megaparsec
+    ( Parsec
+    , anySingle
+    , choice
+    , eof
+    , getInput
+    , many
+    , parse
+    , satisfy
+    , takeWhile1P
+    , takeWhileP
+    , token
+    )
 import Text.Megaparsec.Char (char, string)
+import Tricorder.Parsec.TextLines (TextLines (..))
 import Prelude hiding (many)
 
 import Data.List qualified as List
@@ -124,38 +144,11 @@ data LoadResult = LoadResult
 
 
 -- ---------------------------------------------------------------------------
--- LineStream: a Stream instance for [Text] where Token = Text
--- ---------------------------------------------------------------------------
-
--- | Wrapper so we can define Stream / VisualStream / TraversableStream for
---   a list of 'Text' lines without orphan-instance conflicts.
-newtype LineStream = LineStream [Text]
-
-
-instance Stream LineStream where
-    type Token LineStream = Text
-    type Tokens LineStream = [Text]
-    tokenToChunk Proxy = pure
-    tokensToChunk Proxy = id
-    chunkToTokens Proxy = id
-    chunkLength Proxy = length
-    chunkEmpty Proxy = null
-    take1_ (LineStream []) = Nothing
-    take1_ (LineStream (t : ts)) = Just (t, LineStream ts)
-    takeN_ n (LineStream s)
-        | n <= 0 = Just ([], LineStream s)
-        | null s = Nothing
-        | otherwise = let (a, b) = splitAt n s in Just (a, LineStream b)
-    takeWhile_ p (LineStream s) =
-        let (a, b) = span p s in (a, LineStream b)
-
-
--- ---------------------------------------------------------------------------
 -- Parser type aliases
 -- ---------------------------------------------------------------------------
 
 -- | Parser over a stream of 'Text' lines.
-type LineParser = Parsec Void LineStream
+type LineParser = Parsec Void TextLines
 
 
 -- | Parser over a single 'Text' value.
@@ -262,7 +255,7 @@ satisfyStripped p = token testLine mempty
 -- | Parse the output of @:reload@ from GHCi into structured items.
 parseReload :: [Text] -> [GhciLoad]
 parseReload ls =
-    case parse (catMaybes <$> many reloadItem <* eof) "" (LineStream ls) of
+    case parse (catMaybes <$> many reloadItem <* eof) "" (TextLines ls) of
         Right items -> items
         Left _ -> []
 
@@ -390,7 +383,7 @@ parseSeverity lower
 -- | Parse the output of @:show modules@ into (module name, file path) pairs.
 parseShowModules :: [Text] -> [(Text, FilePath)]
 parseShowModules ls =
-    case parse (catMaybes <$> many showModuleLine <* eof) "" (LineStream ls) of
+    case parse (catMaybes <$> many showModuleLine <* eof) "" (TextLines ls) of
         Right items -> items
         Left _ -> []
 
