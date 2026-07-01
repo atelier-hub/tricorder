@@ -28,11 +28,13 @@ module Atelier.Effects.Process
 
       -- * Operations
     , readProcessStdout
+    , runProcess
     , readProcessSafe
     , withProcessGroup
     , terminateProcessGroup
     , interruptProcessGroup
     , waitExitCode
+    , getExecutablePath
 
       -- * Interpreters
     , runProcessIO
@@ -58,6 +60,7 @@ import System.Process.Typed
     , shell
     )
 
+import System.Environment qualified as Env
 import System.Process.Typed qualified as TP
 
 import Atelier.Effects.Process.Internal (RunningProcess (..))
@@ -81,6 +84,12 @@ getStderr (RunningProcess p) = TP.getStderr p
 data Process :: Effect where
     -- | Run a process to completion, returning its exit code and captured stdout.
     ReadProcessStdout :: ProcessConfig i o e -> Process m (ExitCode, LByteString)
+    -- | Run a process to completion, returning only its exit code. Unlike
+    -- 'ReadProcessStdout' this does not capture stdout.
+    RunProcess :: ProcessConfig i o e -> Process m ExitCode
+    -- | The absolute path of the currently running executable, for re-invoking
+    -- this program as a subprocess.
+    GetExecutablePath :: Process m FilePath
     -- | Spawn a process and return its handle. Internal; callers use 'withProcessGroup'.
     StartProcess :: ProcessConfig i o e -> Process m (RunningProcess i o e)
     -- | Terminate the leader and close its streams. Internal; does not reach the
@@ -148,6 +157,8 @@ readProcessSafe cmd args = do
 runProcessIO :: (IOE :> es) => Eff (Process : es) a -> Eff es a
 runProcessIO = interpret_ \case
     ReadProcessStdout cfg -> liftIO $ TP.readProcessStdout cfg
+    RunProcess cfg -> liftIO $ TP.runProcess cfg
+    GetExecutablePath -> liftIO Env.getExecutablePath
     StartProcess cfg -> liftIO $ RunningProcess <$> TP.startProcess cfg
     StopProcess (RunningProcess p) -> liftIO $ TP.stopProcess p
     WaitExitCode (RunningProcess p) -> liftIO $ TP.waitExitCode p

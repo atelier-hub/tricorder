@@ -8,8 +8,10 @@ import Atelier.Effects.Exit (Exit)
 import Atelier.Effects.File (File)
 import Atelier.Effects.FileSystem (FileSystem)
 import Atelier.Effects.Posix.Daemons (Daemons)
+import Atelier.Effects.Process (Process)
 import Atelier.Effects.Timeout (Timeout)
 import Effectful (IOE)
+import Effectful.Concurrent (Concurrent)
 import Effectful.Reader.Static (Reader, ask, asks)
 import Prelude hiding (force)
 
@@ -19,7 +21,7 @@ import Data.Text qualified as T
 import Tricorder.Arguments (Command (..))
 import Tricorder.BuildState (BuildState (..), DaemonInfo (..))
 import Tricorder.CLI (showLog, showSource, showStatus, showTests)
-import Tricorder.Daemon (startDaemon, stopDaemon, waitForDaemon)
+import Tricorder.Daemon (restartDaemon, startDaemon, stopDaemon, waitForDaemon)
 import Tricorder.Effects.Brick (Brick)
 import Tricorder.Effects.BrickChan (BrickChan)
 import Tricorder.Effects.UnixSocket (UnixSocket)
@@ -35,6 +37,7 @@ run
        , BrickChan :> es
        , Clock :> es
        , Conc :> es
+       , Concurrent :> es
        , Console :> es
        , Daemons :> es
        , Delay :> es
@@ -42,6 +45,7 @@ run
        , File :> es
        , FileSystem :> es
        , IOE :> es
+       , Process :> es
        , Reader Command :> es
        , Reader Keys.Config :> es
        , Reader LogPath :> es
@@ -111,12 +115,7 @@ run =
                 startDaemon
                 void waitForDaemon
             showSource moduleNames
-        Restart force -> do
-            running <- isDaemonRunning
-            if running then do
-                res <- stopDaemon force
-                whenLeft_ res
-                    $ traverse_ Console.putTextLn
-                startDaemon
-            else do
-                startDaemon
+        Restart force ->
+            restartDaemon force >>= \case
+                Just (Left reasons) -> traverse_ Console.putTextLn reasons
+                _ -> pass

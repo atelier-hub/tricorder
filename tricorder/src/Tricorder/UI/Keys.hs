@@ -58,7 +58,8 @@ import Data.Text qualified as T
 import Tricorder.UI.Misc (warn)
 import Tricorder.UI.Route (Route)
 import Tricorder.UI.State
-    ( State (..)
+    ( Processed (Waiting)
+    , State (..)
     , Viewports (..)
     , currentRoute
     , cycleTestFilter
@@ -69,11 +70,16 @@ import Tricorder.UI.State
 import Tricorder.UI.Route qualified as Route
 
 
--- When adding a new event here, also list it in the README under "Custom Key Bindings".
+-- | [tag:keybinding_events] The TUI key events. This type is the source of truth
+-- for the event names documented in README.md under "Custom Key Bindings", which
+-- points back here with a matching @ref@. Whenever you add, remove, or rename a
+-- 'KeyEvent', update that list to match — @tagref check@ flags the dangling
+-- reference if this tag is renamed or dropped without touching the docs.
 data KeyEvent
     = ToggleDaemonInfoView
     | ToggleHelp
     | CycleTestView
+    | RestartDaemon
     | ExitView
     | ScrollUp
     | ScrollDown
@@ -99,6 +105,7 @@ keys =
         [ ("toggle daemon info", ToggleDaemonInfoView)
         , ("toggle help", ToggleHelp)
         , ("cycle test view", CycleTestView)
+        , ("restart daemon", RestartDaemon)
         , ("exit view", ExitView)
         , ("scroll up", ScrollUp)
         , ("scroll down", ScrollDown)
@@ -111,6 +118,7 @@ bindings =
     [ (ToggleDaemonInfoView, [bind 'g'])
     , (ToggleHelp, [bind 'h'])
     , (CycleTestView, [bind 't'])
+    , (RestartDaemon, [bind 'R'])
     , (ExitView, [binding KEsc []])
     , (ScrollUp, [binding KUp []])
     , (ScrollDown, [binding KDown []])
@@ -160,8 +168,11 @@ parseKeyEvent :: Text -> Either Text KeyEvent
 parseKeyEvent ev = maybeToRight ("Unrecognized key event: " <> ev) $ textToKeyEvent ev
 
 
-dispatcher :: KeyConfig KeyEvent -> KeyDispatcher KeyEvent (EventM Viewports State)
-dispatcher cfg =
+-- | Build the key dispatcher. @requestRestart@ is run (in 'IO') when the restart
+-- key is pressed; it hands the request off to the worker that owns the daemon
+-- control effects, since brick's 'EventM' cannot run them directly.
+dispatcher :: IO () -> KeyConfig KeyEvent -> KeyDispatcher KeyEvent (EventM Viewports State)
+dispatcher requestRestart cfg =
     -- TODO: Handle this error more gracefully.
     either (error . ("Invalid key dispatcher config: " <>) . stringify) id
         $ keyDispatcher
@@ -186,6 +197,9 @@ dispatcher cfg =
                         else
                             s {testFilter = cycleTestFilter s.testFilter}
                     _ -> navigate Route.Tests s
+            , onEvent RestartDaemon "Restart the daemon" do
+                liftIO requestRestart
+                modify \s -> s {buildState = Waiting}
             , onEvent ExitView "Exit or go back" do
                 gets (.route) >>= \case
                     Route.Main -> halt

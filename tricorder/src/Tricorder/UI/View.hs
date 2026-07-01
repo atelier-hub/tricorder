@@ -127,7 +127,9 @@ viewMain ws = withBuildState ws (viewDefaultPanel ws.timeZone)
 viewHelp :: KeyConfig KeyEvent -> Widget n
 viewHelp kc = viewKeybindings kc handlers
   where
-    handlers = (.khHandler) . snd <$> keyDispatcherToList (Keys.dispatcher kc)
+    -- The dispatcher is built only to enumerate handler descriptions for the help
+    -- view, so the restart action is a no-op here.
+    handlers = (.khHandler) . snd <$> keyDispatcherToList (Keys.dispatcher (pure ()) kc)
 
 
 withBuildState :: State -> (BuildState -> Widget Viewports) -> Widget Viewports

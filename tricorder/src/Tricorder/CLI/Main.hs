@@ -10,6 +10,7 @@ import Atelier.Effects.Exit (runExit)
 import Atelier.Effects.File (runFile)
 import Atelier.Effects.FileSystem (runFileSystemIO)
 import Atelier.Effects.Posix.Daemons (runDaemons)
+import Atelier.Effects.Process (runProcessIO)
 import Atelier.Effects.Timeout (runTimeout)
 import Effectful (runEff)
 import Effectful.Concurrent (runConcurrent)
@@ -47,6 +48,7 @@ main =
         . runLoadedConfig
         . runConfig @"keybindings" @Keys.Config
         . runDaemons
+        . runProcessIO
         . runArgumentsIO
         . runArguments
         . runUnixSocketIO

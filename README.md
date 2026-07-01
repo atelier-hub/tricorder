@@ -208,13 +208,17 @@ keybindings:
 `keybindings` is an object whose keys are event names and whose values are
 strings of key bindings, each key binding in the string separated by a comma.
 
-The following event names are recognized:
+The following event names are recognized
+(keep this list in sync with the `KeyEvent` type in
+`tricorder/src/Tricorder/UI/Keys.hs` [ref:keybinding_events]):
 
 - `toggle_daemon_info_view`: Toggle displaying the daemon info tab.
 - `toggle_help`: Toggle displaying the help tab. This tab shows available key
   bindings, including your custom key bindings.
 - `cycle_test_view`: Toggle the tests tab and cycle through test results views.
   Cycle past the end to go back to the dashboard.
+- `restart_daemon`: Restart the background daemon — stops it if running, then
+  starts a fresh instance. Bound to `R` by default.
 - `exit_view`: Exit the current view, going back to the dashboard. If you are
   at the dashboard already, this exits the TUI.
 - `scroll_up`: Scroll up in the diagnostic list.
