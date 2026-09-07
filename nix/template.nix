@@ -13,6 +13,8 @@ let
   common = import ./package/common.nix;
   templateCompiler = "ghc${builtins.replaceStrings [ "." ] [ "" ] common.default-ghc-version}";
 in
-pkgs.lib.optionalAttrs (compiler-nix-name == templateCompiler) (
-  import ./template-checks.nix { inherit inputs pkgs compiler-nix-name; }
-)
+{
+  legacyChecks.${compiler-nix-name}.templateChecks = pkgs.lib.optionalAttrs (
+    compiler-nix-name == templateCompiler
+  ) (import ./template-checks.nix { inherit inputs pkgs compiler-nix-name; });
+}

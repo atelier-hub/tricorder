@@ -1,8 +1,7 @@
 {
-  inputs,
-  pkgs,
   compiler-nix-name,
   self,
+  inputs,
 }:
 let
   component = {
@@ -13,9 +12,9 @@ let
     setupHaddockFlags = [ "--for-hackage" ];
   };
 in
-pkgs.haskell-nix.cabalProject' {
-  src = ../.;
+{
   inherit compiler-nix-name;
+  src = ../.;
 
   # Add tmp-postgres from flake input
   cabalProjectLocal = import ./tmp-postgres.nix { inherit inputs; };
