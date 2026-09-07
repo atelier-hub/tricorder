@@ -20,7 +20,7 @@ jobs:
             accept-flake-config = true
             extra-substituters = https://cache.iog.io
             extra-trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=
-      - uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: tweag-tricorder
           authToken: "${{ secrets.CACHIX_TWEAG_TRICORDER_AUTH_TOKEN }}"
