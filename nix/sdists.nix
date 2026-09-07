@@ -16,12 +16,18 @@ let
         cd ./package
         cabal sdist -o "$out"
       '';
-  packages = builtins.listToAttrs (
+  individualSdists = builtins.listToAttrs (
     map (name: {
       name = "${name}-sdist";
       value = mkSdist name;
     }) common.packageNames
   );
+  packages = individualSdists // {
+    sdists = pkgs.symlinkJoin {
+      name = "sdists";
+      paths = builtins.attrValues individualSdists;
+    };
+  };
 in
 {
   inherit packages;

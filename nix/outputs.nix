@@ -52,10 +52,6 @@ builtins.foldl' lib.recursiveUpdate { } [
       tricorder = flake.packages."tricorder:exe:tricorder";
       tricorder-mcp = flake.packages."tricorder-mcp:exe:tricorder-mcp";
       inherit (pkgs) nix-hpack;
-      sdists = pkgs.symlinkJoin {
-        name = "sdists";
-        paths = builtins.attrValues sdists.packages;
-      };
     };
 
     overlays = [
