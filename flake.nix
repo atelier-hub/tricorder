@@ -70,7 +70,18 @@
         tricorder = final: _: {
           tricorder = self.packages.${final.stdenv.hostPlatform.system}.tricorder;
         };
-        default = self.overlays.tricorder;
+        nix-hpack = final: _: {
+          nix-hpack = self.packages.${final.stdenv.hostPlatform.system}.nix-hpack;
+        };
+        default =
+          let
+            overlayNames = builtins.filter (o: o != "default") (builtins.attrNames self.overlays);
+            overlays = builtins.foldl' (
+              prevOverlay: thisOverlay: final: prev:
+              thisOverlay final (prev // prevOverlay final prev)
+            ) (_: _: { }) overlayNames;
+          in
+          overlays;
       };
       homeManagerModules.default = import ./nix/home-module.nix;
       nixosModules.default = import ./nix/nixos-module.nix;
