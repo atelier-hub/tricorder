@@ -14,9 +14,13 @@
   };
 
   inputs = {
-    nixpkgs.follows = "haskell-nix/nixpkgs";
-    nixpkgs-nixos-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     haskell-nix.url = "github:input-output-hk/haskell.nix";
+    nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
+    # nixpkgs unstable (26.11) dropped x86_64-darwin, and `eachSystem` below
+    # evaluates *every* supported system to collect its output names — so one
+    # unimportable system breaks `nix develop` on all of them.  Keep the last
+    # pin that supports it and use it for that system only.
+    nixpkgs-2605.follows = "haskell-nix/nixpkgs-2605";
     flake-utils.url = "github:numtide/flake-utils";
 
     git-hooks = {

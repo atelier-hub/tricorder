@@ -1,14 +1,26 @@
-{ inputs, system }:
-let
-  fourmolu = _: _: {
-    fourmolu = inputs.nixpkgs-nixos-unstable.legacyPackages.${system}.fourmolu;
-  };
-in
-import inputs.haskell-nix.inputs.nixpkgs {
+{
+  inputs,
+  system,
+  project,
+  shell,
+}:
+import (if system == "x86_64-darwin" then inputs.nixpkgs-2605 else inputs.nixpkgs) {
   inherit system;
   overlays = [
     inputs.haskell-nix.overlay
-    fourmolu
+    (final: _: {
+      tricorderProject = final.haskell-nix.hix.project (
+        project
+        // {
+          # uncomment with your current system for `nix flake show` to work:
+          # evalSystem = "x86_64-linux";
+          inherit shell;
+        }
+      );
+      tricorder = (final.tricorderProject.flake { }).packages."tricorder:exe:tricorder";
+      nix-hpack = final.callPackage ./package/nix-hpack.nix { };
+    })
+
   ];
   inherit (inputs.haskell-nix) config;
 }
