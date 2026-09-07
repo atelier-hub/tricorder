@@ -66,7 +66,12 @@
       }
     )
     // {
-      overlays = import ./nix/overlays.nix self.packages;
+      overlays = {
+        tricorder = final: _: {
+          tricorder = self.packages.${final.stdenv.hostPlatform.system}.tricorder;
+        };
+        default = self.overlays.tricorder;
+      };
       homeManagerModules.default = import ./nix/home-module.nix;
       nixosModules.default = import ./nix/nixos-module.nix;
 
