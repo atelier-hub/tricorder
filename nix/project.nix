@@ -1,7 +1,6 @@
 {
   compiler-nix-name,
   self,
-  inputs,
 }:
 let
   component = {
@@ -16,9 +15,6 @@ in
   inherit compiler-nix-name;
   src = ../.;
 
-  # Add tmp-postgres from flake input
-  cabalProjectLocal = import ./tmp-postgres.nix { inherit inputs; };
-
   # Package-specific configuration
   modules = [
     {
@@ -26,14 +22,8 @@ in
       doHaddock = true;
 
       packages = {
-        # Disable tests for tmp-postgres
-        tmp-postgres.doCheck = false;
-
         atelier-prelude = component;
         atelier-core = component;
-        atelier-db = component;
-        atelier-testing = component;
-        atelier-monitoring = component;
         tricorder-mcp = component;
         tricorder-types = component;
 

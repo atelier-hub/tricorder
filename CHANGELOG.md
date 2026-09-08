@@ -12,6 +12,3 @@ changelog:
 - [`tricorder-mcp`](packages/tricorder-mcp/CHANGELOG.md)
 - [`atelier-core`](packages/atelier-core/CHANGELOG.md)
 - [`atelier-prelude`](packages/atelier-prelude/CHANGELOG.md)
-- [`atelier-db`](packages/atelier-db/CHANGELOG.md)
-- [`atelier-testing`](packages/atelier-testing/CHANGELOG.md)
-- [`atelier-monitoring`](packages/atelier-monitoring/CHANGELOG.md)

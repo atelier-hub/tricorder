@@ -6,16 +6,6 @@ Like `ghcid` and `ghciwatch`, it rebuilds continuously on every change and repor
 
 See the [repository README](https://github.com/tweag/tricorder#readme) for installation (Nix, Home Manager, NixOS), Claude Code plugin setup, configuration, and custom key bindings.
 
-## Built on atelier
-
-`tricorder` is built on the **atelier** toolkit, also developed in this repository:
-
-- [`atelier-prelude`](https://github.com/tweag/tricorder/tree/main/atelier-prelude) — relude-based prelude with Effectful conventions
-- [`atelier-core`](https://github.com/tweag/tricorder/tree/main/atelier-core) — foundational effects and utilities
-- [`atelier-db`](https://github.com/tweag/tricorder/tree/main/atelier-db) — relational database effect (Hasql/Rel8)
-- [`atelier-testing`](https://github.com/tweag/tricorder/tree/main/atelier-testing) — database-backed test utilities
-- [`atelier-monitoring`](https://github.com/tweag/tricorder/tree/main/atelier-monitoring) - observability and monitoring effects and utilities
-
 ## License
 
 MIT — see [LICENSE](LICENSE).

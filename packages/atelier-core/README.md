@@ -13,14 +13,6 @@ explicitly: `Atelier.Effects.Env`, `Atelier.Effects.Clock`,
 `Atelier.Effects.FileSystem`, `Atelier.Effects.Console`,
 `Atelier.Effects.Posix.*`, and more.
 
-## Part of atelier
-
-- [`atelier-prelude`](https://github.com/tweag/tricorder/tree/main/atelier-prelude) — relude-based prelude with Effectful conventions
-- [`atelier-core`](https://github.com/tweag/tricorder/tree/main/atelier-core) — this package
-- [`atelier-db`](https://github.com/tweag/tricorder/tree/main/atelier-db) — relational database effect (Hasql/Rel8)
-- [`atelier-testing`](https://github.com/tweag/tricorder/tree/main/atelier-testing) — database-backed test utilities
-- [`atelier-monitoring`](https://github.com/tweag/tricorder/tree/main/atelier-monitoring) - observability and monitoring effects and utilities
-
 ## License
 
 MIT — see [LICENSE](LICENSE).

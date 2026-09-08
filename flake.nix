@@ -27,11 +27,6 @@
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-
-    tmp-postgres = {
-      url = "github:jfischoff/tmp-postgres";
-      flake = false;
-    };
   };
 
   outputs =

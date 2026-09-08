@@ -35,14 +35,6 @@ Lifted, `IO`-based operations from relude are intentionally **not** re-exported,
 
 Use the corresponding `atelier-core` effects instead — e.g. `Atelier.Effects.Env`, `Atelier.Effects.File`, `Atelier.Effects.Console`.
 
-## Part of atelier
-
-- [`atelier-prelude`](https://github.com/tweag/tricorder/tree/main/atelier-prelude) — this package
-- [`atelier-core`](https://github.com/tweag/tricorder/tree/main/atelier-core) — foundational effects and utilities
-- [`atelier-db`](https://github.com/tweag/tricorder/tree/main/atelier-db) — relational database effect (Hasql/Rel8)
-- [`atelier-testing`](https://github.com/tweag/tricorder/tree/main/atelier-testing) — database-backed test utilities
-- [`atelier-monitoring`](https://github.com/tweag/tricorder/tree/main/atelier-monitoring) - observability and monitoring effects and utilities
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
