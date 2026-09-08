@@ -5,6 +5,7 @@
 }:
 let
   common = import ./package/common.nix;
+  unusedConstraints = import ./package/unused-constraints.nix;
   inherit (pkgs) lib;
 in
 {
@@ -37,6 +38,22 @@ in
         }/bin/hlint --refactor --refactor-options="-i" {} \;
         echo "Hlint refactoring complete!"
       ''}";
+    };
+
+    # Reports constraints in nix/package/dependencies.nix that no
+    # packages/*/package.nix depends on.
+    unused-constraints = {
+      type = "app";
+      program = "${pkgs.writeShellScript "unused-constraints-app" (
+        if unusedConstraints == [ ] then
+          ''echo "No unused constraints found."''
+        else
+          ''
+            echo "Unused constraints in nix/package/dependencies.nix:"
+            ${lib.concatMapStringsSep "\n" (n: "echo '  - ${n}'") unusedConstraints}
+            exit 1
+          ''
+      )}";
     };
 
     get-changelog-section = {
