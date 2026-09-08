@@ -2,9 +2,3 @@ packages:
   packages/*
 
 tests: True
-
-constraints:
-  -- See https://github.com/circuithub/rel8/issues/402
-  -- This effectively means that `atelier-db` (and by extension
-  -- `atelier-testing`, since it depends on `atelier-db`) are broken.
-  semialign < 1.4

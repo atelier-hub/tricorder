@@ -7,11 +7,7 @@
 }:
 let
   project = import ./project.nix {
-    inherit
-      compiler-nix-name
-      self
-      inputs
-      ;
+    inherit compiler-nix-name self;
   };
   shell = import ./shell.nix { inherit pkgs checks; };
   pkgs = import ./pkgs.nix {

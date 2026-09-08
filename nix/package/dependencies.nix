@@ -9,8 +9,6 @@ let
     Cabal-syntax = ">=3.12 && <3.19";
     aeson = ">=2.2 && <2.4";
     atelier-core = ">=0.3 && <0.5";
-    atelier-db = ">=0.1 && <0.4";
-    atelier-monitoring = ">=0.1 && <0.2";
     atelier-prelude = ">=0.1 && <0.3";
     base = ">=4.18 && < 4.23";
     base64-bytestring = ">=1.2 && <1.3";
@@ -63,7 +61,6 @@ let
     text = ">=2.1 && <2.2";
     time = ">=1.12 && <1.17";
     time-units = ">=1.0 && <1.1";
-    tmp-postgres = ">=1.35 && <1.36";
     tricorder-types = ">=0.1 && <0.2";
     typed-process = ">=0.2 && <0.3";
     unagi-chan = ">=0.4 && <0.5";

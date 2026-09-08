@@ -94,7 +94,10 @@ This repository also contains [Atelier](atelier-core/README.md), a set of
 Haskell libraries providing foundational infrastructure for effect-based
 applications (to be extracted into their own repository).
 
+Some less maintained Atelier libraries have been moved to [`atelier-extras`].
+
 [hackage-package]: https://hackage.haskell.org/package/tricorder
 [stackage-package]: https://www.stackage.org/nightly-2026-08-31/package/tricorder-0.2.1.0
 [stackage-nightly-2026-08-19]: https://www.stackage.org/nightly-2026-08-19
 [github-releases]: https://github.com/tweag/tricorder/releases
+[`atelier-extras`]: https://github.com/tweag/atelier-extras
