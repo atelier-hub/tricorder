@@ -26,16 +26,3 @@ updates:
           - "*"
     commit-message:
       prefix: nix inputs
-  - package-ecosystem: "nix"
-    directory: "/templates/canvas"
-    schedule:
-      interval: "weekly"
-      time: "02:00"
-      day: monday
-    groups:
-      canvas-nix-flake-updates:
-        applies-to: version-updates
-        patterns:
-          - "*"
-    commit-message:
-      prefix: "canvas: nix inputs"

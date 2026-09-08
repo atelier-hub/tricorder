@@ -85,28 +85,5 @@
       };
       homeManagerModules.default = import ./nix/home-module.nix;
       nixosModules.default = import ./nix/nixos-module.nix;
-
-      # Atelier-based web-server starter. Instantiate with:
-      #   nix flake init -t github:tweag/tricorder#canvas
-      templates.canvas = {
-        path = ./templates/canvas;
-        description = "Atelier-based web server starter (library + executable, WAI/Warp, rel8/Postgres, haskell.nix)";
-        welcomeText = ''
-          # canvas — atelier-based web server starter
-
-          You now have a haskell.nix project with a library, a WAI/Warp executable,
-          rel8/hasql Postgres access, sqitch migrations, and a dev shell.
-
-          Next steps:
-          - `nix develop` (or `direnv allow`) to enter the dev shell
-          - `nix run .#postgres` then `sqitch deploy dev` for a local database
-          - `tricorder ui` to start the development server (builds and runs tests)
-          - `cabal run canvas` to start the server
-
-          `canvas` is a placeholder name — see README.md for how to rename it.
-          Edit `canvas/package.yaml` (not the generated `.cabal`) to change dependencies.
-        '';
-      };
-      templates.default = self.templates.canvas;
     };
 }
