@@ -9,8 +9,8 @@ let
   project = import ./project.nix {
     inherit
       compiler-nix-name
-      inputs
       self
+      inputs
       ;
   };
   shell = import ./shell.nix { inherit pkgs checks; };
@@ -33,7 +33,6 @@ let
       self
       ;
   };
-  template = import ./template.nix { inherit inputs pkgs compiler-nix-name; };
   docs = import ./docs.nix { inherit flake; };
   sdists = import ./sdists.nix { inherit pkgs; };
   apps = import ./apps.nix { inherit pkgs compiler-nix-name flake; };
@@ -43,7 +42,6 @@ builtins.foldl' lib.recursiveUpdate { } [
   docs
   sdists
   checks
-  template
   apps
   {
     legacyPackages = pkgs;

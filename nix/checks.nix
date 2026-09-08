@@ -16,8 +16,6 @@ in
         fourmolu = {
           enable = true;
           package = pkgs.fourmolu;
-          # Uses a different fourmolu config
-          excludes = [ "templates/canvas" ];
         };
         hlint = {
           enable = true;
@@ -44,9 +42,6 @@ in
           files = "(\\.l?hs(-boot)?$)|(\\.cabal$)|((^|/)package\\.nix$)|((^|/)nix/package/.*\\.nix$)";
           entry = "${pkgs.nix-hpack}/bin/nix-hpack";
           pass_filenames = false;
-          # The template has no package.nix and isn't part of this cabal
-          # project; keep nix-hpack from triggering on its files.
-          excludes = [ "^templates/" ];
         };
         # Validate tagref cross-references (no dangling refs / duplicate tags).
         tagref = {

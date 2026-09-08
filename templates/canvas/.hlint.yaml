@@ -1,6 +1,0 @@
-- arguments:
-    - -XOverloadedRecordDot
-
-- ignore: {name: Use newtype instead of data}
-
-- group: {name: future, enabled: true}
