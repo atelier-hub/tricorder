@@ -7,6 +7,12 @@ and this project adheres to the [PVP](https://pvp.haskell.org/).
 
 ## [Unreleased]
 
+## [0.2.2.1] - 2026-09-09
+
+### Fixed
+
+- Build failure due to missing `AsRawUnit` class from `Atelier.Time`.
+
 ## [0.2.2.0] - 2026-09-05
 
 ### Added
