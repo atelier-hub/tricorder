@@ -8,7 +8,7 @@ let
     Cabal = ">=3.12 && <3.19";
     Cabal-syntax = ">=3.12 && <3.19";
     aeson = ">=2.2 && <2.4";
-    atelier-core = ">=0.3 && <0.5";
+    atelier-core = ">=0.5 && <0.6";
     atelier-prelude = ">=0.1 && <0.3";
     base = ">=4.18 && < 4.23";
     base64-bytestring = ">=1.2 && <1.3";

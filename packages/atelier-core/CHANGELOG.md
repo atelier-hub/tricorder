@@ -7,6 +7,8 @@ and this project adheres to the [PVP](https://pvp.haskell.org/).
 
 ## [Unreleased]
 
+## [0.5.0.0] - 2026-09-09
+
 ### Changed
 
 - `Atelier.Time`: Remove orphan `FromJSON` and `ToJSON` instances, and instead
