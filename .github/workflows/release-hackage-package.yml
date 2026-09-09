@@ -27,7 +27,7 @@ jobs:
       - uses: sol/haskell-autotag@a535f2ac35a62c541de1919b04984b2970866f71
         id: tagging
         with:
-          package-path: ${{ inputs.package-name }}
+          package-path: packages/${{ inputs.package-name }}
           prefix: ${{ inputs.package-name }}-
       - name: Pack
         if: ${{ steps.tagging.outputs.created }}
