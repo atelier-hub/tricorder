@@ -26,12 +26,7 @@ let
     filepath = ">=1.4 && <1.6";
     fsnotify = ">=0.4 && <0.5";
     hashable = ">=1.5 && <1.6";
-    hasql = ">=1.9 && <1.11";
-    hasql-pool = ">=1.3 && <1.5";
-    hasql-transaction = ">=1.2 && <1.3";
     hedgehog = ">=1.7 && <1.8";
-    hs-opentelemetry-api = ">=0.3 && <0.4";
-    hs-opentelemetry-sdk = ">=0.1 && <0.2";
     hspec = ">=2.11 && <2.12";
     hspec-hedgehog = ">=0.3 && <0.4";
     http-api-data = ">=0.5.1 && <0.8";
@@ -43,12 +38,10 @@ let
     mtl = ">=2.3 && <2.4";
     network = ">=3.2 && <3.3";
     optparse-applicative = ">=0.19 && <0.20";
-    postgres-options = ">=0.2 && <0.3";
     process = ">=1.6 && <1.7";
     prometheus-client = ">=1.1 && <1.2";
     prometheus-metrics-ghc = ">=1.0 && <1.1";
     regex-tdfa = ">=1.3.2.5 && <1.4";
-    rel8 = ">=1.7 && <1.8";
     relude = ">=1.2 && <1.3";
     req = ">=3.13.4 && <3.14";
     stm = ">=2.5 && <2.6";

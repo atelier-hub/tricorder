@@ -6,7 +6,9 @@
   self,
 }:
 let
+  inherit (pkgs) lib;
   common = import ./package/common.nix;
+  unusedConstraints = import ./package/unused-constraints.nix;
 in
 {
   checks = {
@@ -70,6 +72,21 @@ in
           # symlinkJoin.
           mkdir -p "$out"
           touch "$out/cabal-check-ok"
+        '';
+    unused-constraints =
+      pkgs.runCommand "unused-constraints"
+        {
+          unused_constraints = lib.concatMapStringsSep "\n" (s: "- ${s}") unusedConstraints;
+        }
+        ''
+          if test -z "$unused_constraints"; then
+            mkdir -p "$out"
+            echo "ok" > "$out/check"
+          else
+            echo "There are unused version constraints in ./nix/package/dependencies.nix:" >&2
+            echo "$unused_constraints" >&2
+            exit 1
+          fi
         '';
   };
 
