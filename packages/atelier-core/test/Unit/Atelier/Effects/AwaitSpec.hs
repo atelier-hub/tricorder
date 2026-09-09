@@ -6,6 +6,7 @@ import Effectful.State.Static.Shared (evalState, state)
 import Effectful.Writer.Static.Shared (runWriter, tell)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
+import Data.List qualified as List
 import Effectful.Concurrent.STM qualified as STM
 
 import Atelier.Effects.Chan (runChan)
@@ -70,7 +71,7 @@ testAwaitYield = do
         (_, result) <-
             runTest
                 $ Await.awaitYield @Int (Yield.yield 99 >> blockForever)
-                $ fmap (* 2) Await.await >>= tell . one
+                $ fmap (* 2) Await.await >>= tell . List.singleton
         result `shouldBe` [198]
 
     describe "when the awaiter finishes before the yielder"
