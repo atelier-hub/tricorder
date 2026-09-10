@@ -6,6 +6,7 @@
     hlint = { };
     tasty-discover = { };
     weeder = { };
+    fourmolu = { };
   };
   buildInputs = [
     pkgs.nix-hpack
