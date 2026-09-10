@@ -19,9 +19,9 @@ let
     daemons = ">=0.4 && <0.5";
     data-default = ">=0.8 && <0.9";
     directory = ">=1.3 && <1.4";
-    effectful = ">=2.6 && <2.7";
-    effectful-core = ">=2.6 && <2.7";
-    effectful-plugin = ">=2.0 && <2.2";
+    effectful = ">=2.7 && <2.8";
+    effectful-core = ">=2.7 && <2.8";
+    effectful-plugin = ">=2.2 && <2.3";
     effectful-th = ">=1.0 && <1.1";
     filepath = ">=1.4 && <1.6";
     fsnotify = ">=0.4 && <0.5";

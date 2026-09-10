@@ -63,8 +63,8 @@ library
       aeson >=2.2 && <2.4
     , atelier-prelude >=0.1 && <0.3
     , base >=4.18 && <4.23
-    , effectful-core ==2.6.*
-    , effectful-plugin >=2.0 && <2.2
+    , effectful-core ==2.7.*
+    , effectful-plugin ==2.2.*
     , text ==2.1.*
   mixins:
       base hiding (Prelude)
