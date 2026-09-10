@@ -3,13 +3,36 @@ let
     inherit name;
     version = constraints.${name};
   };
+  inherit (import ./common.nix) packageNames;
+  inherit (builtins)
+    splitVersion
+    listToAttrs
+    length
+    genList
+    elemAt
+    concatStringsSep
+    ;
+  take =
+    count: list:
+    let
+      len = length list;
+    in
+    genList (elemAt list) (if count > len then len else count);
+  packageVersions = listToAttrs (
+    map (name: {
+      inherit name;
+      value =
+        let
+          inherit (import ../../packages/${name}/package.nix) version;
+        in
+        "^>=${concatStringsSep "." (take 2 (splitVersion version))}";
+    }) packageNames
+  );
   depList = map dep;
-  constraints = {
+  constraints = packageVersions // {
     Cabal = ">=3.12 && <3.19";
     Cabal-syntax = ">=3.12 && <3.19";
     aeson = ">=2.2 && <2.4";
-    atelier-core = ">=0.5 && <0.6";
-    atelier-prelude = ">=0.1 && <0.3";
     base = ">=4.18 && < 4.23";
     base64-bytestring = ">=1.2 && <1.3";
     brick = ">=2.10 && <2.14";
@@ -54,7 +77,6 @@ let
     text = ">=2.1 && <2.2";
     time = ">=1.12 && <1.17";
     time-units = ">=1.0 && <1.1";
-    tricorder-types = ">=0.1 && <0.2";
     typed-process = ">=0.2 && <0.3";
     unagi-chan = ">=0.4 && <0.5";
     unix = ">=2.8 && <2.9";
