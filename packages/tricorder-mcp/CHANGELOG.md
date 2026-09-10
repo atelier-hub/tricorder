@@ -7,6 +7,8 @@ and this project adheres to the [PVP](https://pvp.haskell.org/).
 
 ## [Unreleased]
 
+## [0.1.2.0] - 2026-09-10
+
 ### Changed
 
 - Require `effectful-core >=2.7 && <2.8`.
