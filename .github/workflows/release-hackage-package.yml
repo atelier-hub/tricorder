@@ -35,6 +35,34 @@ jobs:
           nix build .#${{ inputs.package-name }}-sdist
           mkdir -p ${{ runner.temp }}/release/packages
           cp result/*.tar.gz ${{ runner.temp }}/release/packages
+      - name: Get default GHC version
+        if: ${{ steps.tagging.outputs.created }}
+        id: ghc-version
+        run: |
+          version=$(nix eval --raw --file nix/package/common.nix --apply 'x: x.default-ghc-version')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: haskell-actions/setup@cd0d9bdd65b20557f41bea4dbe43d0b5fbbfe553
+        if: ${{ steps.tagging.outputs.created }}
+        with:
+          ghc-version: ${{ steps.ghc-version.outputs.version }}
+          cabal-version: latest
+      - name: Verify buildable against published Hackage dependencies
+        # This project's own build always resolves atelier-core, tricorder-types,
+        # etc. from local monorepo sources, so it can't catch a package that
+        # relies on not-yet-published features/versions of its sibling
+        # packages. Building the sdist in isolation, with a bare `cabal.project`
+        # and no local path packages, forces cabal to resolve every dependency
+        # from the real (non-candidate) Hackage index instead.
+        if: ${{ steps.tagging.outputs.created }}
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          tar -xzf ${{ runner.temp }}/release/packages/*.tar.gz -C "$scratch"
+          pkgdir="$(find "$scratch" -mindepth 1 -maxdepth 1 -type d)"
+          cd "$pkgdir"
+          echo "packages: ." > cabal.project
+          cabal update
+          cabal build all
       - name: Build docs
         if: ${{ steps.tagging.outputs.created }}
         run: |
@@ -50,7 +78,7 @@ jobs:
           hackageToken: ${{ secrets.HACKAGE_AUTH_TOKEN }}
           packagesPath: ${{ runner.temp }}/release/packages
           docsPath: ${{ runner.temp }}/release/docs
-          publish: false
+          publish: true
       - name: Done
         if: ${{ steps.tagging.outputs.created }}
         run: |
