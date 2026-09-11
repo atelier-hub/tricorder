@@ -7,6 +7,10 @@ and this project adheres to the [PVP](https://pvp.haskell.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- Dependency on `effectful-core` and `effectful-plugin`.
+
 ## [0.2.0.0] - 2026-09-10
 
 ### Changed
