@@ -29,14 +29,9 @@ in
     ;
 
   inherit (common.options)
-    ghc-options
     when
     ;
-
-  dependencies = depList [
-    "effectful-core"
-    "effectful-plugin"
-  ];
+  ghc-options = common.options.warnings;
 
   library = {
     source-dirs = "src";
