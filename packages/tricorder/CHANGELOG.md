@@ -7,6 +7,10 @@ and this project adheres to the [PVP](https://pvp.haskell.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Require `tricorder-types ^>=0.3`.
+
 ## [0.2.2.2] - 2026-09-10
 
 ### Changed
