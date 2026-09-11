@@ -66,10 +66,20 @@ cabal install tricorder
 stack install tricorder
 ```
 
-Tricorder is also released as [pre-built binaries on GitHub][github-releases].
+On NixOS, when installing with `cabal`, you might get errors like this:
+
+```
+Missing dependency on a foreign library:
+* Missing (or bad) C library: z
+```
+
+Pass the following flag to ensure `zlib` uses the `zlib` bundled with your
+system: `--constraint='zlib +bundled-c-zlib'`.
 
 To install and use Tricorder in your NixOS configuration, see [Using with
 Nix](/docs/using-with-nix.md).
+
+Tricorder is also released as [pre-built binaries on GitHub][github-releases].
 
 ### GHC 9.14 support
 
